@@ -1,0 +1,77 @@
+/* ═══════════════════════════════════════════════════════════════
+   NAVBAR COMPONENT RESPONSIVE STYLES
+   Precision-crafted for desktop, tablet, and mobile devices
+   ═══════════════════════════════════════════════════════════════ */
+
+.navbar-desktop-nav {
+  display: flex !important;
+  position: relative;
+  z-index: 2;
+  align-items: center;
+  padding: 3px;
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) inset;
+}
+
+.navbar-desktop-cta {
+  display: block !important;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.navbar-mobile-toggle {
+  display: none !important;
+  position: relative;
+  z-index: 2;
+}
+
+.navbar-mobile-drawer {
+  pointer-events: auto;
+  position: absolute;
+  top: 74px;
+  left: 1rem;
+  right: 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(30px) saturate(200%);
+  -webkit-backdrop-filter: blur(30px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.90);
+  border-radius: 24px;
+  padding: 1.25rem 1.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 24px 50px -12px rgba(11, 23, 44, 0.20), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  animation: drawerSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1001;
+}
+
+/* ═══ TABLET & MOBILE BREAKPOINT (≤ 1024px) ═══ */
+@media (max-width: 1024px) {
+  .navbar-desktop-nav {
+    display: none !important;
+  }
+
+  .navbar-desktop-cta {
+    display: none !important;
+  }
+
+  .navbar-mobile-toggle {
+    display: flex !important;
+  }
+}
+
+/* ═══ MOBILE PHONES (≤ 480px) ═══ */
+@media (max-width: 480px) {
+  .navbar-brand-sub {
+    display: none !important;
+  }
+
+  .navbar-mobile-drawer {
+    left: 0.75rem;
+    right: 0.75rem;
+    padding: 1rem 1.25rem 1.25rem;
+  }
+}

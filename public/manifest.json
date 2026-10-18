@@ -1,0 +1,21 @@
+{
+  "name": "Sistem Informasi IKU ITPLN",
+  "short_name": "IKU ITPLN",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#094e68",
+  "description": "Indikator Kinerja Utama & KPI Institut Teknologi PLN",
+  "icons": [
+    {
+      "src": "/logo_pln.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo_pln.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
