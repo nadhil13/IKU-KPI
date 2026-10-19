@@ -7,6 +7,7 @@ import {
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useAuth } from '../features/auth/context/AuthContext';
+import { mountSmoothScroll, getLenis } from '../lib/smoothScroll';
 
 export default function InternalLayout() {
   const navigate = useNavigate();
@@ -19,6 +20,18 @@ export default function InternalLayout() {
 
   const layoutRef = useRef(null);
   const switcherPillRef = useRef(null);
+  const scrollWrapperRef = useRef(null);
+  const scrollContentRef = useRef(null);
+
+  // Smooth scroll Lenis + sinkron ScrollTrigger pada area konten internal.
+  useEffect(() => mountSmoothScroll(scrollWrapperRef.current, scrollContentRef.current), [currentUser]);
+
+  // Kembali ke atas setiap pindah halaman.
+  useEffect(() => {
+    const lenis = getLenis();
+    if (lenis) lenis.scrollTo(0, { immediate: true });
+    else if (scrollWrapperRef.current) scrollWrapperRef.current.scrollTop = 0;
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -1122,10 +1135,11 @@ export default function InternalLayout() {
             overflowY: 'auto',
             overflowX: 'hidden',
             padding: 'clamp(1.5rem, 3vw, 2.25rem)',
-            scrollBehavior: 'smooth',
+            overscrollBehavior: 'contain',
           }}
+          ref={scrollWrapperRef}
         >
-          <div style={{ maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+          <div ref={scrollContentRef} style={{ maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
             <Outlet />
           </div>
         </div>

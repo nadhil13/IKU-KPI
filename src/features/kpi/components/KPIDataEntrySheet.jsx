@@ -7,121 +7,14 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 
+import {
+  parseIndonesianNumber, parseFlexibleDate, formatIndonesianNumber,
+  computeKpiItem, subscribeKpiConfig, readPublishedKpiConfig, normalizeKpiSections,
+} from '../kpiSchema';
+
 gsap.registerPlugin(ScrollTrigger);
 
-/**
- * Parser Angka Presisi untuk Format Indonesia (Koma Desimal & Titik Ribuan)
- */
-export function parseIndonesianNumber(input) {
-  if (input === null || input === undefined) return null;
-  const raw = String(input).trim();
-  if (!raw) return null;
-
-  let s = raw.replace(/^rp\.?\s*/i, '').replace(/%\s*$/, '').trim();
-  if (!s || /[a-zA-Z]/.test(s)) return null;
-
-  if (s.includes('.') && s.includes(',')) {
-    const lastDot = s.lastIndexOf('.');
-    const lastComma = s.lastIndexOf(',');
-    if (lastComma > lastDot) {
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else {
-      s = s.replace(/,/g, '');
-    }
-  } else if (s.includes(',')) {
-    const commaCount = (s.match(/,/g) || []).length;
-    if (commaCount > 1) {
-      s = s.replace(/,/g, '');
-    } else {
-      s = s.replace(',', '.');
-    }
-  } else if (s.includes('.')) {
-    const dotCount = (s.match(/\./g) || []).length;
-    if (dotCount > 1) {
-      s = s.replace(/\./g, '');
-    } else {
-      const parts = s.split('.');
-      if (parts[1] && parts[1].length === 3 && parts[0].length >= 1 && parts[0].length <= 3) {
-        s = parts[0] + parts[1];
-      }
-    }
-  }
-
-  const num = Number(s);
-  return Number.isFinite(num) ? num : null;
-}
-
-/**
- * Parser Tanggal Fleksibel untuk Bagian D (Perspektif Kepatuhan):
- * Mendukung "01-Dec-26", "25-Nov-26", "31-Mar-26", "15 Juli 2026", "2026-11-25", "25/11/2026"
- */
-export function parseFlexibleDate(input) {
-  if (!input) return null;
-  const raw = String(input).trim();
-  if (!raw) return null;
-
-  const monthMap = {
-    jan: 0, januari: 0, january: 0,
-    feb: 1, februari: 1, february: 1,
-    mar: 2, maret: 2, march: 2,
-    apr: 3, april: 3,
-    mei: 4, may: 4,
-    jun: 5, juni: 5, june: 5,
-    jul: 6, juli: 6, july: 6,
-    agu: 7, agustus: 7, aug: 7, august: 7,
-    sep: 8, september: 8,
-    okt: 9, oktober: 9, oct: 9, october: 9,
-    nov: 10, november: 10,
-    des: 11, desember: 11, dec: 11, december: 11,
-  };
-
-  // Pola 1: YYYY-MM-DD
-  const isoMatch = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (isoMatch) {
-    return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
-  }
-
-  // Pola 2: DD-MMM-YY atau DD Bulan YYYY (contoh: 01-Dec-26, 25 Nov 2026)
-  const textMatch = raw.replace(/,/g, '').match(/^(\d{1,2})[\s\-/]+([a-zA-Z]+)[\s\-/]+(\d{2,4})$/);
-  if (textMatch) {
-    const day = Number(textMatch[1]);
-    const mKey = textMatch[2].toLowerCase();
-    let year = Number(textMatch[3]);
-    if (year < 100) year += 2000;
-    if (monthMap[mKey] !== undefined) {
-      return new Date(year, monthMap[mKey], day);
-    }
-  }
-
-  // Pola 3: Bulan YYYY saja (contoh: "Juli 2026" atau "Januari 2027")
-  const monthYearMatch = raw.replace(/,/g, '').match(/^([a-zA-Z]+)[\s\-/]+(\d{2,4})$/);
-  if (monthYearMatch) {
-    const mKey = monthYearMatch[1].toLowerCase();
-    let year = Number(monthYearMatch[2]);
-    if (year < 100) year += 2000;
-    if (monthMap[mKey] !== undefined) {
-      return new Date(year, monthMap[mKey] + 1, 0); // Akhir bulan tersebut
-    }
-  }
-
-  // Pola 4: DD/MM/YYYY atau DD-MM-YYYY
-  const dmyMatch = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
-  if (dmyMatch) {
-    let year = Number(dmyMatch[3]);
-    if (year < 100) year += 2000;
-    return new Date(year, Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
-  }
-
-  return null;
-}
-
-export function formatIndonesianNumber(num, maxDecimals = 2) {
-  if (num === null || num === undefined || !Number.isFinite(num)) return '—';
-  return num.toLocaleString('id-ID', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: maxDecimals,
-  });
-}
+export { parseIndonesianNumber, parseFlexibleDate, formatIndonesianNumber };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MASTER STRUKTUR KPI BAGIAN A (25), B (26), C (49) & D (-12,5)
@@ -845,18 +738,9 @@ export const KPI_SECTIONS_CONFIG = [
   },
 ];
 
-const ALL_ORDERED_KEYS = KPI_SECTIONS_CONFIG.flatMap((sec) =>
-  sec.items.flatMap((item) => item.subrows.map((s) => s.key))
-);
-
 const getGovernedKpiSections = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem('prp_kpi_config') || 'null');
-    if (!saved?.sections) return KPI_SECTIONS_CONFIG;
-    return saved.sections;
-  } catch {
-    return KPI_SECTIONS_CONFIG;
-  }
+  const saved = readPublishedKpiConfig();
+  return Array.isArray(saved?.sections) && saved.sections.length ? saved.sections : KPI_SECTIONS_CONFIG;
 };
 
 const STORAGE_KEY = 'performa_kpi_bagian_abcd_v5';
@@ -880,30 +764,48 @@ const WORKFLOW_LABELS = {
   [WORKFLOW_STATUS.OVERDUE]: 'Terlambat',
 };
 
-export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false }) {
+/**
+ * @param sectionsOverride  Struktur draft (dipakai Desainer PRP untuk "Preview User").
+ * @param persist           false = tidak membaca/menulis data isian & workflow ke localStorage.
+ */
+export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, sectionsOverride = null, persist = true }) {
   const containerRef = useRef(null);
   const inputRefs = useRef({});
   const fillProgressRef = useRef(null);
   const scrollReadBarRef = useRef(null);
   const tabPillRef = useRef(null);
   const [governanceRevision, setGovernanceRevision] = useState(0);
-  const governedSections = useMemo(() => getGovernedKpiSections(), [governanceRevision]);
+  const isPreview = Boolean(sectionsOverride);
+  const governedSections = useMemo(
+    () => (sectionsOverride ? normalizeKpiSections(sectionsOverride) : getGovernedKpiSections()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [governanceRevision, sectionsOverride]
+  );
   const orderedKeys = useMemo(
     () => governedSections.flatMap((sec) => sec.items.flatMap((item) => item.subrows.map((sub) => sub.key))),
     [governedSections]
   );
 
+  const [structureToast, setStructureToast] = useState(null);
   useEffect(() => {
-    const refreshGovernance = () => setGovernanceRevision((revision) => revision + 1);
-    window.addEventListener('storage', refreshGovernance);
-    return () => window.removeEventListener('storage', refreshGovernance);
-  }, []);
+    if (isPreview) return undefined;
+    let timer;
+    const unsubscribe = subscribeKpiConfig(() => {
+      setGovernanceRevision((revision) => revision + 1);
+      const config = readPublishedKpiConfig();
+      setStructureToast(config?.version ? `Struktur tabel diperbarui oleh PRP (v${config.version})` : 'Struktur tabel diperbarui oleh PRP');
+      clearTimeout(timer);
+      timer = setTimeout(() => setStructureToast(null), 4200);
+    });
+    return () => { unsubscribe(); clearTimeout(timer); };
+  }, [isPreview]);
 
   // Filter tab: 'ALL' | 'A' | 'B' | 'C' | 'D'
   const [activeSectionTab, setActiveSectionTab] = useState('ALL');
   const [focusedKey, setFocusedKey] = useState(null);
   const [lastSaved, setLastSaved] = useState('Siap');
   const [workflow, setWorkflow] = useState(() => {
+    if (!persist) return { status: WORKFLOW_STATUS.NOT_STARTED, submittedAt: null, submittedBy: 'Preview PRP', revisionNote: '', history: [] };
     try {
       return JSON.parse(localStorage.getItem(WORKFLOW_KEY)) || {
         status: WORKFLOW_STATUS.NOT_STARTED,
@@ -926,6 +828,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
   }, [orderedKeys]);
 
   const [values, setValues] = useState(() => {
+    if (!persist) return emptyDefaults;
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) return { ...emptyDefaults, ...JSON.parse(saved) };
@@ -940,6 +843,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
   }, [emptyDefaults]);
 
   useEffect(() => {
+    if (!persist) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(values));
       setLastSaved(
@@ -951,15 +855,16 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
     } catch {
       // Ignore
     }
-  }, [values]);
+  }, [values, persist]);
 
   useEffect(() => {
+    if (!persist) return;
     try {
       localStorage.setItem(WORKFLOW_KEY, JSON.stringify(workflow));
     } catch {
       // Ignore storage error
     }
-  }, [workflow]);
+  }, [workflow, persist]);
 
   // ─── KALKULASI REAL-TIME BAGIAN A, B, C, DAN D ───
   const calculated = useMemo(() => {
@@ -976,181 +881,17 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
 
       const computedItems = sec.items.map((item) => {
         totalIndicatorsCount += 1;
-
-        const parsedSubs = item.subrows.map((sub) => {
-          const raw = values[sub.key] ?? '';
-          const trimmed = String(raw).trim();
-          const num = parseIndonesianNumber(raw);
-          const dateObj = sub.isTextInput ? parseFlexibleDate(raw) : null;
-
-          const isFilled = sub.isTextInput
-            ? trimmed !== '' && (dateObj !== null || num !== null)
-            : num !== null;
-
-          const isInvalid = sub.isTextInput
-            ? trimmed !== '' && dateObj === null && num === null
-            : trimmed !== '' && num === null;
-
-          if (isFilled) totalFilledInputs += 1;
-          if (isInvalid) totalInvalidInputs += 1;
-
-          return {
-            ...sub,
-            raw,
-            num,
-            dateObj,
-            isInvalid,
-          };
+        const result = computeKpiItem(item, values, sec.isPenaltySection);
+        result.parsedSubs.forEach((sub) => {
+          if (sub.isFilled) totalFilledInputs += 1;
+          if (sub.isInvalid) totalInvalidInputs += 1;
         });
-
-        let ratioPercent = null;
-        let weightedScore = null;
-        let extraNote = null;
-
-        if (item.calcType === 'ratio_two') {
-          const n1 = parsedSubs[0]?.num;
-          const n2 = parsedSubs[1]?.num;
-          if (n1 !== null && n2 !== null && n2 !== 0) {
-            ratioPercent = (n1 / n2) * 100;
-            weightedScore = (ratioPercent / 100) * item.bobot;
-          }
-        } else if (item.calcType === 'ratio_target_pct') {
-          const n1 = parsedSubs[0]?.num;
-          const n2 = parsedSubs[1]?.num;
-          if (n1 !== null && n2 !== null && n2 !== 0 && item.targetNum > 0) {
-            const actualPct = (n1 / n2) * 100;
-            ratioPercent = (actualPct / item.targetNum) * 100;
-            weightedScore = (ratioPercent / 100) * item.bobot;
-            extraNote = `Rasio Aktual: ${formatIndonesianNumber(actualPct, 2)}% (Target: ${item.targetDisplay}%)`;
-          }
-        } else if (item.calcType === 'sum_two_target') {
-          const n1 = parsedSubs[0]?.num;
-          const n2 = parsedSubs[1]?.num;
-          if ((n1 !== null || n2 !== null) && item.targetNum > 0) {
-            const totalSum = (n1 || 0) + (n2 || 0);
-            ratioPercent = (totalSum / item.targetNum) * 100;
-            weightedScore = (ratioPercent / 100) * item.bobot;
-            extraNote = `Total Kerjasama (BKAN + BPKL): ${formatIndonesianNumber(totalSum, 0)} dari ${item.targetDisplay}`;
-          }
-        } else if (item.calcType === 'tracer_study') {
-          const compNums = parsedSubs.slice(0, 6).map((s) => s.num);
-          const respNum = parsedSubs[6]?.num;
-          const hasAtLeastOneComp = compNums.some((n) => n !== null);
-
-          if (hasAtLeastOneComp && respNum !== null && respNum > 0) {
-            const sumLulusan = compNums.reduce((acc, curr) => acc + (curr || 0), 0);
-            const rawTracerPct = (sumLulusan / respNum) * 100;
-            ratioPercent = (rawTracerPct / item.targetNum) * 100;
-            weightedScore = (ratioPercent / 100) * item.bobot;
-            extraNote = `Serapan Tracer: ${formatIndonesianNumber(rawTracerPct, 2)}% (${formatIndonesianNumber(sumLulusan, 0)} / ${formatIndonesianNumber(respNum, 0)} responden)`;
-          }
-        } else if (item.calcType === 'single_target') {
-          const valNum = parsedSubs[0]?.num;
-          if (valNum !== null && item.targetNum > 0) {
-            ratioPercent = (valNum / item.targetNum) * 100;
-            weightedScore = (ratioPercent / 100) * item.bobot;
-          }
-        } else if (item.calcType === 'primary_with_meta') {
-          const mainNum = parsedSubs[0]?.num;
-          const metaNum = parsedSubs[1]?.num;
-          if (mainNum !== null && item.targetNum > 0) {
-            ratioPercent = (mainNum / item.targetNum) * 100;
-            weightedScore = (ratioPercent / 100) * item.bobot;
-            if (metaNum !== null) {
-              extraNote = `${formatIndonesianNumber(metaNum, 0)} Pemda Mitra`;
-            }
-          }
-        } else if (item.calcType === 'compliance_date_single') {
-          // Bagian D No 1 & 2: Bandingkan Tanggal Kirim vs Tanggal Target
-          const sub = parsedSubs[0];
-          const targetDate = new Date(item.deadlineISO + 'T23:59:59');
-          if (sub.dateObj) {
-            const isOnTime = sub.dateObj.getTime() <= targetDate.getTime();
-            ratioPercent = isOnTime ? 100 : 0;
-            weightedScore = isOnTime ? 0 : item.bobot; // 0 jika tepat waktu, -2.5 jika terlambat
-            extraNote = isOnTime ? 'Status: Tepat Waktu (Penalti 0)' : 'Status: Melewati Target (-2,5)';
-          } else if (sub.num !== null) {
-            const pct = Math.min(100, Math.max(0, sub.num));
-            ratioPercent = pct;
-            weightedScore = ((100 - pct) / 100) * item.bobot;
-          }
-        } else if (item.calcType === 'compliance_date_dual') {
-          // Bagian D No 3: 2 Tanggal Semesteran (Juli 2026 & Januari 2027)
-          const sub1 = parsedSubs[0];
-          const sub2 = parsedSubs[1];
-          const t1 = new Date(item.deadlinesISO[0] + 'T23:59:59');
-          const t2 = new Date(item.deadlinesISO[1] + 'T23:59:59');
-
-          const has1 = sub1.dateObj !== null || sub1.num !== null;
-          const has2 = sub2.dateObj !== null || sub2.num !== null;
-
-          if (has1 || has2) {
-            const ok1 = sub1.dateObj
-              ? sub1.dateObj.getTime() <= t1.getTime()
-              : sub1.num !== null
-                ? sub1.num >= 100
-                : true;
-            const ok2 = sub2.dateObj
-              ? sub2.dateObj.getTime() <= t2.getTime()
-              : sub2.num !== null
-                ? sub2.num >= 100
-                : true;
-
-            const onTimeCount = (has1 && ok1 ? 1 : 0) + (has2 && ok2 ? 1 : 0);
-            const lateCount = (has1 && !ok1 ? 1 : 0) + (has2 && !ok2 ? 1 : 0);
-            const filledSem = (has1 ? 1 : 0) + (has2 ? 1 : 0);
-
-            ratioPercent = (onTimeCount / filledSem) * 100;
-            weightedScore = (lateCount / 2) * item.bobot; // -1.25 per semester yang terlambat
-            extraNote =
-              lateCount === 0
-                ? 'Semesteran Tepat Waktu (Penalti 0)'
-                : `${lateCount} Semester Terlambat (${formatIndonesianNumber(weightedScore, 2)})`;
-          }
-        } else if (item.calcType === 'compliance_integration_pct') {
-          // Bagian D No 4: Integrasi Siakad & SimKug (Target 100%)
-          const valNum = parsedSubs[0]?.num;
-          if (valNum !== null) {
-            const clamped = Math.min(100, Math.max(0, valNum));
-            ratioPercent = clamped;
-            weightedScore = ((100 - clamped) / 100) * item.bobot;
-            if (Math.abs(weightedScore) < 1e-9) weightedScore = 0;
-          }
-        } else if (item.calcType === 'compliance_audit_ratio') {
-          // Bagian D No 5: (Jumlah Belum Ditindaklanjuti / Jumlah Rekomendasi) * Bobot (-2,5)
-          const unNum = parsedSubs[0]?.num;
-          const totNum = parsedSubs[1]?.num;
-          if (unNum !== null && totNum !== null && totNum > 0) {
-            const unRatio = Math.min(1, Math.max(0, unNum / totNum));
-            const unPct = unRatio * 100;
-            ratioPercent = Math.max(0, 100 - unPct); // % Tindaklanjut selesai
-            weightedScore = unRatio * item.bobot; // Sesuai formula Excel: (Belum / Total) * -2,5
-            if (Math.abs(weightedScore) < 1e-9) weightedScore = 0;
-            extraNote = `Belum Tindaklanjut: ${formatIndonesianNumber(unPct, 2)}% (${formatIndonesianNumber(unNum, 0)} / ${formatIndonesianNumber(totNum, 0)} rekomendasi)`;
-          }
-        }
-
-        if (ratioPercent !== null) ratioPercent = Math.min(100, Math.max(0, ratioPercent));
-        if (weightedScore !== null) {
-          const scoreLimit = Math.abs(Number(item.bobot) || 0);
-          weightedScore = sec.isPenaltySection
-            ? Math.max(-scoreLimit, Math.min(0, weightedScore))
-            : Math.min(scoreLimit, Math.max(0, weightedScore));
-        }
-
-        if (ratioPercent !== null && weightedScore !== null) {
+        if (result.ratioPercent !== null && result.weightedScore !== null) {
           secCompleted += 1;
           totalCompletedIndicators += 1;
-          secScore += weightedScore;
+          secScore += result.weightedScore;
         }
-
-        return {
-          ...item,
-          parsedSubs,
-          ratioPercent,
-          weightedScore,
-          extraNote,
-        };
+        return { ...item, ...result };
       });
 
       if (sec.isPenaltySection) {
@@ -1204,6 +945,16 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
         scoreB: secB?.secScore || 0,
         scoreC: secC?.secScore || 0,
         scoreD: secD?.secScore || 0,
+        sectionScores: calculated.sections.map((sec) => ({
+          code: sec.code,
+          title: sec.title,
+          weight: Number(sec.totalWeight) || 0,
+          weightDisplay: sec.weightDisplay,
+          score: sec.secScore,
+          isPenaltySection: Boolean(sec.isPenaltySection),
+          completed: sec.secCompleted,
+          total: sec.secTotalItems,
+        })),
       });
     }
   }, [calculated, onMetricsUpdate]);
@@ -1213,8 +964,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
     const scrollerEl = document.querySelector('.internal-main-scroll');
 
     // 1. Sliding White Pill pada 5 Tab Perspektif (ALL, A, B, C, D)
-    const tabMap = { ALL: 0, A: 1, B: 2, C: 3, D: 4 };
-    const tabIdx = tabMap[activeSectionTab] ?? 0;
+    const tabIdx = activeSectionTab === 'ALL' ? 0 : Math.max(0, governedSections.findIndex((sec) => sec.code === activeSectionTab) + 1);
     if (tabPillRef.current) {
       gsap.to(tabPillRef.current, {
         xPercent: tabIdx * 100,
@@ -1281,7 +1031,14 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
     }
 
     ScrollTrigger.refresh();
-  }, { dependencies: [activeSectionTab], scope: containerRef });
+  }, { dependencies: [activeSectionTab, governedSections], scope: containerRef });
+
+  // Jika PRP menghapus bagian yang sedang dibuka, kembali ke tab "Semua".
+  useEffect(() => {
+    if (activeSectionTab !== 'ALL' && !governedSections.some((sec) => sec.code === activeSectionTab)) {
+      setActiveSectionTab('ALL');
+    }
+  }, [activeSectionTab, governedSections]);
 
   useGSAP(() => {
     if (fillProgressRef.current) {
@@ -1331,7 +1088,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
   // Simulasi Data Lengkap Bagian A, B, C, dan D
   const handleFillSample = () => {
     if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
-    setValues({
+    const presetSamples = {
       // Bagian A (Bobot 25)
       'a_1a_num': '1.850',
       'a_1a_den': '2.000',
@@ -1384,7 +1141,20 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
       'd_4_val': '100',
       'd_5_un': '0',
       'd_5_tot': '24',
-    });
+    };
+    // Baris baru buatan PRP tetap mendapat contoh nilai yang wajar.
+    const sampleValues = {};
+    governedSections.forEach((sec) => sec.items.forEach((item) => item.subrows.forEach((sub, subIndex) => {
+      if (presetSamples[sub.key] !== undefined) {
+        sampleValues[sub.key] = presetSamples[sub.key];
+      } else if (sub.isTextInput) {
+        sampleValues[sub.key] = (subIndex === 1 ? item.deadlinesISO?.[1] : item.deadlinesISO?.[0] || item.deadlineISO) || '2026-06-30';
+      } else {
+        const target = Number(item.targetNum) || 100;
+        sampleValues[sub.key] = formatIndonesianNumber(subIndex === 0 ? target * 0.85 : target, 2);
+      }
+    })));
+    setValues(sampleValues);
     setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.DRAFT, revisionNote: '' }));
   };
 
@@ -1490,7 +1260,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
               : '—';
         const skorStr =
           item.weightedScore !== null
-            ? formatIndonesianNumber(Math.min(Math.abs(Number(item.bobot) || 0), Math.max(0, item.weightedScore)), 2)
+            ? formatIndonesianNumber(item.weightedScore, 2)
             : isExcel
               ? ''
               : '—';
@@ -1717,10 +1487,13 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
     });
 
     const rowsHtml = buildDocumentRowsHtml(false);
-    const secA = calculated.sections[0];
-    const secB = calculated.sections[1];
-    const secC = calculated.sections[2];
-    const secD = calculated.sections[3];
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const sectionSummaryHtml = calculated.sections.map((sec) => `
+          <div class="summary-box">
+            <div class="summary-label">Bagian ${escapeHtml(sec.code)} • ${escapeHtml(sec.title)} (${escapeHtml(sec.weightDisplay ?? sec.totalWeight)})</div>
+            <div class="summary-val">${formatIndonesianNumber(sec.secScore, 2)} Poin</div>
+          </div>`).join('');
+    const sectionSubtitle = calculated.sections.map((sec) => `${escapeHtml(sec.title)} (${escapeHtml(sec.weightDisplay ?? sec.totalWeight)})`).join(' • ');
 
     printWin.document.write(`
       <!DOCTYPE html>
@@ -1824,8 +1597,8 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
       <body>
         <div class="doc-header">
           <div>
-            <div class="doc-title">LAPORAN EVALUASI CAPAIAN KPI — PERSPEKTIF A, B, C & D</div>
-            <div class="doc-sub">Institut Teknologi Perusahaan Listrik Negara (ITPLN) • Keberlanjutan (25) • Mahasiswa (26) • Bisnis Internal (49) • Kepatuhan (-12,5)</div>
+            <div class="doc-title">LAPORAN EVALUASI CAPAIAN KPI — PERSPEKTIF ${calculated.sections.map((sec) => escapeHtml(sec.code)).join(', ')}</div>
+            <div class="doc-sub">Institut Teknologi Perusahaan Listrik Negara (ITPLN) • ${sectionSubtitle}</div>
           </div>
           <div style="text-align: right; font-size: 7.8pt; color: #475569;">
             <div><strong>Tanggal Cetak:</strong> ${dateStr}</div>
@@ -1834,22 +1607,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
         </div>
 
         <div class="summary-strip">
-          <div class="summary-box">
-            <div class="summary-label">Bagian A • Keberlanjutan (25)</div>
-            <div class="summary-val">${formatIndonesianNumber(secA.secScore, 2)} Poin</div>
-          </div>
-          <div class="summary-box">
-            <div class="summary-label">Bagian B • Mahasiswa (26)</div>
-            <div class="summary-val">${formatIndonesianNumber(secB.secScore, 2)} Poin</div>
-          </div>
-          <div class="summary-box">
-            <div class="summary-label">Bagian C • Bisnis Internal (49)</div>
-            <div class="summary-val">${formatIndonesianNumber(secC.secScore, 2)} Poin</div>
-          </div>
-          <div class="summary-box">
-            <div class="summary-label">Bagian D • Kepatuhan (-12,5)</div>
-            <div class="summary-val">${formatIndonesianNumber(secD.secScore, 2)} Poin</div>
-          </div>
+${sectionSummaryHtml}
           <div class="summary-box">
             <div class="summary-label">Skor Akhir KPI Bersih</div>
             <div class="summary-val">${formatIndonesianNumber(calculated.netTotalScore, 2)} / 100</div>
@@ -1900,16 +1658,41 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
   };
 
   const visibleSections = useMemo(() => {
-    if (activeSectionTab === 'A') return [calculated.sections[0]];
-    if (activeSectionTab === 'B') return [calculated.sections[1]];
-    if (activeSectionTab === 'C') return [calculated.sections[2]];
-    if (activeSectionTab === 'D') return [calculated.sections[3]];
-    return calculated.sections;
+    if (activeSectionTab === 'ALL') return calculated.sections;
+    const match = calculated.sections.filter((sec) => sec.code === activeSectionTab);
+    return match.length ? match : calculated.sections;
   }, [activeSectionTab, calculated.sections]);
 
   return (
     <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+      {structureToast && (
+        <div className="kpi-structure-toast" role="status" aria-live="polite">
+          <RefreshCcw size={14} />
+          <span>{structureToast}</span>
+        </div>
+      )}
       <style>{`
+        .kpi-structure-toast {
+          position: fixed;
+          right: 1.5rem;
+          bottom: 1.5rem;
+          z-index: 80;
+          display: flex;
+          align-items: center;
+          gap: 0.55rem;
+          padding: 0.7rem 1rem;
+          border-radius: 12px;
+          background: #0f172a;
+          color: #f8fafc;
+          font-size: 0.78rem;
+          font-weight: 600;
+          box-shadow: 0 18px 40px rgba(15, 23, 42, 0.25);
+          animation: kpiToastIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes kpiToastIn {
+          from { opacity: 0; transform: translateY(14px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
         .clean-ledger-card {
           background: #ffffff;
           border: 1px solid #e2e8f0;
@@ -2189,12 +1972,12 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
             style={{
               position: 'relative',
               display: 'grid',
-              gridTemplateColumns: 'repeat(5, 1fr)',
+              gridTemplateColumns: `repeat(${governedSections.length + 1}, 1fr)`,
               background: '#f1f5f9',
               padding: '3px',
               borderRadius: '10px',
               border: '1px solid #e2e8f0',
-              minWidth: '610px',
+              minWidth: `${Math.max(240, (governedSections.length + 1) * 122)}px`,
             }}
           >
             {/* White Floating Active Pill */}
@@ -2205,7 +1988,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
                 top: '3px',
                 bottom: '3px',
                 left: '3px',
-                width: 'calc((100% - 6px) / 5)',
+                width: `calc((100% - 6px) / ${governedSections.length + 1})`,
                 background: '#ffffff',
                 borderRadius: '7px',
                 boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04)',
@@ -2214,11 +1997,14 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
               }}
             />
             {[
-              { id: 'ALL', label: 'Semua (A–D)', sub: 'Lengkap' },
-              { id: 'A', label: 'Bagian A', sub: 'Bobot 25' },
-              { id: 'B', label: 'Bagian B', sub: 'Bobot 26' },
-              { id: 'C', label: 'Bagian C', sub: 'Bobot 49' },
-              { id: 'D', label: 'Bagian D', sub: 'Kepatuhan (-12,5)' },
+              { id: 'ALL', label: 'Semua Bagian', sub: 'Lengkap' },
+              ...governedSections.map((sec) => ({
+                id: sec.code,
+                label: `Bagian ${sec.code}`,
+                sub: sec.isPenaltySection
+                  ? `Penalti (${sec.weightDisplay ?? sec.totalWeight})`
+                  : `Bobot ${sec.weightDisplay ?? sec.totalWeight}`,
+              })),
             ].map((tab) => {
               const isSelected = activeSectionTab === tab.id;
               return (
@@ -2258,7 +2044,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
           <button type="button" onClick={handleFillSample} className="clean-btn" disabled={isLocked}>
             <SlidersHorizontal size={13} />
-            <span>Isi Simulasi A–D</span>
+            <span>Isi Simulasi</span>
           </button>
 
           <button type="button" onClick={handleReset} className="clean-btn" disabled={isLocked}>
@@ -2434,7 +2220,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
                             color: '#0f172a',
                           }}
                         >
-                          2
+                          {item.excelNo || item.no}
                         </td>
                         <td
                           colSpan={8}
@@ -2655,7 +2441,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
                                 Skor:{' '}
                                 <strong style={{ color: '#0f172a' }}>
                                   {item.weightedScore !== null
-                                    ? formatIndonesianNumber(Math.min(Math.abs(Number(item.bobot) || 0), Math.max(0, item.weightedScore)), 2)
+                                    ? formatIndonesianNumber(item.weightedScore, 2)
                                     : '—'}
                                 </strong>{' '}
                                 / {item.bobotDisplay}
@@ -2706,14 +2492,14 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false })
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          <span>A: {formatIndonesianNumber(calculated.sections[0].secScore, 2)} / 25</span>
-          <span style={{ color: '#e2e8f0' }}>|</span>
-          <span>B: {formatIndonesianNumber(calculated.sections[1].secScore, 2)} / 26</span>
-          <span style={{ color: '#e2e8f0' }}>|</span>
-          <span>C: {formatIndonesianNumber(calculated.sections[2].secScore, 2)} / 49</span>
-          <span style={{ color: '#e2e8f0' }}>|</span>
-          <span>D (Kepatuhan): {formatIndonesianNumber(calculated.sections[3].secScore, 2)} / -12,5</span>
-          <span style={{ color: '#e2e8f0' }}>|</span>
+          {calculated.sections.map((sec) => (
+            <React.Fragment key={sec.code}>
+              <span>
+                {sec.code}{sec.isPenaltySection ? ' (Penalti)' : ''}: {formatIndonesianNumber(sec.secScore, 2)} / {sec.weightDisplay ?? formatIndonesianNumber(Number(sec.totalWeight) || 0, 2)}
+              </span>
+              <span style={{ color: '#e2e8f0' }}>|</span>
+            </React.Fragment>
+          ))}
           <span
             style={{
               padding: '0.3rem 0.8rem',

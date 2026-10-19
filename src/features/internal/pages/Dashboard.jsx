@@ -42,6 +42,7 @@ export default function Dashboard() {
     scoreB: 0,
     scoreC: 0,
     scoreD: 0,
+    sectionScores: [],
   });
 
   const dashRef = useRef(null);
@@ -376,26 +377,11 @@ export default function Dashboard() {
           }}
         >
           {[
-            {
-              label: 'Bagian A (Bobot 25)',
-              val: `${kpiLiveMetrics.scoreA.toFixed(2).replace('.', ',')} / 25`,
-              sub: 'Perspektif Keberlanjutan',
-            },
-            {
-              label: 'Bagian B (Bobot 26)',
-              val: `${kpiLiveMetrics.scoreB.toFixed(2).replace('.', ',')} / 26`,
-              sub: 'Perspektif Mahasiswa',
-            },
-            {
-              label: 'Bagian C (Bobot 49)',
-              val: `${kpiLiveMetrics.scoreC.toFixed(2).replace('.', ',')} / 49`,
-              sub: 'Bisnis Internal & L&D',
-            },
-            {
-              label: 'Bagian D (Maks -12,5)',
-              val: `${kpiLiveMetrics.scoreD.toFixed(2).replace('.', ',')} / -12,5`,
-              sub: 'Perspektif Kepatuhan',
-            },
+            ...(kpiLiveMetrics.sectionScores || []).map((sec) => ({
+              label: sec.isPenaltySection ? `Bagian ${sec.code} (Maks ${sec.weightDisplay})` : `Bagian ${sec.code} (Bobot ${sec.weightDisplay})`,
+              val: `${(Number(sec.score) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ${sec.weightDisplay}`,
+              sub: `${sec.title} · ${sec.completed}/${sec.total} butir`,
+            })),
             {
               label: 'Skor Akhir KPI Bersih',
               val: `${kpiLiveMetrics.totalScore.toFixed(2).replace('.', ',')} / 100`,
