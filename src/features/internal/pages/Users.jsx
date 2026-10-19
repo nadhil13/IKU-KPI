@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Plus, Search, SlidersHorizontal, ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { Plus, Search, SlidersHorizontal, ArrowUpRight, ShieldCheck, Pencil, Trash2, X, Check } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -51,13 +51,39 @@ const roleLabels = {
   superadmin_prp: 'Superadmin PRP',
 };
 
+const readUsers = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('prp_users') || 'null');
+    return Array.isArray(saved) ? [...usersList, ...saved.filter((item) => !usersList.some((base) => base.email === item.email))] : usersList;
+  } catch { return usersList; }
+};
+
 export default function Users() {
   const { currentUser } = useAuth();
   const pageRef = useRef(null);
+  const [users, setUsers] = useState(readUsers);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  const [editing, setEditing] = useState(null);
 
-  const filteredUsers = usersList.filter((user) => {
+  const persist = (next) => {
+    setUsers(next);
+    localStorage.setItem('prp_users', JSON.stringify(next.filter((item) => !usersList.some((base) => base.email === item.email))));
+  };
+
+  const openCreate = () => setEditing({ id: `user-${Date.now()}`, name: '', email: '', password: 'password', role: 'kpi_only', roleLabel: roleLabels.kpi_only, accessScope: 'KPI Unit & Fakultas', status: 'Aktif', avatar: 'USR', lastActivity: 'Belum pernah login' });
+  const saveUser = () => {
+    const email = editing.email.trim().toLowerCase();
+    if (!editing.name.trim() || !email || !email.includes('@') || !editing.password?.trim()) return;
+    if (users.some((item) => item.email.toLowerCase() === email && item.id !== editing.id)) return;
+    const normalized = { ...editing, email, roleLabel: roleLabels[editing.role], accessScope: editing.role === 'iku_only' ? '8 IKU Kementerian' : editing.role === 'superadmin_prp' ? 'Platform, IKU & KPI' : 'KPI Unit & Fakultas' };
+    const exists = users.some((item) => item.id === normalized.id);
+    persist(exists ? users.map((item) => item.id === normalized.id ? normalized : item) : [...users, normalized]);
+    setEditing(null);
+  };
+  const removeUser = (id) => { if (window.confirm('Hapus akun ini dari daftar akses?')) persist(users.filter((item) => item.id !== id)); };
+
+  const filteredUsers = users.filter((user) => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
     return matchesSearch && (filterRole === 'all' || user.role === filterRole);
@@ -101,14 +127,14 @@ export default function Users() {
           <h1 className="users-title">Manajemen pengguna</h1>
           <p className="users-description">Kelola identitas, peran, dan cakupan akses untuk ruang kerja KPI.</p>
         </div>
-        <button className="users-action" type="button" onClick={() => alert('Fitur penambahan pengguna terintegrasi dengan LDAP ITPLN.')}>
+        <button className="users-action" type="button" onClick={openCreate}>
           <Plus size={16} /> Tambah pengguna <ArrowUpRight size={15} />
         </button>
       </div>
 
       <div className="users-stats" aria-label="Ringkasan pengguna">
-        <div className="users-stat"><span>Total akun</span><strong>03</strong><small>terdaftar di sistem</small></div>
-        <div className="users-stat"><span>Akses aktif</span><strong>03</strong><small>tidak ada anomali</small></div>
+        <div className="users-stat"><span>Total akun</span><strong>{users.length.toString().padStart(2, '0')}</strong><small>terdaftar di sistem</small></div>
+        <div className="users-stat"><span>Akses aktif</span><strong>{users.filter((item) => item.status === 'Aktif').length.toString().padStart(2, '0')}</strong><small>tidak ada anomali</small></div>
         <div className="users-stat"><span>Ruang kerja</span><strong>02</strong><small>IKU dan KPI terisolasi</small></div>
         <div className="users-stat"><span>Sesi Anda</span><strong>01</strong><small>{currentUser?.shortName || 'Administrator'}</small></div>
       </div>
@@ -140,7 +166,7 @@ export default function Users() {
                   <td><span className="user-role"><i />{user.roleLabel}</span></td>
                   <td className="user-scope">{user.accessScope}</td>
                   <td className="user-activity">{user.lastActivity}</td>
-                  <td><span className="user-status"><i />{user.status}</span></td>
+                  <td><span className="user-status"><i />{user.status}</span><div style={{ display: 'flex', gap: 4, marginTop: 6 }}><button type="button" title="Edit user" onClick={() => setEditing({ ...user })}><Pencil size={13} /></button>{!usersList.some((base) => base.email === user.email) && <button type="button" title="Hapus user" onClick={() => removeUser(user.id)}><Trash2 size={13} /></button>}</div></td>
                 </tr>;
               })}
             </tbody>
@@ -149,6 +175,7 @@ export default function Users() {
         </div>
         <footer className="users-footer"><span>ACCESS POLICY / INTERNAL ONLY</span><span>Perubahan akses dicatat dalam audit log</span></footer>
       </div>
+      {editing && <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(15,23,42,.35)', display: 'grid', placeItems: 'center', padding: 20 }}><div style={{ width: 'min(520px, 100%)', background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 20px 60px rgba(15,23,42,.2)' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 style={{ margin: 0 }}>Tambah / edit pengguna</h2><button type="button" onClick={() => setEditing(null)}><X size={18} /></button></div><div style={{ display: 'grid', gap: 12, marginTop: 18 }}><input placeholder="Nama pengguna" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /><input placeholder="Email login" type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /><input placeholder="Password awal" value={editing.password || ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /><select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })}><option value="iku_only">Otoritas IKU</option><option value="kpi_only">Otoritas KPI</option><option value="superadmin_prp">Superadmin PRP</option></select><select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option>Aktif</option><option>Nonaktif</option></select></div><button className="users-action" type="button" onClick={saveUser} style={{ marginTop: 18 }}><Check size={15} /> Simpan pengguna</button></div></div>}
     </section>
   );
 }

@@ -54,6 +54,15 @@ export const MOCK_ACCOUNTS = [
   }
 ];
 
+const getStoredUsers = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem('prp_users') || '[]');
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+};
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -127,14 +136,14 @@ export function AuthProvider({ children }) {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    const matchedUser = MOCK_ACCOUNTS.find(
+    const matchedUser = [...MOCK_ACCOUNTS, ...getStoredUsers()].find(
       (acc) => acc.email.toLowerCase() === cleanEmail
     );
 
-    if (!matchedUser || cleanPass !== matchedUser.password) {
+    if (!matchedUser || matchedUser.status === 'Nonaktif' || cleanPass !== matchedUser.password) {
       return {
         success: false,
-        message: 'Email atau kata sandi tidak sesuai. Pilih salah satu dari 3 akun pengujian di atas.'
+        message: 'Email atau kata sandi tidak sesuai atau akun sedang nonaktif.'
       };
     }
 

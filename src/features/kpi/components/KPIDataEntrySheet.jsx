@@ -849,6 +849,16 @@ const ALL_ORDERED_KEYS = KPI_SECTIONS_CONFIG.flatMap((sec) =>
   sec.items.flatMap((item) => item.subrows.map((s) => s.key))
 );
 
+const getGovernedKpiSections = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('prp_kpi_config') || 'null');
+    if (!saved?.sections) return KPI_SECTIONS_CONFIG;
+    return saved.sections;
+  } catch {
+    return KPI_SECTIONS_CONFIG;
+  }
+};
+
 const STORAGE_KEY = 'performa_kpi_bagian_abcd_v5';
 const WORKFLOW_KEY = 'performa_kpi_workflow_v1';
 
@@ -870,12 +880,24 @@ const WORKFLOW_LABELS = {
   [WORKFLOW_STATUS.OVERDUE]: 'Terlambat',
 };
 
-export default function KPIDataEntrySheet({ onMetricsUpdate }) {
+export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false }) {
   const containerRef = useRef(null);
   const inputRefs = useRef({});
   const fillProgressRef = useRef(null);
   const scrollReadBarRef = useRef(null);
   const tabPillRef = useRef(null);
+  const [governanceRevision, setGovernanceRevision] = useState(0);
+  const governedSections = useMemo(() => getGovernedKpiSections(), [governanceRevision]);
+  const orderedKeys = useMemo(
+    () => governedSections.flatMap((sec) => sec.items.flatMap((item) => item.subrows.map((sub) => sub.key))),
+    [governedSections]
+  );
+
+  useEffect(() => {
+    const refreshGovernance = () => setGovernanceRevision((revision) => revision + 1);
+    window.addEventListener('storage', refreshGovernance);
+    return () => window.removeEventListener('storage', refreshGovernance);
+  }, []);
 
   // Filter tab: 'ALL' | 'A' | 'B' | 'C' | 'D'
   const [activeSectionTab, setActiveSectionTab] = useState('ALL');
@@ -897,11 +919,11 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
 
   const emptyDefaults = useMemo(() => {
     const map = {};
-    ALL_ORDERED_KEYS.forEach((k) => {
+    orderedKeys.forEach((k) => {
       map[k] = '';
     });
     return map;
-  }, []);
+  }, [orderedKeys]);
 
   const [values, setValues] = useState(() => {
     try {
@@ -912,6 +934,10 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
     }
     return emptyDefaults;
   });
+
+  useEffect(() => {
+    setValues((previous) => ({ ...emptyDefaults, ...previous }));
+  }, [emptyDefaults]);
 
   useEffect(() => {
     try {
@@ -944,7 +970,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
     let positiveScoreABC = 0;
     let penaltyScoreD = 0;
 
-    const sections = KPI_SECTIONS_CONFIG.map((sec) => {
+    const sections = governedSections.map((sec) => {
       let secScore = 0;
       let secCompleted = 0;
 
@@ -1104,6 +1130,14 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
           }
         }
 
+        if (ratioPercent !== null) ratioPercent = Math.min(100, Math.max(0, ratioPercent));
+        if (weightedScore !== null) {
+          const scoreLimit = Math.abs(Number(item.bobot) || 0);
+          weightedScore = sec.isPenaltySection
+            ? Math.max(-scoreLimit, Math.min(0, weightedScore))
+            : Math.min(scoreLimit, Math.max(0, weightedScore));
+        }
+
         if (ratioPercent !== null && weightedScore !== null) {
           secCompleted += 1;
           totalCompletedIndicators += 1;
@@ -1134,14 +1168,14 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
       };
     });
 
-    const netTotalScore = positiveScoreABC + penaltyScoreD;
-    const completionRatio = totalFilledInputs / ALL_ORDERED_KEYS.length;
+    const netTotalScore = Math.min(100, Math.max(0, positiveScoreABC + penaltyScoreD));
+    const completionRatio = totalFilledInputs / orderedKeys.length;
 
     return {
       sections,
       totalFilledInputs,
       totalInvalidInputs,
-      totalInputsCount: ALL_ORDERED_KEYS.length,
+      totalInputsCount: orderedKeys.length,
       totalCompletedIndicators,
       totalIndicatorsCount,
       positiveScoreABC,
@@ -1149,7 +1183,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
       netTotalScore,
       completionRatio,
     };
-  }, [values]);
+  }, [values, governedSections, orderedKeys]);
 
   useEffect(() => {
     if (onMetricsUpdate) {
@@ -1274,19 +1308,19 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
 
   // Navigasi Keyboard Enter / ArrowDown / ArrowUp
   const handleKeyDown = (e, currentKey) => {
-    const idx = ALL_ORDERED_KEYS.indexOf(currentKey);
+    const idx = orderedKeys.indexOf(currentKey);
     if (idx === -1) return;
 
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
       e.preventDefault();
-      const nextKey = ALL_ORDERED_KEYS[idx + 1];
+      const nextKey = orderedKeys[idx + 1];
       if (nextKey && inputRefs.current[nextKey]) {
         inputRefs.current[nextKey].focus();
         inputRefs.current[nextKey].select();
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      const prevKey = ALL_ORDERED_KEYS[idx - 1];
+      const prevKey = orderedKeys[idx - 1];
       if (prevKey && inputRefs.current[prevKey]) {
         inputRefs.current[prevKey].focus();
         inputRefs.current[prevKey].select();
@@ -1409,7 +1443,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
     }));
   };
 
-  const isLocked = workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED;
+  const isLocked = readOnly || workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED;
   const isComplete = calculated.totalFilledInputs === calculated.totalInputsCount && calculated.totalInvalidInputs === 0;
   const workflowStatusLabel = WORKFLOW_LABELS[workflow.status] || WORKFLOW_LABELS[WORKFLOW_STATUS.DRAFT];
   const workflowStatusTone = {
@@ -1450,13 +1484,13 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
         const subCount = item.parsedSubs.length;
         const capStr =
           item.ratioPercent !== null
-            ? `${formatIndonesianNumber(item.ratioPercent, 2)}%`
+            ? `${formatIndonesianNumber(Math.min(100, Math.max(0, item.ratioPercent)), 2)}%`
             : isExcel
               ? ''
               : '—';
         const skorStr =
           item.weightedScore !== null
-            ? formatIndonesianNumber(item.weightedScore, 2)
+            ? formatIndonesianNumber(Math.min(Math.abs(Number(item.bobot) || 0), Math.max(0, item.weightedScore)), 2)
             : isExcel
               ? ''
               : '—';
@@ -2593,7 +2627,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
                                 }}
                               >
                                 {item.ratioPercent !== null
-                                  ? `${formatIndonesianNumber(item.ratioPercent, 2)}%`
+                                  ? `${formatIndonesianNumber(Math.min(100, Math.max(0, item.ratioPercent)), 2)}%`
                                   : '—'}
                               </div>
 
@@ -2621,7 +2655,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate }) {
                                 Skor:{' '}
                                 <strong style={{ color: '#0f172a' }}>
                                   {item.weightedScore !== null
-                                    ? formatIndonesianNumber(item.weightedScore, 2)
+                                    ? formatIndonesianNumber(Math.min(Math.abs(Number(item.bobot) || 0), Math.max(0, item.weightedScore)), 2)
                                     : '—'}
                                 </strong>{' '}
                                 / {item.bobotDisplay}

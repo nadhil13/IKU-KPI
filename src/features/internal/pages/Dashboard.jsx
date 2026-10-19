@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Layers, Building2, Calendar, ArrowUpRight
 } from 'lucide-react';
@@ -24,7 +24,11 @@ const IKU_DATA = [
 
 export default function Dashboard() {
   const { currentUser, activeWorkspace, switchWorkspace } = useAuth();
-  const [selectedYear, setSelectedYear] = useState('2026');
+  const [periods, setPeriods] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('prp_periods')) || []; } catch { return []; }
+  });
+  const activePeriod = useMemo(() => periods.find((period) => period.status === 'Active') || periods[0], [periods]);
+  const [selectedYear, setSelectedYear] = useState(() => activePeriod?.id || '2025/2026');
   const [kpiLiveMetrics, setKpiLiveMetrics] = useState({
     totalBobot: 100,
     totalScore: 0,
@@ -46,6 +50,20 @@ export default function Dashboard() {
   const isIkuOnly = currentUser?.role === 'iku_only';
   const isKpiOnly = currentUser?.role === 'kpi_only';
   const isDual = ['dual', 'superadmin_prp'].includes(currentUser?.role);
+  const selectedPeriod = periods.find((period) => period.id === selectedYear) || activePeriod;
+  const isPeriodOpen = selectedPeriod?.inputOpen !== false && selectedPeriod?.status !== 'Archived';
+
+  useEffect(() => {
+    const refreshPeriods = () => {
+      try { setPeriods(JSON.parse(localStorage.getItem('prp_periods')) || []); } catch { setPeriods([]); }
+    };
+    window.addEventListener('storage', refreshPeriods);
+    return () => window.removeEventListener('storage', refreshPeriods);
+  }, []);
+
+  useEffect(() => {
+    if (activePeriod?.id && !periods.some((period) => period.id === selectedYear)) setSelectedYear(activePeriod.id);
+  }, [activePeriod, periods, selectedYear]);
 
   const currentView = isIkuOnly
     ? 'iku'
@@ -215,10 +233,10 @@ export default function Dashboard() {
                 padding: '2px 4px',
               }}
             >
-              <option value="2026">T.A 2026/2027 (Aktif)</option>
-              <option value="2025">T.A 2025/2026 (Arsip)</option>
+              {periods.length ? periods.map((period) => <option key={period.id} value={period.id}>{period.label} ({period.status === 'Active' ? 'Aktif' : period.status === 'Archived' ? 'Arsip' : 'Draft'})</option>) : <option value="2025/2026">T.A 2025/2026</option>}
             </select>
           </div>
+          {currentView === 'kpi' && !isPeriodOpen && <span style={{ color: '#b45309', fontSize: '.7rem', fontWeight: 700 }}>Periode ditutup untuk input</span>}
         </div>
       </div>
 
@@ -595,7 +613,7 @@ export default function Dashboard() {
         </div>
       ) : (
         /* ─── MATRIKS EVALUASI KPI LENGKAP BAGIAN A, B, C & D ─── */
-        <KPIDataEntrySheet onMetricsUpdate={setKpiLiveMetrics} />
+        <KPIDataEntrySheet onMetricsUpdate={setKpiLiveMetrics} readOnly={!isPeriodOpen} />
       )}
     </div>
   );

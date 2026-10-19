@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Archive, Calculator, Check, ChevronRight, Clock3, Download, FileCog, GitBranch, History, Plus, Save, Table2, Upload, X } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { KPI_SECTIONS_CONFIG } from '../../kpi/components/KPIDataEntrySheet';
 
 const initialIndicators = [
   { id: 'IKU-01', code: 'IKU 01', name: 'Kesiapan Kerja Lulusan', formula: 'Lulusan bekerja + wirausaha + studi lanjut / total lulusan', weight: '12.5', status: 'Published', version: 'v1.4' },
@@ -12,6 +13,7 @@ const initialIndicators = [
 const tabs = [
   { id: 'tables', label: 'Struktur tabel', icon: Table2 },
   { id: 'formulas', label: 'Rumus & bobot', icon: Calculator },
+  { id: 'kpi-builder', label: 'Builder KPI dinamis', icon: Table2 },
   { id: 'periods', label: 'Periode evaluasi', icon: Clock3 },
   { id: 'audit', label: 'Audit trail', icon: History },
 ];
@@ -33,10 +35,17 @@ export default function PRPGovernance() {
   const [audit, setAudit] = useState(() => {
     try { return JSON.parse(localStorage.getItem('prp_audit')) || []; } catch { return []; }
   });
+  const [kpiSections, setKpiSections] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('prp_kpi_config'))?.sections || KPI_SECTIONS_CONFIG; } catch { return KPI_SECTIONS_CONFIG; }
+  });
+  const [selectedKpiSection, setSelectedKpiSection] = useState(0);
+  const [selectedKpiItem, setSelectedKpiItem] = useState(0);
   const [selectedId, setSelectedId] = useState(initialIndicators[0].id);
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState('');
   const selected = indicators.find((item) => item.id === selectedId) || indicators[0];
+  const activeKpiSection = kpiSections[selectedKpiSection] || kpiSections[0];
+  const activeKpiItem = activeKpiSection?.items?.[selectedKpiItem] || activeKpiSection?.items?.[0];
 
   useGSAP(() => {
     gsap.from('.gov-reveal', { y: 20, opacity: 0, duration: .7, stagger: .07, ease: 'expo.out' });
@@ -99,9 +108,99 @@ export default function PRPGovernance() {
   };
 
   const updatePeriod = (id, field, value) => {
-    const next = periods.map((item) => item.id === id ? { ...item, [field]: value } : item);
+    const next = periods.map((item) => item.id === id ? { ...item, [field]: value } : field === 'status' && value === 'Active' ? { ...item, status: 'Archived' } : item);
     setPeriods(next);
     localStorage.setItem('prp_periods', JSON.stringify(next));
+  };
+
+  const updateKpiSection = (field, value) => {
+    setKpiSections((sections) => sections.map((section, index) => index === selectedKpiSection ? { ...section, [field]: value } : section));
+  };
+
+  const updateKpiItem = (field, value) => {
+    setKpiSections((sections) => sections.map((section, sectionIndex) => sectionIndex !== selectedKpiSection ? section : {
+      ...section,
+      items: section.items.map((item, itemIndex) => itemIndex === selectedKpiItem ? { ...item, [field]: value } : item),
+    }));
+  };
+
+  const updateKpiSubrow = (subrowIndex, field, value) => {
+    setKpiSections((sections) => sections.map((section, sectionIndex) => sectionIndex !== selectedKpiSection ? section : {
+      ...section,
+      items: section.items.map((item, itemIndex) => itemIndex !== selectedKpiItem ? item : {
+        ...item,
+        subrows: item.subrows.map((subrow, index) => index === subrowIndex ? { ...subrow, [field]: value } : subrow),
+      }),
+    }));
+  };
+
+  const addKpiSubrow = () => {
+    if (!activeKpiItem) return;
+    const key = `custom_${Date.now()}_${activeKpiItem.subrows.length}`;
+    setKpiSections((sections) => sections.map((section, sectionIndex) => sectionIndex !== selectedKpiSection ? section : {
+      ...section,
+      items: section.items.map((item, itemIndex) => itemIndex !== selectedKpiItem ? item : { ...item, subrows: [...item.subrows, { key, label: 'Input baru' }] }),
+    }));
+  };
+
+  const deleteKpiSubrow = (subrowIndex) => {
+    if (!activeKpiItem || activeKpiItem.subrows.length <= 1) return;
+    setKpiSections((sections) => sections.map((section, sectionIndex) => sectionIndex !== selectedKpiSection ? section : {
+      ...section,
+      items: section.items.map((item, itemIndex) => itemIndex !== selectedKpiItem ? item : { ...item, subrows: item.subrows.filter((_, index) => index !== subrowIndex) }),
+    }));
+  };
+
+  const deleteKpiSection = () => {
+    if (kpiSections.length <= 1) return;
+    const next = kpiSections.filter((_, index) => index !== selectedKpiSection);
+    setKpiSections(next);
+    setSelectedKpiSection(Math.max(0, selectedKpiSection - 1));
+    setSelectedKpiItem(0);
+    notify('Section KPI dihapus');
+  };
+
+  const addKpiSection = () => {
+    const next = [...kpiSections, { code: `E${kpiSections.length + 1}`, title: 'Section baru', totalWeight: 0, weightDisplay: '0', isPenaltySection: false, items: [] }];
+    setKpiSections(next); setSelectedKpiSection(next.length - 1); setSelectedKpiItem(0); notify('Section KPI ditambahkan');
+  };
+
+  const addKpiItem = () => {
+    const item = { id: `CUSTOM_${Date.now()}`, no: `${(activeKpiSection?.items?.length || 0) + 1}`, indikator: 'Indikator baru', formula: 'Realisasi / Target × 100', rumusan: 'Masukkan rumusan capaian', bobot: 0, bobotDisplay: '0', targetDisplay: '100', targetNum: 100, satuan: '%', calcType: 'single_target', subrows: [{ key: `custom_${Date.now()}_value`, label: 'Nilai realisasi' }] };
+    const next = [...periods, { id: `Periode-${periods.length + 1}`, label: 'Periode evaluasi baru', start: '', end: '', status: 'Draft', inputOpen: false, submissionDeadline: '' }];
+    setKpiSections(next); setSelectedKpiItem(next[selectedKpiSection].items.length - 1); notify('Baris KPI ditambahkan');
+  };
+
+  const deleteKpiItem = () => {
+    if (!activeKpiItem) return;
+    const next = kpiSections.map((section, index) => index === selectedKpiSection ? { ...section, items: section.items.filter((_, itemIndex) => itemIndex !== selectedKpiItem) } : section);
+    setKpiSections(next); setSelectedKpiItem(Math.max(0, selectedKpiItem - 1)); notify('Baris KPI dihapus');
+  };
+
+  const publishKpiConfig = () => {
+    const usedKeys = new Set();
+    const normalizedSections = kpiSections.map((section) => ({
+      ...section,
+      totalWeight: Number(section.totalWeight) || 0,
+      weightDisplay: String(Number(section.totalWeight) || 0),
+      items: section.items.map((item, itemIndex) => {
+        const bobot = Number(item.bobot) || 0;
+        const targetNum = Number(item.targetNum) || 0;
+        const subrows = (item.subrows?.length ? item.subrows : [{ key: `${section.code}_${itemIndex}_value`, label: 'Nilai realisasi' }]).map((subrow, subrowIndex) => {
+          const baseKey = String(subrow.key || `${section.code}_${itemIndex}_${subrowIndex}`).replace(/[^a-zA-Z0-9_]/g, '_');
+          let key = baseKey || `input_${itemIndex}_${subrowIndex}`;
+          while (usedKeys.has(key)) key = `${baseKey}_${subrowIndex + 1}`;
+          usedKeys.add(key);
+          return { ...subrow, key };
+        });
+        return { ...item, bobot, bobotDisplay: String(bobot), targetNum, targetDisplay: item.targetDisplay || String(targetNum), subrows };
+      }),
+    }));
+    setKpiSections(normalizedSections);
+    localStorage.setItem('prp_kpi_config', JSON.stringify({ version: Date.now(), sections: normalizedSections }));
+    addAudit('Publish struktur KPI', `${normalizedSections.reduce((total, section) => total + section.items.length, 0)} baris KPI aktif`);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'prp_kpi_config' }));
+    notify('Struktur KPI published dan siap dipakai workspace KPI');
   };
 
   const exportData = () => {
@@ -146,7 +245,7 @@ export default function PRPGovernance() {
     <style>{`.governance-page{max-width:1380px;margin:0 auto;padding:.25rem 0 4rem;color:#0f172a}.gov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:1.4rem}.gov-eyebrow{display:flex;align-items:center;gap:.45rem;color:#64748b;font-size:.68rem;font-weight:800;letter-spacing:.12em}.gov-title{margin:.65rem 0 .4rem;font:800 clamp(1.8rem,3vw,2.7rem)/1 Outfit,sans-serif;letter-spacing:-.05em}.gov-lede{max-width:680px;margin:0;color:#64748b;font-size:.82rem;line-height:1.6}.gov-meta{padding:.75rem 1rem;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#475569;font-size:.7rem;font-weight:700}.gov-layout{display:grid;grid-template-columns:220px 1fr;gap:1rem}.gov-tabs,.gov-editor,.gov-table{border:1px solid #e2e8f0;border-radius:15px;background:#fff}.gov-tabs{padding:.55rem}.gov-tab{display:flex;align-items:center;gap:.65rem;width:100%;padding:.75rem;border:0;border-radius:9px;background:transparent;color:#64748b;text-align:left;font-size:.75rem;font-weight:700;cursor:pointer}.gov-tab.active{background:#f1f5f9;color:#0f172a}.gov-tab svg{width:16px}.gov-workspace{display:grid;grid-template-columns:1fr 340px;gap:1rem}.gov-table{overflow:hidden}.gov-table-head,.gov-editor-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.15rem;border-bottom:1px solid #f1f5f9}.gov-table-head h2,.gov-editor-head h2{margin:0;font:800 .92rem Outfit,sans-serif}.gov-table-head span,.gov-editor-head span{color:#94a3b8;font-size:.68rem}.gov-row{display:grid;grid-template-columns:86px 1fr 80px 84px;gap:.7rem;align-items:center;padding:.85rem 1.1rem;border-bottom:1px solid #f1f5f9;cursor:pointer}.gov-row:last-child{border-bottom:0}.gov-row.active{background:#f8fafc}.gov-code,.gov-version{color:#64748b;font-size:.68rem}.gov-name{font-size:.75rem;font-weight:750}.gov-status{justify-self:start;padding:.25rem .45rem;border-radius:5px;background:#f1f5f9;color:#475569;font-size:.6rem;font-weight:700}.gov-status.draft{background:#fff7ed;color:#9a3412}.gov-editor{overflow:hidden}.gov-editor-body{padding:1.1rem}.gov-field{display:block;margin-bottom:.85rem;color:#64748b;font-size:.66rem;font-weight:750}.gov-field input,.gov-field textarea{display:block;width:100%;box-sizing:border-box;margin-top:.35rem;padding:.65rem .7rem;border:1px solid #e2e8f0;border-radius:8px;outline:0;color:#0f172a;background:#f8fafc;font:inherit;font-size:.73rem}.gov-field textarea{min-height:82px;resize:vertical}.gov-actions{display:flex;gap:.5rem;padding:1rem 1.1rem;border-top:1px solid #f1f5f9}.gov-button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;padding:.62rem .75rem;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#334155;font-size:.68rem;font-weight:750;cursor:pointer}.gov-button.primary{background:#0f172a;color:#fff;border-color:#0f172a}.gov-button:hover{transform:translateY(-1px)}.gov-save-state{margin-left:auto;color:#15803d;font-size:.66rem;font-weight:700}.gov-placeholder{grid-column:1/-1;padding:2.8rem;text-align:center;color:#64748b;font-size:.8rem}.gov-note{margin-top:1rem;padding:.85rem 1rem;border-left:3px solid #94a3b8;background:#f8fafc;color:#64748b;font-size:.7rem;line-height:1.6}@media(max-width:900px){.gov-layout,.gov-workspace{grid-template-columns:1fr}.gov-tabs{display:flex;overflow:auto}.gov-tab{white-space:nowrap}.gov-editor{order:-1}}@media(max-width:560px){.gov-row{grid-template-columns:70px 1fr}.gov-row .gov-version,.gov-row .gov-status{display:none}.gov-head{align-items:flex-start;flex-direction:column}}`}</style>
     <div className="gov-head gov-reveal"><div><div className="gov-eyebrow"><FileCog size={13}/> PRP / GOVERNANCE WORKSPACE</div><h1 className="gov-title">Konfigurasi kinerja</h1><p className="gov-lede">Kelola struktur tabel, definisi indikator, rumus, bobot, periode, dan riwayat perubahan tanpa mengubah histori data yang sudah dipublikasikan.</p></div><div className="gov-meta">{publishedCount} PUBLISHED · {indicators.length} INDICATORS</div></div>
     <div className="gov-layout gov-reveal"><aside className="gov-tabs">{tabs.map(({ id, label, icon: Icon }) => <button key={id} className={`gov-tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}><Icon size={16}/>{label}<ChevronRight size={13} style={{ marginLeft:'auto' }}/></button>)}<div className="gov-note"><GitBranch size={14}/><br/>Setiap publish membuat versi baru. Data historis tetap immutable.</div><button className="gov-button" onClick={exportData}><Download size={14}/> Export JSON</button><label className="gov-button" style={{ marginTop: '.45rem' }}><Upload size={14}/> Import JSON<input hidden type="file" accept="application/json" onChange={importData}/></label></aside>
-      {activeTab === 'periods' ? <div className="gov-table"><div className="gov-table-head"><div><h2>Periode evaluasi</h2><span>Kelola status aktif, draft, dan arsip</span></div><button className="gov-button" onClick={addPeriod}><Plus size={14}/> Tambah periode</button></div>{periods.map((item) => <div className="gov-row" key={item.id}><input className="gov-field" value={item.label} onChange={(e) => updatePeriod(item.id, 'label', e.target.value)}/><input type="date" value={item.start} onChange={(e) => updatePeriod(item.id, 'start', e.target.value)}/><input type="date" value={item.end} onChange={(e) => updatePeriod(item.id, 'end', e.target.value)}/><select value={item.status} onChange={(e) => updatePeriod(item.id, 'status', e.target.value)}><option>Active</option><option>Draft</option><option>Archived</option></select></div>)}</div> : activeTab === 'audit' ? <div className="gov-table"><div className="gov-table-head"><div><h2>Audit trail</h2><span>{audit.length} aktivitas tercatat</span></div></div>{audit.length ? audit.map((item) => <div className="gov-row" key={item.id}><span className="gov-version">{item.at}</span><span className="gov-name">{item.action}</span><span className="gov-code">{item.detail}</span><span className="gov-code">{item.actor}</span></div>) : <div className="gov-placeholder">Belum ada aktivitas.</div>}</div> : <div className="gov-workspace"><div className="gov-table"><div className="gov-table-head"><div><h2>{activeTab === 'tables' ? 'Master indikator IKU & KPI' : 'Formula dan bobot indikator'}</h2><span>Draft changes are isolated from published data</span></div><button className="gov-button" onClick={addIndicator}><Plus size={14}/> Tambah</button></div>{indicators.map((item) => <div key={item.id} className={`gov-row ${selected.id === item.id ? 'active' : ''}`} onClick={() => setSelectedId(item.id)}><span className="gov-code">{item.code}</span><span className="gov-name">{activeTab === 'formulas' ? item.formula : item.name}</span><span className="gov-version">{item.version}</span><span className={`gov-status ${item.status === 'Draft' ? 'draft' : ''}`}>{item.status}</span></div>)}</div><div className="gov-editor"><div className="gov-editor-head"><div><h2>Edit konfigurasi</h2><span>{selected.code} · {selected.version}</span></div><Archive size={16} color="#94a3b8"/></div><div className="gov-editor-body"><label className="gov-field">Kode indikator<input value={selected.code} onChange={(e) => updateSelected('code', e.target.value)}/></label><label className="gov-field">Nama indikator<input value={selected.name} onChange={(e) => updateSelected('name', e.target.value)}/></label><label className="gov-field">Definisi<textarea value={selected.definition || ''} onChange={(e) => updateSelected('definition', e.target.value)}/></label><label className="gov-field">Rumus kalkulasi<textarea value={selected.formula} onChange={(e) => updateSelected('formula', e.target.value)}/></label><label className="gov-field">Bobot<input value={selected.weight} onChange={(e) => updateSelected('weight', e.target.value)}/></label></div><div className="gov-actions"><button className="gov-button" onClick={saveDraft}><Save size={14}/> Simpan draft</button><button className="gov-button primary" onClick={publish}><Check size={14}/> Publish versi</button><button className="gov-button" onClick={archive}><X size={14}/> Arsipkan</button>{saved && <span className="gov-save-state">Tersimpan</span>}</div></div></div>}
+      {activeTab === 'kpi-builder' ? <div className="gov-workspace"><div className="gov-table"><div className="gov-table-head"><div><h2>Builder tabel KPI live</h2><span>Perubahan published dibaca workspace KPI</span></div><div><button className="gov-button" onClick={addKpiSection}><Plus size={14}/> Section</button> <button className="gov-button primary" onClick={publishKpiConfig}><Check size={14}/> Publish tabel</button></div></div>{kpiSections.map((section, sectionIndex) => <div key={section.code} className="gov-row" onClick={() => { setSelectedKpiSection(sectionIndex); setSelectedKpiItem(0); }}><span className="gov-code">{section.code}</span><span className="gov-name">{section.title} · {section.items.length} baris</span><span className="gov-version">{section.totalWeight}</span><span className="gov-status">{section.isPenaltySection ? 'Penalti' : 'Aktif'}</span></div>)}{activeKpiSection?.items?.map((item, itemIndex) => <div key={item.id} className={`gov-row ${selectedKpiItem === itemIndex ? 'active' : ''}`} style={{ marginLeft: '1rem' }} onClick={() => setSelectedKpiItem(itemIndex)}><span className="gov-code">↳ {item.no}</span><span className="gov-name">{item.indikator}</span><span className="gov-version">{item.bobot}</span><span className="gov-status">{item.calcType}</span></div>)}</div><div className="gov-editor"><div className="gov-editor-head"><div><h2>Edit tabel & rumus</h2><span>{activeKpiSection?.code} · {activeKpiItem?.id}</span></div><Table2 size={16} color="#94a3b8"/></div><div className="gov-editor-body"><label className="gov-field">Nama section<input value={activeKpiSection?.title || ''} onChange={(e) => updateKpiSection('title', e.target.value)}/></label><div className="gov-grid"><label className="gov-field">Kode section<input value={activeKpiSection?.code || ''} onChange={(e) => updateKpiSection('code', e.target.value)}/></label><label className="gov-field">Bobot section<input type="number" value={activeKpiSection?.totalWeight || 0} onChange={(e) => updateKpiSection('totalWeight', Number(e.target.value))}/></label></div><label className="gov-field">Nama baris<input value={activeKpiItem?.indikator || ''} onChange={(e) => updateKpiItem('indikator', e.target.value)}/></label><label className="gov-field">Formula<textarea value={activeKpiItem?.formula || ''} onChange={(e) => updateKpiItem('formula', e.target.value)}/></label><label className="gov-field">Rumusan capaian<textarea value={activeKpiItem?.rumusan || ''} onChange={(e) => updateKpiItem('rumusan', e.target.value)}/></label><div className="gov-grid"><label className="gov-field">Bobot<input type="number" value={activeKpiItem?.bobot || 0} onChange={(e) => updateKpiItem('bobot', Number(e.target.value))}/></label><label className="gov-field">Target 100%<input type="number" value={activeKpiItem?.targetNum || 0} onChange={(e) => updateKpiItem('targetNum', Number(e.target.value))}/></label><label className="gov-field">Satuan<input value={activeKpiItem?.satuan || ''} onChange={(e) => updateKpiItem('satuan', e.target.value)}/></label><label className="gov-field">Tipe kalkulasi<select value={activeKpiItem?.calcType || 'single_target'} onChange={(e) => updateKpiItem('calcType', e.target.value)}><option value="single_target">Single target</option><option value="ratio_two">Rasio dua nilai</option><option value="ratio_target_pct">Rasio target persen</option><option value="sum_two_target">Jumlah dua target</option><option value="compliance_integration_pct">Compliance persen</option></select></label></div></div><div className="gov-actions"><button className="gov-button" onClick={addKpiItem}><Plus size={14}/> Tambah baris</button><button className="gov-button danger" onClick={deleteKpiItem}><X size={14}/> Hapus baris</button></div></div></div> : activeTab === 'periods' ? <div className="gov-table"><div className="gov-table-head"><div><h2>Periode evaluasi</h2><span>Kelola status aktif, draft, dan arsip</span></div><button className="gov-button" onClick={addPeriod}><Plus size={14}/> Tambah periode</button></div>{periods.map((item) => <div className="gov-row" key={item.id}><input className="gov-field" value={item.label} onChange={(e) => updatePeriod(item.id, 'label', e.target.value)}/><input type="date" value={item.start} onChange={(e) => updatePeriod(item.id, 'start', e.target.value)}/><input type="date" value={item.end} onChange={(e) => updatePeriod(item.id, 'end', e.target.value)}/><select value={item.status} onChange={(e) => updatePeriod(item.id, 'status', e.target.value)}><option>Active</option><option>Draft</option><option>Archived</option></select></div>)}</div> : activeTab === 'audit' ? <div className="gov-table"><div className="gov-table-head"><div><h2>Audit trail</h2><span>{audit.length} aktivitas tercatat</span></div></div>{audit.length ? audit.map((item) => <div className="gov-row" key={item.id}><span className="gov-version">{item.at}</span><span className="gov-name">{item.action}</span><span className="gov-code">{item.detail}</span><span className="gov-code">{item.actor}</span></div>) : <div className="gov-placeholder">Belum ada aktivitas.</div>}</div> : <div className="gov-workspace"><div className="gov-table"><div className="gov-table-head"><div><h2>{activeTab === 'tables' ? 'Master indikator IKU & KPI' : 'Formula dan bobot indikator'}</h2><span>Draft changes are isolated from published data</span></div><button className="gov-button" onClick={addIndicator}><Plus size={14}/> Tambah</button></div>{indicators.map((item) => <div key={item.id} className={`gov-row ${selected.id === item.id ? 'active' : ''}`} onClick={() => setSelectedId(item.id)}><span className="gov-code">{item.code}</span><span className="gov-name">{activeTab === 'formulas' ? item.formula : item.name}</span><span className="gov-version">{item.version}</span><span className={`gov-status ${item.status === 'Draft' ? 'draft' : ''}`}>{item.status}</span></div>)}</div><div className="gov-editor"><div className="gov-editor-head"><div><h2>Edit konfigurasi</h2><span>{selected.code} · {selected.version}</span></div><Archive size={16} color="#94a3b8"/></div><div className="gov-editor-body"><label className="gov-field">Kode indikator<input value={selected.code} onChange={(e) => updateSelected('code', e.target.value)}/></label><label className="gov-field">Nama indikator<input value={selected.name} onChange={(e) => updateSelected('name', e.target.value)}/></label><label className="gov-field">Definisi<textarea value={selected.definition || ''} onChange={(e) => updateSelected('definition', e.target.value)}/></label><label className="gov-field">Rumus kalkulasi<textarea value={selected.formula} onChange={(e) => updateSelected('formula', e.target.value)}/></label><label className="gov-field">Bobot<input value={selected.weight} onChange={(e) => updateSelected('weight', e.target.value)}/></label></div><div className="gov-actions"><button className="gov-button" onClick={saveDraft}><Save size={14}/> Simpan draft</button><button className="gov-button primary" onClick={publish}><Check size={14}/> Publish versi</button><button className="gov-button" onClick={archive}><X size={14}/> Arsipkan</button>{saved && <span className="gov-save-state">Tersimpan</span>}</div></div></div>}
     </div>{message && <div className="gov-toast">{message}</div>}
   </section>;
 }
