@@ -501,6 +501,13 @@ export default function InternalLayout() {
                 Ruang Kerja Utama
               </div>
               <ul style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', listStyle: 'none', padding: 0, margin: 0 }}>
+                {(isIkuOnly || (isSuperadminPrp && (showPRP || showIKU))) && <li>
+                  <Link to="/internal/iku-submissions" aria-current={isActive('/internal/iku-submissions') ? 'page' : undefined}
+                    className="corp-nav-link"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.68rem 0.85rem', borderRadius: '9px', textDecoration: 'none', fontSize: '0.84rem', fontWeight: 700, color: '#075985', background: isActive('/internal/iku-submissions') ? '#e0f2fe' : 'transparent' }}>
+                    <FileText size={17} /><span>Submission IKU</span>
+                  </Link>
+                </li>}
                 {showPRP && <li>
                   <Link
                     to="/internal/admin"

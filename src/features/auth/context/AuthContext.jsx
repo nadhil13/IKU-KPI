@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { minimumPasswordLength, notifyAdminUpdated, readSystemConfig, writeAudit } from '../../internal/adminStore';
 
 /**
  * Akun Resmi Pengujian Lokal:
@@ -64,16 +65,47 @@ const getStoredUsers = () => {
 };
 
 const AuthContext = createContext(null);
+export const portalsForRole = (role) => role === 'superadmin_prp' || role === 'dual' ? ['iku', 'kpi'] : role === 'iku_only' ? ['iku'] : role === 'kpi_only' ? ['kpi'] : [];
+export const readMergedUsers = () => {
+  const merged = new Map(MOCK_ACCOUNTS.map((user) => [user.email.toLowerCase(), { ...user, status: 'Aktif' }]));
+  getStoredUsers().forEach((user) => {
+    if (typeof user.email !== 'string') return;
+    const email = user.email.toLowerCase();
+    merged.set(email, { ...merged.get(email), ...user, email });
+  });
+  return [...merged.values()].map((user) => ({ ...user, allowedPortals: portalsForRole(user.role) }));
+};
 
 export function AuthProvider({ children }) {
+  const changedPasswordActor = useRef(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const savedUser = localStorage.getItem('performa_user');
-      return savedUser ? JSON.parse(savedUser) : null;
+      const saved = savedUser ? JSON.parse(savedUser) : null;
+      const account = readMergedUsers().find((user) => user.email === saved?.email);
+      return account && account.status === 'Aktif' && account.password === saved.password && (!readSystemConfig().maintenanceMode || account.role === 'superadmin_prp') ? account : null;
     } catch {
       return null;
     }
   });
+
+  useEffect(() => {
+    const revalidate = (event) => {
+      if (event.type === 'storage' && event.key && !['prp_users', 'prp_system_config', 'performa_user'].includes(event.key)) return;
+      setCurrentUser((previous) => {
+        if (!previous) return null;
+        const account = readMergedUsers().find((user) => user.email === previous.email);
+        if (!account || account.status !== 'Aktif' || account.password !== previous.password || (readSystemConfig().maintenanceMode && account.role !== 'superadmin_prp') || (event.type === 'storage' && event.key === 'performa_user' && !event.newValue)) return null;
+        return JSON.stringify(account) === JSON.stringify(previous) ? previous : account;
+      });
+    };
+    window.addEventListener('prp-admin-updated', revalidate);
+    window.addEventListener('storage', revalidate);
+    return () => { window.removeEventListener('prp-admin-updated', revalidate); window.removeEventListener('storage', revalidate); };
+  }, []);
 
   const [activeWorkspace, setActiveWorkspace] = useState(() => {
     try {
@@ -101,6 +133,13 @@ export function AuthProvider({ children }) {
       return 'iku';
     }
   });
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const portals = portalsForRole(currentUser.role);
+    if (!portals.includes(activeWorkspace)) setActiveWorkspace(portals[0] || 'iku');
+    if ((activeContext === 'prp' && currentUser.role !== 'superadmin_prp') || (activeContext !== 'prp' && !portals.includes(activeContext))) setActiveContext(portals[0] || 'iku');
+  }, [currentUser, activeWorkspace, activeContext]);
 
   // Sinkronisasi ketat antara Role dan Workspace di localStorage
   useEffect(() => {
@@ -134,18 +173,21 @@ export function AuthProvider({ children }) {
    */
   const login = (email, password) => {
     const cleanEmail = (email || '').trim().toLowerCase();
-    const cleanPass = (password || '').trim();
+    const cleanPass = password || '';
 
-    const matchedUser = [...MOCK_ACCOUNTS, ...getStoredUsers()].find(
+    const matchedUser = readMergedUsers().find(
       (acc) => acc.email.toLowerCase() === cleanEmail
     );
 
-    if (!matchedUser || matchedUser.status === 'Nonaktif' || cleanPass !== matchedUser.password) {
+    if (!matchedUser || matchedUser.status !== 'Aktif' || cleanPass !== matchedUser.password || (readSystemConfig().maintenanceMode && matchedUser.role !== 'superadmin_prp')) {
+      writeAudit('LOGIN_GAGAL', 'Login ditolak', cleanEmail);
       return {
         success: false,
         message: 'Email atau kata sandi tidak sesuai atau akun sedang nonaktif.'
       };
     }
+    setCurrentUser(matchedUser);
+    writeAudit('LOGIN_BERHASIL', 'Login berhasil', cleanEmail);
 
     // KONDISI 1: Hanya IKU
     if (matchedUser.role === 'iku_only') {
@@ -199,8 +241,9 @@ export function AuthProvider({ children }) {
    */
   const completeDualLogin = (user, chosenWorkspace) => {
     const validChoice = chosenWorkspace === 'kpi' ? 'kpi' : 'iku';
-    setCurrentUser(user);
+    if (!currentUser || user.email !== currentUser.email || !portalsForRole(currentUser.role).includes(validChoice)) return;
     setActiveWorkspace(validChoice);
+    setActiveContext(validChoice);
   };
 
   /**
@@ -218,10 +261,15 @@ export function AuthProvider({ children }) {
   };
 
   const updateProfile = (changes) => {
-    setCurrentUser((previousUser) => {
-      if (!previousUser) return previousUser;
-      return { ...previousUser, ...changes };
-    });
+    if (!currentUser) return;
+    const safe = Object.fromEntries(['name', 'shortName', 'avatar', 'unit'].filter((key) => typeof changes[key] === 'string').map((key) => [key, changes[key]]));
+    const account = readMergedUsers().find((user) => user.email === currentUser.email);
+    if (!account) return;
+    const next = { ...account, ...safe };
+    localStorage.setItem('prp_users', JSON.stringify([...getStoredUsers().filter((user) => user.email !== next.email), next]));
+    setCurrentUser(next);
+    notifyAdminUpdated();
+    writeAudit('PROFIL_DIPERBARUI', 'Profil diperbarui', next.email);
   };
 
   const logout = () => {
@@ -258,7 +306,34 @@ export function AuthProvider({ children }) {
     mockAccounts: MOCK_ACCOUNTS
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const changePassword = (event) => {
+    event.preventDefault();
+    if (newPassword.length < minimumPasswordLength() || newPassword !== confirmation || newPassword === currentUser.password) {
+      setPasswordError(`Gunakan password baru minimal ${minimumPasswordLength()} karakter dan konfirmasi yang sama.`);
+      return;
+    }
+    const account = readMergedUsers().find((user) => user.email === currentUser.email);
+    if (!account || account.password !== currentUser.password || account.status !== 'Aktif') { logout(); return; }
+    const next = { ...account, password: newPassword, mustChangePassword: false };
+    localStorage.setItem('prp_users', JSON.stringify([...getStoredUsers().filter((user) => user.email !== next.email), next]));
+    setCurrentUser(next);
+    // Notify after React commits the new credentials so this tab keeps its session.
+    changedPasswordActor.current = next.email;
+    setNewPassword(''); setConfirmation(''); setPasswordError('');
+  };
+
+  useEffect(() => {
+    if (currentUser && !currentUser.mustChangePassword && newPassword === '' && confirmation === '') {
+      if (changedPasswordActor.current) {
+        const actor = changedPasswordActor.current;
+        changedPasswordActor.current = null;
+        writeAudit('PASSWORD_DIUBAH', 'Password wajib berhasil diganti', actor);
+      }
+      notifyAdminUpdated();
+    }
+  }, [currentUser, newPassword, confirmation]);
+
+  return <AuthContext.Provider value={value}>{currentUser?.mustChangePassword ? <main style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#f1f5f9', display: 'grid', placeItems: 'center', padding: 24 }}><form onSubmit={(event) => { changePassword(event); }} aria-label="Ganti password wajib" style={{ background: 'white', padding: 32, maxWidth: 460, display: 'grid', gap: 16 }}><h1>Ganti password sementara</h1><p>Wajib mengganti password sebelum mengakses aplikasi. Demo lokal: password disimpan di localStorage, bukan penyimpanan aman server.</p><label>Password baru<input type="password" autoComplete="new-password" required minLength={minimumPasswordLength()} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label><label>Konfirmasi password<input type="password" autoComplete="new-password" required value={confirmation} onChange={(e) => setConfirmation(e.target.value)} /></label>{passwordError && <p role="alert">{passwordError}</p>}<button type="submit">Simpan password</button><button type="button" onClick={logout}>Keluar</button></form></main> : children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

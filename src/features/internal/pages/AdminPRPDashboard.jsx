@@ -1,29 +1,46 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, BarChart3, CalendarDays, ClipboardCheck, Database, FileCog, ShieldCheck, Users, Workflow } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../auth/context/AuthContext';
+import { readMergedUsers, useAuth } from '../../auth/context/AuthContext';
+import { readAudit } from '../adminStore';
+import { readKpiWorkflow } from '../../kpi/kpiWorkflowStore';
+import { listIkuSubmissions } from '../../iku/ikuWorkflowStore';
 
 gsap.registerPlugin(ScrollTrigger);
 
-const controlCards = [
-  { label: 'Submission menunggu tinjauan', value: '12', meta: '8 KPI · 4 IKU', icon: ClipboardCheck, tone: 'ink' },
-  { label: 'Konfigurasi aktif', value: '08', meta: '4 bagian KPI · 4 bagian IKU', icon: FileCog, tone: 'slate' },
-  { label: 'Pengguna terdaftar', value: '24', meta: '22 aktif · 2 nonaktif', icon: Users, tone: 'quiet' },
-  { label: 'Periode evaluasi', value: '01', meta: '2026/2027 · aktif', icon: CalendarDays, tone: 'line' },
-];
-
-const activity = [
-  { time: '09:42', title: 'Submission KPI diterima', detail: 'Fakultas Teknologi Industri · KPI-2026-014', status: 'Menunggu tinjauan' },
-  { time: '08:18', title: 'Konfigurasi formula diperbarui', detail: 'KPI C.2 · Versi 02 · Berlaku 2027/2028', status: 'Draft tersimpan' },
-  { time: 'Kemarin', title: 'Periode evaluasi diaktifkan', detail: 'Tahun Ajaran 2026/2027 · batas 30 Okt 2026', status: 'Aktif' },
-];
 
 export default function AdminPRPDashboard() {
   const pageRef = useRef(null);
   const { currentUser } = useAuth();
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const update = () => refresh((value) => value + 1);
+    const events = ['storage', 'focus', 'prp-admin-updated', 'prp-kpi-workflow-updated', 'prp-iku-updated'];
+    events.forEach((event) => window.addEventListener(event, update));
+    return () => events.forEach((event) => window.removeEventListener(event, update));
+  }, []);
+  const users = readMergedUsers();
+  let periods = [];
+  try { const saved = JSON.parse(localStorage.getItem('prp_periods') || '[]'); if (Array.isArray(saved)) periods = saved; } catch { /* No persisted periods. */ }
+  const kpi = readKpiWorkflow();
+  const iku = listIkuSubmissions(currentUser);
+  const kpiPending = Object.values(kpi.submissions).filter((record) => record.status === 'SUBMITTED').length;
+  const ikuPending = iku.filter((record) => record.status === 'SUBMITTED').length;
+  const active = users.filter((user) => user.status === 'Aktif').length;
+  const controlCards = [
+    { label: 'Submission menunggu tinjauan', value: kpiPending + ikuPending, meta: `${kpiPending} KPI · ${ikuPending} IKU`, icon: ClipboardCheck },
+    { label: 'Formulir KPI terdistribusi', value: kpi.forms.length, meta: 'Snapshot tersimpan', icon: FileCog },
+    { label: 'Pengguna terdaftar', value: users.length, meta: `${active} aktif · ${users.length - active} nonaktif`, icon: Users },
+    { label: 'Periode evaluasi', value: periods.length, meta: `${periods.filter((period) => period.status === 'Active').length} aktif`, icon: CalendarDays },
+  ];
+  const activity = [
+    ...readAudit().map((entry) => ({ at: entry.at, title: entry.action, detail: `${entry.detail} · ${entry.actor}`, status: 'Audit lokal' })),
+    ...Object.values(kpi.submissions).flatMap((record) => (record.history || []).map((entry) => ({ at: entry.at, title: 'Submission KPI', detail: `${record.unit || record.email} · ${entry.note || ''}`, status: entry.status }))),
+    ...iku.flatMap((record) => (record.history || []).map((entry) => ({ at: entry.at, title: 'Submission IKU', detail: `${record.unit} · ${entry.reason || ''}`, status: entry.status }))),
+  ].filter((entry) => entry.at).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8).map((entry) => ({ ...entry, time: new Date(entry.at).toLocaleString('id-ID') }));
 
   useGSAP(() => {
     const intro = gsap.timeline({ defaults: { ease: 'expo.out' } });
@@ -111,6 +128,8 @@ export default function AdminPRPDashboard() {
       </div>
 
       <div className="prp-section prp-lower prp-reveal">
+        <Link className="prp-link" to="/internal/iku-submissions">Tinjau submission IKU <ArrowUpRight size={15} /></Link>
+        {!activity.length && <p>Belum ada aktivitas tercatat.</p>}
         <div className="prp-panel"><div className="prp-panel-head"><h3>Aktivitas terbaru</h3><span>Audit stream</span></div>{activity.map((item) => <div className="prp-activity" key={`${item.time}-${item.title}`}><span className="prp-time">{item.time}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><span className="prp-status">{item.status}</span></div>)}</div>
         <div className="prp-panel"><div className="prp-panel-head"><h3>Akses cepat</h3><span>PRP tools</span></div><div className="prp-command"><Link to="/internal/admin/governance"><FileCog size={16} /><span><strong>Konfigurasi kinerja</strong><small>Tabel, rumus & versi</small></span></Link><Link to="/internal/users"><Users size={16} /><span><strong>Manajemen user</strong><small>Role & akses</small></span></Link><Link to="/internal"><BarChart3 size={16} /><span><strong>Evaluasi KPI</strong><small>Workspace aktif</small></span></Link><Link to="/internal/team"><Database size={16} /><span><strong>Unit & tim</strong><small>Struktur organisasi</small></span></Link><Link to="/internal/profile"><Workflow size={16} /><span><strong>Profil sesi</strong><small>Preferensi akun</small></span></Link></div></div>
       </div>

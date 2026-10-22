@@ -191,11 +191,55 @@ export const PRESET_FORMULA_EXPR = {
 
 const toDeadline = (iso) => (iso ? new Date(`${iso}T23:59:59`) : null);
 
+export const cleanRefCode = (value) => String(value ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+export const itemRefPrefix = (sectionCode, itemNo) => `${cleanRefCode(sectionCode || 'A')}${cleanRefCode(itemNo || '1')}`;
+
+/**
+ * Membangun peta referensi sel ala Excel untuk seluruh tabel KPI.
+ * Contoh untuk Bagian A nomor 1a:
+ *   - A1A_I1, A1A_I2 -> nilai isian ke-1, ke-2 pada baris A.1a
+ *   - A1A_T          -> nilai Target baris A.1a
+ *   - A1A_B          -> nilai Bobot baris A.1a
+ */
+export function buildKpiCellDirectory(sections = [], values = {}) {
+  const cells = {};
+  const labels = {};
+  const allowedRefs = new Set();
+
+  (sections || []).forEach((section, sIdx) => {
+    const secCode = cleanRefCode(section.code || String.fromCharCode(65 + sIdx));
+    (section.items || []).forEach((item, iIdx) => {
+      const prefix = itemRefPrefix(secCode, item.no ?? (iIdx + 1));
+      const targetVal = Number(item.targetNum) || 0;
+      const bobotVal = Math.abs(Number(item.bobot) || 0);
+
+      const tRef = `${prefix}_T`;
+      const bRef = `${prefix}_B`;
+      cells[tRef] = targetVal;
+      cells[bRef] = bobotVal;
+      allowedRefs.add(tRef);
+      allowedRefs.add(bRef);
+      labels[tRef] = `${section.code}.${item.no} Target`;
+      labels[bRef] = `${section.code}.${item.no} Bobot`;
+
+      (item.subrows || []).forEach((sub, subIdx) => {
+        const iRef = `${prefix}_I${subIdx + 1}`;
+        const parsed = parseIndonesianNumber(values?.[sub.key] ?? '');
+        cells[iRef] = parsed;
+        allowedRefs.add(iRef);
+        labels[iRef] = `${section.code}.${item.no} ${sub.label || `Isian ${subIdx + 1}`}`;
+      });
+    });
+  });
+
+  return { cells, labels, allowedRefs };
+}
+
 /**
  * Menghitung satu baris indikator KPI.
  * Capaian selalu dibatasi 0–100%. Skor dibatasi 0..bobot (positif) atau −|bobot|..0 (penalti).
  */
-export function computeKpiItem(item, values, isPenaltySection) {
+export function computeKpiItem(item, values, isPenaltySection, allSections = null) {
   const bobot = Number(item.bobot) || 0;
   const targetNum = Number(item.targetNum) || 0;
 
@@ -217,10 +261,12 @@ export function computeKpiItem(item, values, isPenaltySection) {
   switch (item.calcType) {
     case 'custom': {
       // Hasil rumus = capaian (%). Penalti: skor = (100 − capaian)% × bobot (bobot sudah negatif).
+      const globalCells = allSections ? buildKpiCellDirectory(allSections, values).cells : null;
       const result = evaluateKpiFormula(item.formulaExpr, {
         inputs: parsedSubs.map((sub) => sub.num),
         target: targetNum,
         bobot,
+        cells: globalCells,
       });
       if (result.error) {
         extraNote = `Rumus error: ${result.error}`;
@@ -436,12 +482,19 @@ export function normalizeKpiSections(sections) {
   return normalized;
 }
 
+/** Pembulatan presisi tetap agar penjumlahan desimal (0,1 + 0,2) tidak memunculkan selisih semu. */
+const roundWeight = (value) => Math.round((Number(value) || 0) * 1e6) / 1e6;
+const WEIGHT_TOLERANCE = 0.0001;
+export const TARGET_TOTAL_WEIGHT = 100;
+
 /** Validasi struktur untuk ditampilkan di desainer. */
 export function validateKpiSections(sections) {
   const issues = [];
   const keys = new Map();
   const codes = new Set();
-  let positiveTotal = 0;
+  const sectionSummaries = [];
+  const { allowedRefs } = buildKpiCellDirectory(sections);
+  const fmt = (value) => formatIndonesianNumber(value, 4);
 
   sections.forEach((section) => {
     if (codes.has(section.code)) {
@@ -451,10 +504,28 @@ export function validateKpiSections(sections) {
     if (!section.items.length) {
       issues.push({ level: 'warn', sectionCode: section.code, message: `Bagian ${section.code} belum memiliki baris indikator.` });
     }
-    const itemSum = section.items.reduce((acc, item) => acc + (Number(item.bobot) || 0), 0);
-    if (!section.isPenaltySection) positiveTotal += itemSum;
-    if (Math.abs(itemSum - (Number(section.totalWeight) || 0)) > 0.001) {
-      issues.push({ level: 'warn', sectionCode: section.code, message: `Bagian ${section.code}: jumlah bobot baris (${formatIndonesianNumber(itemSum, 2)}) ≠ bobot bagian (${formatIndonesianNumber(Number(section.totalWeight) || 0, 2)}).` });
+
+    // Semua perbandingan memakai nilai absolut: bagian penalti disimpan negatif, tapi ditampilkan positif di tabel.
+    const itemSum = roundWeight(section.items.reduce((acc, item) => acc + Math.abs(Number(item.bobot) || 0), 0));
+    const sectionWeight = roundWeight(Math.abs(Number(section.totalWeight) || 0));
+    const diff = roundWeight(itemSum - sectionWeight);
+    sectionSummaries.push({
+      code: section.code,
+      title: section.title,
+      isPenaltySection: Boolean(section.isPenaltySection),
+      itemCount: section.items.length,
+      itemSum,
+      sectionWeight,
+      diff,
+      matches: Math.abs(diff) <= WEIGHT_TOLERANCE,
+    });
+    if (Math.abs(diff) > WEIGHT_TOLERANCE) {
+      issues.push({
+        level: 'warn',
+        sectionCode: section.code,
+        message: `Bagian ${section.code}: Σ bobot baris ${fmt(itemSum)} ≠ bobot bagian ${fmt(sectionWeight)} (selisih ${diff > 0 ? '+' : ''}${fmt(diff)}). `
+          + `Ubah bobot bagian menjadi ${fmt(itemSum)} atau ${diff > 0 ? 'kurangi' : 'tambah'} bobot baris sebanyak ${fmt(Math.abs(diff))}.`,
+      });
     }
     section.items.forEach((item) => {
       const meta = CALC_TYPES[item.calcType] || CALC_TYPES.single_target;
@@ -462,7 +533,7 @@ export function validateKpiSections(sections) {
         issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no} ${item.indikator}: rumus "${meta.label}" butuh minimal ${meta.minInputs} isian.` });
       }
       if (item.calcType === 'custom') {
-        const formulaError = validateKpiFormula(item.formulaExpr, item.subrows?.length || 0);
+        const formulaError = validateKpiFormula(item.formulaExpr, item.subrows?.length || 0, allowedRefs);
         if (formulaError) issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: ${formulaError}` });
         if (/\bT\b/i.test(item.formulaExpr || '') && !(Number(item.targetNum) > 0)) {
           issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: rumus memakai T, target numerik harus > 0.` });
@@ -487,11 +558,20 @@ export function validateKpiSections(sections) {
     });
   });
 
-  if (Math.abs(positiveTotal - 100) > 0.001) {
-    issues.unshift({ level: 'warn', message: `Total bobot capaian (non-penalti) = ${formatIndonesianNumber(positiveTotal, 2)}. Idealnya 100.` });
+  // Total dihitung dari Σ bobot BARIS (nilai yang benar-benar dipakai saat skoring), bukan dari bobot bagian.
+  const positiveTotal = roundWeight(sectionSummaries.filter((s) => !s.isPenaltySection).reduce((acc, s) => acc + s.itemSum, 0));
+  const penaltyTotal = roundWeight(sectionSummaries.filter((s) => s.isPenaltySection).reduce((acc, s) => acc + s.itemSum, 0));
+  const totalDiff = roundWeight(positiveTotal - TARGET_TOTAL_WEIGHT);
+  if (Math.abs(totalDiff) > WEIGHT_TOLERANCE) {
+    const breakdown = sectionSummaries.filter((s) => !s.isPenaltySection).map((s) => `${s.code} ${fmt(s.itemSum)}`).join(' + ');
+    issues.unshift({
+      level: 'warn',
+      message: `Total bobot capaian (non-penalti) = ${breakdown || '0'} = ${fmt(positiveTotal)}; seharusnya ${TARGET_TOTAL_WEIGHT} `
+        + `(${totalDiff > 0 ? 'kelebihan' : 'kurang'} ${fmt(Math.abs(totalDiff))}).`,
+    });
   }
 
-  return { issues, positiveTotal };
+  return { issues, positiveTotal, penaltyTotal, totalDiff, sectionSummaries };
 }
 
 /* ───────────────────────── Persistensi & sinkronisasi ───────────────────────── */

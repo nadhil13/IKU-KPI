@@ -7,12 +7,12 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { useAuth } from '../../auth/context/AuthContext';
-import { getUnitKpiForm, readUnitSubmission, subscribeKpiWorkflow, submitUnitKpi } from '../kpiWorkflowStore';
+import { getUnitKpiForm, readUnitSubmission, subscribeKpiWorkflow, submitUnitKpi, readUnitEvidence, addUnitEvidence, removeUnitEvidence } from '../kpiWorkflowStore';
 import { describeKpiFormula } from '../formulaEngine';
 
 import {
   parseIndonesianNumber, parseFlexibleDate, formatIndonesianNumber,
-  computeKpiItem, subscribeKpiConfig, readPublishedKpiConfig, normalizeKpiSections,
+  computeKpiItem, subscribeKpiConfig, readPublishedKpiConfig, normalizeKpiSections, buildKpiCellDirectory,
 } from '../kpiSchema';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -784,6 +784,23 @@ export default function KPIDataEntrySheet(props) {
     unitForm={isUnit ? form : null} unitUser={currentUser} submission={record} />;
 }
 
+function UnitEvidence({ form, user, locked }) {
+  const [label, setLabel] = useState('');
+  const [url, setUrl] = useState('');
+  const [indicatorId, setIndicatorId] = useState(form.sections[0]?.items[0]?.id || '');
+  const [error, setError] = useState('');
+  const mutate = (action) => { try { setError(''); action(); } catch (err) { setError(err.message); } };
+  return <section aria-label="Bukti KPI" style={{ padding: '1rem', border: '1px solid #cbd5e1', borderRadius: 12 }}>
+    <h3>Bukti pendukung KPI</h3><p>Tautan HTTPS saja; berkas tidak disimpan. Bukti dapat diubah sebelum submit atau saat revisi.</p>
+    {error && <p role="alert">{error}</p>}
+    {!locked && <><label>Indikator <select value={indicatorId} onChange={(e) => setIndicatorId(e.target.value)}>{form.sections.flatMap((s) => s.items.map((i) => <option key={i.id} value={i.id}>{s.code} · {i.indikator}</option>))}</select></label>
+      <label>Label bukti <input value={label} onChange={(e) => setLabel(e.target.value)} /></label>
+      <label>URL HTTPS <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></label>
+      <button type="button" onClick={() => mutate(() => addUnitEvidence(form.id, user, { label, url, indicatorId }))}>Tambah bukti</button></>}
+    <ul>{readUnitEvidence(form.id, user.email).map((e) => <li key={e.id}><a href={e.url} target="_blank" rel="noopener noreferrer">{e.label}</a> · {e.indicatorId} · {e.status} {e.note && `— ${e.note}`} {!locked && <button type="button" onClick={() => mutate(() => removeUnitEvidence(form.id, user, e.id))}>Hapus {e.label}</button>}</li>)}</ul>
+  </section>;
+}
+
 function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride = null, persist = true,
   unitForm = null, unitUser = null, submission = null, valuesOverride = null }) {
   const valuesKey = unitForm ? `${STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : STORAGE_KEY;
@@ -824,7 +841,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
   const [focusedKey, setFocusedKey] = useState(null);
   const [lastSaved, setLastSaved] = useState('Siap');
   const [workflow, setWorkflow] = useState(() => {
-    if (submission) return { ...submission, history: [] };
+    if (submission) return { ...submission, history: submission.history || [] };
     if (!persist) return { status: WORKFLOW_STATUS.NOT_STARTED, submittedAt: null, submittedBy: 'Preview PRP', revisionNote: '', history: [] };
     try {
       return JSON.parse(localStorage.getItem(workflowKey)) || {
@@ -903,7 +920,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
 
       const computedItems = sec.items.map((item) => {
         totalIndicatorsCount += 1;
-        const result = computeKpiItem(item, values, sec.isPenaltySection);
+        const result = computeKpiItem(item, values, sec.isPenaltySection, governedSections);
         result.parsedSubs.forEach((sub) => {
           if (sub.isFilled) totalFilledInputs += 1;
           if (sub.isInvalid) totalInvalidInputs += 1;
@@ -1190,25 +1207,20 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
   };
 
   const handleSubmit = () => {
-    if (readOnly || ['SUBMITTED', 'APPROVED'].includes(workflow.status)) return;
+    if (readOnly || ['SUBMITTED', 'APPROVED', 'REJECTED', 'LOCKED'].includes(workflow.status)) return;
     if (calculated.totalInvalidInputs > 0) {
-      alert(`Masih ada ${calculated.totalInvalidInputs} isian dengan format tidak valid. Periksa kembali sebelum submit.`);
+      setStructureToast(`Masih ada ${calculated.totalInvalidInputs} isian dengan format tidak valid.`);
       return;
     }
 
     if (calculated.totalFilledInputs < calculated.totalInputsCount) {
       const missingCount = calculated.totalInputsCount - calculated.totalFilledInputs;
-      alert(`Lembar kerja belum lengkap. Masih ada ${missingCount} isian wajib yang kosong.`);
+      setStructureToast(`Lembar kerja belum lengkap. Masih ada ${missingCount} isian wajib yang kosong.`);
       return;
     }
 
-    const confirmed = window.confirm(
-      'Setelah dikirim, lembar kerja akan terkunci dan tidak dapat diedit secara langsung. Anda yakin ingin submit?'
-    );
-    if (!confirmed) return;
-
     if (unitForm) {
-      try { submitUnitKpi(unitForm.id, unitUser, values); } catch (error) { alert(error.message); }
+      try { submitUnitKpi(unitForm.id, unitUser, values); } catch (error) { setStructureToast(error.message); }
       return;
     }
 
@@ -1226,27 +1238,13 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
   };
 
   const handleRequestRevision = () => {
-    const note = window.prompt(
-      'Jelaskan alasan permintaan pembukaan kembali lembar kerja:',
-      'Terdapat kesalahan data yang perlu diperbaiki.'
-    );
-    if (!note?.trim()) return;
-
-    const requestedAt = new Date().toISOString();
-    setWorkflow((prev) => ({
-      ...prev,
-      status: WORKFLOW_STATUS.NEEDS_REVISION,
-      revisionNote: note.trim(),
-      history: [
-        ...(prev.history || []),
-        { status: WORKFLOW_STATUS.NEEDS_REVISION, at: requestedAt, note: note.trim() },
-      ],
-    }));
+    setStructureToast('Hubungi PRP untuk membuka kembali melalui tinjauan dengan alasan wajib.');
   };
 
+  readOnly = readOnly || ['REJECTED', 'LOCKED'].includes(workflow.status);
   const isLocked = readOnly || workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED;
   const isComplete = calculated.totalFilledInputs === calculated.totalInputsCount && calculated.totalInvalidInputs === 0;
-  const workflowStatusLabel = WORKFLOW_LABELS[workflow.status] || WORKFLOW_LABELS[WORKFLOW_STATUS.DRAFT];
+  const workflowStatusLabel = ({ REJECTED: 'Ditolak', LOCKED: 'Dikunci' })[workflow.status] || WORKFLOW_LABELS[workflow.status] || WORKFLOW_LABELS[WORKFLOW_STATUS.DRAFT];
   const workflowStatusTone = {
     [WORKFLOW_STATUS.NOT_STARTED]: { color: '#64748b', background: '#f8fafc', border: '#e2e8f0', icon: Clock3 },
     [WORKFLOW_STATUS.DRAFT]: { color: '#334155', background: '#f8fafc', border: '#cbd5e1', icon: History },
@@ -1696,8 +1694,9 @@ ${sectionSummaryHtml}
 
   return (
     <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+      {unitForm && <UnitEvidence form={unitForm} user={unitUser} locked={isLocked} />}
       {structureToast && (
-        <div className="kpi-structure-toast" role="status" aria-live="polite">
+        <div className="kpi-structure-toast" role="alert" aria-live="polite">
           <RefreshCcw size={14} />
           <span>{structureToast}</span>
         </div>
@@ -2329,7 +2328,7 @@ ${sectionSummaryHtml}
                               }}
                             >
                               {item.formula}
-                              {item.calcType === 'custom' && <small style={{ display: 'block', marginTop: '.4rem' }}>{describeKpiFormula(item.formulaExpr, item.subrows)}</small>}
+                              {item.calcType === 'custom' && <small style={{ display: 'block', marginTop: '.4rem' }}>{describeKpiFormula(item.formulaExpr, item.subrows, buildKpiCellDirectory(governedSections).labels)}</small>}
                             </td>
                           </>
                         )}

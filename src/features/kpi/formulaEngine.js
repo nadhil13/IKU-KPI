@@ -230,7 +230,10 @@ function evaluate(node, scope) {
   }
 }
 
-const buildScope = ({ inputs = [], target = 0, bobot = 0 }) => (name) => {
+const buildScope = ({ inputs = [], target = 0, bobot = 0, cells = null }) => (name) => {
+  if (cells && Object.prototype.hasOwnProperty.call(cells, name)) {
+    return cells[name];
+  }
   if (name === 'T') return Number(target) || 0;
   if (name === 'B') return Math.abs(Number(bobot) || 0);
   const match = /^I(\d+)$/.exec(name);
@@ -246,8 +249,9 @@ const buildScope = ({ inputs = [], target = 0, bobot = 0 }) => (name) => {
  * Hitung rumus. Mengembalikan { value, error }.
  * value = null tanpa error berarti isian belum lengkap (bukan kesalahan rumus).
  */
-export function evaluateKpiFormula(source, context) {
-  const compiled = compileFormula(source);
+export function evaluateKpiFormula(source, context = {}) {
+  const clean = String(source ?? '').trim().replace(/^=\s*/, '');
+  const compiled = compileFormula(clean);
   if (compiled.error) return { value: null, error: compiled.error };
   try {
     const value = evaluate(compiled.ast, buildScope(context));
@@ -258,23 +262,37 @@ export function evaluateKpiFormula(source, context) {
   }
 }
 
-/** Validasi rumus terhadap jumlah isian pada baris (dipakai desainer PRP). */
-export function validateKpiFormula(source, inputCount) {
-  const compiled = compileFormula(source);
+/** Validasi rumus terhadap jumlah isian pada baris dan referensi sel global (dipakai desainer PRP). */
+export function validateKpiFormula(source, inputCount, allowedGlobalRefs = null) {
+  const clean = String(source ?? '').trim().replace(/^=\s*/, '');
+  const compiled = compileFormula(clean);
   if (compiled.error) return compiled.error;
   for (const name of compiled.vars) {
     if (name === 'T' || name === 'B') continue;
+    if (allowedGlobalRefs && allowedGlobalRefs.has(name)) continue;
     const match = /^I(\d+)$/.exec(name);
-    if (!match) return `Variabel "${name}" tidak dikenal. Gunakan I1..I${inputCount}, T, atau B.`;
+    if (!match) {
+      if (allowedGlobalRefs) {
+        return `Referensi "${name}" tidak ditemukan di tabel.`;
+      }
+      return `Variabel "${name}" tidak dikenal. Gunakan I1..I${inputCount}, T, B, atau klik sel di tabel.`;
+    }
     const index = Number(match[1]);
     if (index < 1 || index > inputCount) return `${name} tidak ada — baris ini hanya punya ${inputCount} isian.`;
   }
   return null;
 }
 
-/** Ubah I1, I2, T, B menjadi label manusiawi untuk ditampilkan ke user. */
-export function describeKpiFormula(source, subrows = []) {
-  return String(source || '')
+/** Ubah I1, I2, T, B, dan kode sel menjadi label manusiawi untuk ditampilkan ke user. */
+export function describeKpiFormula(source, subrows = [], cellLabels = null) {
+  let text = String(source || '').replace(/^=\s*/, '');
+  if (cellLabels) {
+    text = text.replace(/\b([A-Z0-9_]+)\b/gi, (token) => {
+      const upper = token.toUpperCase();
+      return cellLabels[upper] ? `[${cellLabels[upper]}]` : token;
+    });
+  }
+  return text
     .replace(/\bI(\d+)\b/gi, (_, n) => `[${subrows[Number(n) - 1]?.label || `Isian ${n}`}]`)
     .replace(/\bT\b/g, '[Target]')
     .replace(/\bB\b/g, '[Bobot]')

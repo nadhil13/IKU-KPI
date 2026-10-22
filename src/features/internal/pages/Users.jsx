@@ -1,48 +1,15 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Search, SlidersHorizontal, ArrowUpRight, ShieldCheck, Pencil, Trash2, X, Check } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../../auth/context/AuthContext';
+import { MOCK_ACCOUNTS, readMergedUsers, useAuth } from '../../auth/context/AuthContext';
+import { minimumPasswordLength, notifyAdminUpdated, resetUserPassword, writeAudit } from '../adminStore';
 import './Users.css';
 
 gsap.registerPlugin(ScrollTrigger);
 
-const usersList = [
-  {
-    id: 1,
-    name: 'Biro Kemahasiswaan & Akademik',
-    email: 'iku@itpln.ac.id',
-    role: 'iku_only',
-    roleLabel: 'Otoritas IKU',
-    accessScope: '8 IKU Kementerian',
-    status: 'Aktif',
-    avatar: 'IK',
-    lastActivity: 'Hari ini, 08:42',
-  },
-  {
-    id: 2,
-    name: 'Tim Kinerja Unit & Fakultas',
-    email: 'kpi@itpln.ac.id',
-    role: 'kpi_only',
-    roleLabel: 'Otoritas KPI',
-    accessScope: 'KPI Unit & Fakultas',
-    status: 'Aktif',
-    avatar: 'KP',
-    lastActivity: 'Kemarin, 16:18',
-  },
-  {
-    id: 3,
-    name: 'Administrator Terpadu ITPLN',
-    email: 'admin@itpln.ac.id',
-    role: 'superadmin_prp',
-    roleLabel: 'Superadmin PRP',
-    accessScope: 'IKU & KPI',
-    status: 'Aktif',
-    avatar: 'AD',
-    lastActivity: '17 Okt 2026, 13:06',
-  },
-];
+const usersList = MOCK_ACCOUNTS;
 
 const roleLabels = {
   all: 'Semua peran',
@@ -52,10 +19,7 @@ const roleLabels = {
 };
 
 const readUsers = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem('prp_users') || 'null');
-    return Array.isArray(saved) ? [...usersList, ...saved.filter((item) => !usersList.some((base) => base.email === item.email))] : usersList;
-  } catch { return usersList; }
+  return readMergedUsers().map((user) => ({ ...user, roleLabel: roleLabels[user.role] || user.role, accessScope: user.allowedPortals.join(' & ').toUpperCase(), lastActivity: user.lastActivity || 'Belum tercatat' }));
 };
 
 export default function Users() {
@@ -65,23 +29,56 @@ export default function Users() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [editing, setEditing] = useState(null);
+  useEffect(() => {
+    const refresh = () => setUsers(readUsers());
+    window.addEventListener('prp-admin-updated', refresh);
+    window.addEventListener('storage', refresh);
+    return () => { window.removeEventListener('prp-admin-updated', refresh); window.removeEventListener('storage', refresh); };
+  }, []);
 
   const persist = (next) => {
     setUsers(next);
-    localStorage.setItem('prp_users', JSON.stringify(next.filter((item) => !usersList.some((base) => base.email === item.email))));
+    localStorage.setItem('prp_users', JSON.stringify(next));
+    notifyAdminUpdated();
   };
 
-  const openCreate = () => setEditing({ id: `user-${Date.now()}`, name: '', email: '', password: 'password', role: 'kpi_only', roleLabel: roleLabels.kpi_only, accessScope: 'KPI Unit & Fakultas', status: 'Aktif', avatar: 'USR', lastActivity: 'Belum pernah login' });
+  const openCreate = () => setEditing({ id: `user-${crypto.randomUUID()}`, name: '', email: '', password: '', role: 'kpi_only', status: 'Aktif', avatar: 'USR' });
   const saveUser = () => {
+    const latest = readUsers();
+    const original = latest.find((item) => item.id === editing.id);
     const email = editing.email.trim().toLowerCase();
-    if (!editing.name.trim() || !email || !email.includes('@') || !editing.password?.trim()) return;
-    if (users.some((item) => item.email.toLowerCase() === email && item.id !== editing.id)) return;
-    const normalized = { ...editing, email, roleLabel: roleLabels[editing.role], accessScope: editing.role === 'iku_only' ? '8 IKU Kementerian' : editing.role === 'superadmin_prp' ? 'Platform, IKU & KPI' : 'KPI Unit & Fakultas' };
-    const exists = users.some((item) => item.id === normalized.id);
-    persist(exists ? users.map((item) => item.id === normalized.id ? normalized : item) : [...users, normalized]);
+    if (!editing.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (!original && !editing.password) || (editing.password && editing.password.length < minimumPasswordLength())) { window.alert(`Nama, email valid, dan password minimal ${minimumPasswordLength()} karakter wajib diisi (password edit boleh kosong).`); return; }
+    if (latest.some((item) => item.email.toLowerCase() === email && item.id !== editing.id)) { window.alert('Email sudah digunakan.'); return; }
+    if (original?.email === currentUser?.email && (email !== original.email || editing.role !== original.role || editing.status !== original.status)) { window.alert('Email, peran, dan status akun sendiri tidak dapat diubah.'); return; }
+    if (original && usersList.some((base) => base.id === original.id) && email !== original.email) { window.alert('Email akun bawaan tidak dapat diubah.'); return; }
+    if (original?.role === 'superadmin_prp' && original.status === 'Aktif' && (editing.role !== 'superadmin_prp' || editing.status !== 'Aktif') && !latest.some((item) => item.id !== original.id && item.role === 'superadmin_prp' && item.status === 'Aktif')) { window.alert('Minimal satu superadmin aktif harus tersedia.'); return; }
+    const normalized = { ...original, ...editing, password: editing.password || original?.password, email, name: editing.name.trim(), roleLabel: roleLabels[editing.role], accessScope: editing.role === 'iku_only' ? '8 IKU Kementerian' : editing.role === 'superadmin_prp' ? 'Platform, IKU & KPI' : 'KPI Unit & Fakultas' };
+    const exists = !!original;
+    persist(exists ? latest.map((item) => item.id === normalized.id ? normalized : item) : [...latest, normalized]);
+    writeAudit(exists ? 'EDIT_AKUN' : 'TAMBAH_AKUN', `Akun ${email}: ${normalized.role}, ${normalized.status}`, currentUser?.email);
     setEditing(null);
   };
-  const removeUser = (id) => { if (window.confirm('Hapus akun ini dari daftar akses?')) persist(users.filter((item) => item.id !== id)); };
+  const removeUser = (id) => {
+    const latest = readUsers();
+    const target = latest.find((item) => item.id === id);
+    if (!target || target.email === currentUser?.email || usersList.some((base) => base.id === id)) { window.alert('Akun sendiri/bawaan tidak dapat dihapus.'); return; }
+    if (target.role === 'superadmin_prp' && target.status === 'Aktif' && !latest.some((item) => item.id !== id && item.role === 'superadmin_prp' && item.status === 'Aktif')) { window.alert('Superadmin aktif terakhir tidak dapat dihapus.'); return; }
+    if (window.confirm('Hapus akun ini dari daftar akses?')) { persist(latest.filter((item) => item.id !== id)); writeAudit('HAPUS_AKUN', `Akun ${target.email} dihapus`, currentUser?.email); }
+  };
+  const toggleUser = (user) => {
+    if (user.email === currentUser?.email) { window.alert('Akun sesi aktif tidak dapat dinonaktifkan sendiri.'); return; }
+    const status = user.status === 'Aktif' ? 'Nonaktif' : 'Aktif';
+    const latest = readUsers();
+    if (user.role === 'superadmin_prp' && status === 'Nonaktif' && !latest.some((item) => item.id !== user.id && item.role === 'superadmin_prp' && item.status === 'Aktif')) { window.alert('Superadmin aktif terakhir tidak dapat dinonaktifkan.'); return; }
+    persist(latest.map((item) => item.id === user.id ? { ...item, status } : item));
+    writeAudit(status === 'Aktif' ? 'AKTIFKAN_AKUN' : 'NONAKTIFKAN_AKUN', `Akun ${user.email} diubah menjadi ${status}`, currentUser?.email);
+  };
+  const resetPassword = (user) => {
+    if (!window.confirm(`Reset password akun ${user.email}?`)) return;
+    const temporaryPassword = resetUserPassword(user, currentUser?.email);
+    setUsers(readUsers());
+    window.alert(`Password sementara ${user.email}: ${temporaryPassword}`);
+  };
 
   const filteredUsers = users.filter((user) => {
     const query = searchQuery.toLowerCase();
@@ -166,7 +163,7 @@ export default function Users() {
                   <td><span className="user-role"><i />{user.roleLabel}</span></td>
                   <td className="user-scope">{user.accessScope}</td>
                   <td className="user-activity">{user.lastActivity}</td>
-                  <td><span className="user-status"><i />{user.status}</span><div style={{ display: 'flex', gap: 4, marginTop: 6 }}><button type="button" title="Edit user" onClick={() => setEditing({ ...user })}><Pencil size={13} /></button>{!usersList.some((base) => base.email === user.email) && <button type="button" title="Hapus user" onClick={() => removeUser(user.id)}><Trash2 size={13} /></button>}</div></td>
+                  <td><span className="user-status"><i />{user.status}</span><div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}><button type="button" title="Edit user" onClick={() => setEditing({ ...user, password: '' })}><Pencil size={13} /></button><button type="button" title="Reset password" onClick={() => resetPassword(user)}>Reset</button><button type="button" title="Aktifkan atau nonaktifkan akun" onClick={() => toggleUser(user)}>{user.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}</button>{!usersList.some((base) => base.email === user.email) && <button type="button" title="Hapus user" onClick={() => removeUser(user.id)}><Trash2 size={13} /></button>}</div></td>
                 </tr>;
               })}
             </tbody>
@@ -175,7 +172,7 @@ export default function Users() {
         </div>
         <footer className="users-footer"><span>ACCESS POLICY / INTERNAL ONLY</span><span>Perubahan akses dicatat dalam audit log</span></footer>
       </div>
-      {editing && <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(15,23,42,.35)', display: 'grid', placeItems: 'center', padding: 20 }}><div style={{ width: 'min(520px, 100%)', background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 20px 60px rgba(15,23,42,.2)' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2 style={{ margin: 0 }}>Tambah / edit pengguna</h2><button type="button" onClick={() => setEditing(null)}><X size={18} /></button></div><div style={{ display: 'grid', gap: 12, marginTop: 18 }}><input placeholder="Nama pengguna" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /><input placeholder="Email login" type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /><input placeholder="Password awal" value={editing.password || ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /><select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })}><option value="iku_only">Otoritas IKU</option><option value="kpi_only">Otoritas KPI</option><option value="superadmin_prp">Superadmin PRP</option></select><select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option>Aktif</option><option>Nonaktif</option></select></div><button className="users-action" type="button" onClick={saveUser} style={{ marginTop: 18 }}><Check size={15} /> Simpan pengguna</button></div></div>}
+      {editing && <div role="dialog" aria-modal="true" aria-label="Tambah atau edit pengguna" style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(15,23,42,.35)', display: 'grid', placeItems: 'center', padding: 20 }}><div style={{ width: 'min(520px, 100%)', background: '#fff', borderRadius: 16, padding: 24 }}><h2>Tambah / edit pengguna</h2><button type="button" aria-label="Tutup" onClick={() => setEditing(null)}><X size={18} /></button><div style={{ display: 'grid', gap: 12, marginTop: 18 }}><input aria-label="Nama pengguna" placeholder="Nama pengguna" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /><input aria-label="Email login" disabled={editing.email === currentUser?.email || usersList.some((base) => base.id === editing.id)} type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /><input aria-label="Password" type="password" autoComplete="new-password" minLength={minimumPasswordLength()} required={!users.some((user) => user.id === editing.id)} placeholder={`Password minimal ${minimumPasswordLength()} karakter; kosongkan saat edit untuk mempertahankan`} value={editing.password || ''} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /><select aria-label="Peran" disabled={editing.email === currentUser?.email} value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })}><option value="iku_only">Otoritas IKU</option><option value="kpi_only">Otoritas KPI</option><option value="superadmin_prp">Superadmin PRP</option></select><select aria-label="Status" disabled={editing.email === currentUser?.email} value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option>Aktif</option><option>Nonaktif</option></select></div><button className="users-action" type="button" onClick={saveUser} style={{ marginTop: 18 }}><Check size={15} /> Simpan pengguna</button></div></div>}
     </section>
   );
 }

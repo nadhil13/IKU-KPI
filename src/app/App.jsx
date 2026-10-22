@@ -20,6 +20,13 @@ import TeamPIC from '../features/internal/pages/TeamPIC';
 import Profile from '../features/internal/pages/Profile';
 import AdminPRPDashboard from '../features/internal/pages/AdminPRPDashboard';
 import PRPGovernance from '../features/internal/pages/PRPGovernance';
+import IKUSubmissions from '../features/iku/pages/IKUSubmissions';
+
+function IkuSubmissionOnly() {
+  const { currentUser } = useAuth();
+  return currentUser?.status !== 'Nonaktif' && ['iku_only', 'superadmin_prp'].includes(currentUser?.role)
+    ? <IKUSubmissions /> : <Navigate to={currentUser ? '/internal/profile' : '/login'} replace />;
+}
 
 function AdminOnlyUsers() {
   const { currentUser } = useAuth();
@@ -53,6 +60,7 @@ function App() {
           {/* Internal Routes */}
           <Route path="/internal" element={<InternalLayout />}>
             <Route index element={<InternalIndex />} />
+            <Route path="iku-submissions" element={<IkuSubmissionOnly />} />
             <Route path="admin" element={<SuperadminOnly><AdminPRPDashboard /></SuperadminOnly>} />
             <Route path="admin/governance" element={<SuperadminOnly><PRPGovernance /></SuperadminOnly>} />
             <Route path="users" element={<AdminOnlyUsers />} />
