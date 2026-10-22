@@ -4,6 +4,8 @@
  * sehingga hasil simulasi di desainer selalu identik dengan hasil di lembar user.
  */
 
+import { evaluateKpiFormula, validateKpiFormula } from './formulaEngine';
+
 export const KPI_CONFIG_KEY = 'prp_kpi_config';
 export const KPI_DRAFT_KEY = 'prp_kpi_draft';
 export const KPI_HISTORY_KEY = 'prp_kpi_history';
@@ -100,6 +102,11 @@ export function formatIndonesianNumber(num, maxDecimals = 2) {
 /* ───────────────────────── Katalog tipe rumus ───────────────────────── */
 
 export const CALC_TYPES = {
+  custom: {
+    label: 'Rumus bebas (ala Excel)',
+    expression: 'Tulis sendiri, mis. I1/I2*100 atau SUM(I1;I2)/T*100',
+    minInputs: 1,
+  },
   single_target: {
     label: 'Realisasi ÷ Target',
     expression: 'Capaian = Isian 1 ÷ Target × 100%',
@@ -165,6 +172,21 @@ export const CALC_TYPES = {
   },
 };
 
+/**
+ * Rumus ekuivalen untuk preset non-tanggal, supaya PRP bisa mengubah preset
+ * menjadi "Rumus bebas" lalu mengedit rumusnya tanpa mulai dari nol.
+ */
+export const PRESET_FORMULA_EXPR = {
+  single_target: 'I1/T*100',
+  ratio_two: 'I1/I2*100',
+  ratio_target_pct: '(I1/I2*100)/T*100',
+  sum_two_target: '(I1+I2)/T*100',
+  tracer_study: 'SUM(I1;I2;I3;I4;I5;I6)/I7*100/T*100',
+  primary_with_meta: 'I1/T*100',
+  compliance_integration_pct: 'I1',
+  compliance_audit_ratio: '100-I1/I2*100',
+};
+
 /* ───────────────────────── Kalkulasi per baris ───────────────────────── */
 
 const toDeadline = (iso) => (iso ? new Date(`${iso}T23:59:59`) : null);
@@ -193,6 +215,22 @@ export function computeKpiItem(item, values, isPenaltySection) {
   let extraNote = null;
 
   switch (item.calcType) {
+    case 'custom': {
+      // Hasil rumus = capaian (%). Penalti: skor = (100 − capaian)% × bobot (bobot sudah negatif).
+      const result = evaluateKpiFormula(item.formulaExpr, {
+        inputs: parsedSubs.map((sub) => sub.num),
+        target: targetNum,
+        bobot,
+      });
+      if (result.error) {
+        extraNote = `Rumus error: ${result.error}`;
+      } else if (result.value !== null) {
+        const clamped = Math.min(100, Math.max(0, result.value));
+        ratioPercent = clamped;
+        weightedScore = isPenaltySection ? ((100 - clamped) / 100) * bobot : (clamped / 100) * bobot;
+      }
+      break;
+    }
     case 'ratio_two': {
       if (n(0) !== null && n(1) !== null && n(1) !== 0) {
         ratioPercent = (n(0) / n(1)) * 100;
@@ -422,6 +460,13 @@ export function validateKpiSections(sections) {
       const meta = CALC_TYPES[item.calcType] || CALC_TYPES.single_target;
       if ((item.subrows?.length || 0) < meta.minInputs) {
         issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no} ${item.indikator}: rumus "${meta.label}" butuh minimal ${meta.minInputs} isian.` });
+      }
+      if (item.calcType === 'custom') {
+        const formulaError = validateKpiFormula(item.formulaExpr, item.subrows?.length || 0);
+        if (formulaError) issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: ${formulaError}` });
+        if (/\bT\b/i.test(item.formulaExpr || '') && !(Number(item.targetNum) > 0)) {
+          issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: rumus memakai T, target numerik harus > 0.` });
+        }
       }
       if (meta.needsTarget && !(Number(item.targetNum) > 0)) {
         issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: target numerik harus > 0.` });

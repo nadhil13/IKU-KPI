@@ -6,6 +6,9 @@ import {
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
+import { useAuth } from '../../auth/context/AuthContext';
+import { getUnitKpiForm, readUnitSubmission, subscribeKpiWorkflow, submitUnitKpi } from '../kpiWorkflowStore';
+import { describeKpiFormula } from '../formulaEngine';
 
 import {
   parseIndonesianNumber, parseFlexibleDate, formatIndonesianNumber,
@@ -768,7 +771,23 @@ const WORKFLOW_LABELS = {
  * @param sectionsOverride  Struktur draft (dipakai Desainer PRP untuk "Preview User").
  * @param persist           false = tidak membaca/menulis data isian & workflow ke localStorage.
  */
-export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, sectionsOverride = null, persist = true }) {
+export default function KPIDataEntrySheet(props) {
+  const { currentUser } = useAuth();
+  const [revision, setRevision] = useState(0);
+  useEffect(() => subscribeKpiWorkflow(() => setRevision((value) => value + 1)), []);
+  const form = getUnitKpiForm(currentUser?.email);
+  const isUnit = currentUser?.role === 'kpi_only' && !props.sectionsOverride;
+  if (isUnit && !form) return <div className="gov-placeholder">Belum ada formulir KPI yang dikirim PRP ke unit ini.</div>;
+  const record = isUnit ? readUnitSubmission(form.id, currentUser.email) : null;
+  return <KPIEntryContent key={isUnit ? `${form.id}:${currentUser.email}:${revision}` : 'preview'}
+    {...props} sectionsOverride={isUnit ? form.sections : props.sectionsOverride}
+    unitForm={isUnit ? form : null} unitUser={currentUser} submission={record} />;
+}
+
+function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride = null, persist = true,
+  unitForm = null, unitUser = null, submission = null, valuesOverride = null }) {
+  const valuesKey = unitForm ? `${STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : STORAGE_KEY;
+  const workflowKey = unitForm ? `${WORKFLOW_KEY}:${unitForm.id}:${unitUser.email}` : WORKFLOW_KEY;
   const containerRef = useRef(null);
   const inputRefs = useRef({});
   const fillProgressRef = useRef(null);
@@ -805,9 +824,10 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
   const [focusedKey, setFocusedKey] = useState(null);
   const [lastSaved, setLastSaved] = useState('Siap');
   const [workflow, setWorkflow] = useState(() => {
+    if (submission) return { ...submission, history: [] };
     if (!persist) return { status: WORKFLOW_STATUS.NOT_STARTED, submittedAt: null, submittedBy: 'Preview PRP', revisionNote: '', history: [] };
     try {
-      return JSON.parse(localStorage.getItem(WORKFLOW_KEY)) || {
+      return JSON.parse(localStorage.getItem(workflowKey)) || {
         status: WORKFLOW_STATUS.NOT_STARTED,
         submittedAt: null,
         submittedBy: 'PIC KPI Unit',
@@ -828,14 +848,16 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
   }, [orderedKeys]);
 
   const [values, setValues] = useState(() => {
+    if (valuesOverride) return { ...emptyDefaults, ...valuesOverride };
+    if (submission && submission.status !== WORKFLOW_STATUS.NEEDS_REVISION) return { ...emptyDefaults, ...submission.values };
     if (!persist) return emptyDefaults;
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(valuesKey);
       if (saved) return { ...emptyDefaults, ...JSON.parse(saved) };
     } catch {
       // Ignore storage error
     }
-    return emptyDefaults;
+    return submission ? { ...emptyDefaults, ...submission.values } : emptyDefaults;
   });
 
   useEffect(() => {
@@ -845,7 +867,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
   useEffect(() => {
     if (!persist) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(values));
+      localStorage.setItem(valuesKey, JSON.stringify(values));
       setLastSaved(
         new Date().toLocaleTimeString('id-ID', {
           hour: '2-digit',
@@ -855,16 +877,16 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
     } catch {
       // Ignore
     }
-  }, [values, persist]);
+  }, [values, persist, valuesKey]);
 
   useEffect(() => {
     if (!persist) return;
     try {
-      localStorage.setItem(WORKFLOW_KEY, JSON.stringify(workflow));
+      localStorage.setItem(workflowKey, JSON.stringify(workflow));
     } catch {
       // Ignore storage error
     }
-  }, [workflow, persist]);
+  }, [workflow, persist, workflowKey]);
 
   // ─── KALKULASI REAL-TIME BAGIAN A, B, C, DAN D ───
   const calculated = useMemo(() => {
@@ -1051,6 +1073,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
   }, { dependencies: [calculated.completionRatio], scope: containerRef });
 
   const handleCellChange = (key, val) => {
+    if (readOnly) return;
     if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
 
     setValues((prev) => ({
@@ -1087,6 +1110,7 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
 
   // Simulasi Data Lengkap Bagian A, B, C, dan D
   const handleFillSample = () => {
+    if (readOnly) return;
     if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
     const presetSamples = {
       // Bagian A (Bobot 25)
@@ -1159,12 +1183,14 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
   };
 
   const handleReset = () => {
+    if (readOnly) return;
     if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
     setValues(emptyDefaults);
     setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
   };
 
   const handleSubmit = () => {
+    if (readOnly || ['SUBMITTED', 'APPROVED'].includes(workflow.status)) return;
     if (calculated.totalInvalidInputs > 0) {
       alert(`Masih ada ${calculated.totalInvalidInputs} isian dengan format tidak valid. Periksa kembali sebelum submit.`);
       return;
@@ -1180,6 +1206,11 @@ export default function KPIDataEntrySheet({ onMetricsUpdate, readOnly = false, s
       'Setelah dikirim, lembar kerja akan terkunci dan tidak dapat diedit secara langsung. Anda yakin ingin submit?'
     );
     if (!confirmed) return;
+
+    if (unitForm) {
+      try { submitUnitKpi(unitForm.id, unitUser, values); } catch (error) { alert(error.message); }
+      return;
+    }
 
     const submittedAt = new Date().toISOString();
     setWorkflow((prev) => ({
@@ -1907,7 +1938,7 @@ ${sectionSummaryHtml}
               <span>Submit Lembar Kerja</span>
             </button>
           )}
-          {isLocked && workflow.status !== WORKFLOW_STATUS.APPROVED && (
+          {isLocked && !readOnly && !unitForm && workflow.status !== WORKFLOW_STATUS.APPROVED && (
             <button type="button" onClick={handleRequestRevision} className="clean-btn">
               <RefreshCcw size={14} />
               <span>Ajukan Pembukaan Revisi</span>
@@ -2298,6 +2329,7 @@ ${sectionSummaryHtml}
                               }}
                             >
                               {item.formula}
+                              {item.calcType === 'custom' && <small style={{ display: 'block', marginTop: '.4rem' }}>{describeKpiFormula(item.formulaExpr, item.subrows)}</small>}
                             </td>
                           </>
                         )}

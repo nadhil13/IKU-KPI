@@ -3,6 +3,7 @@ import { ChevronRight, Clock3, Download, FileCog, History, Table2, Upload } from
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import KPITableDesigner from '../components/KPITableDesigner';
+import KPISubmissionInbox from '../components/KPISubmissionInbox';
 
 const DEFAULT_PERIODS = [
   { id: '2025/2026', label: 'Tahun Akademik 2025/2026', start: '2025-08-01', end: '2026-07-31', status: 'Active', inputOpen: true },
@@ -11,6 +12,7 @@ const DEFAULT_PERIODS = [
 
 const TABS = [
   { id: 'kpi-builder', label: 'Desainer tabel KPI', icon: Table2 },
+  { id: 'submissions', label: 'Submission Unit', icon: FileCog },
   { id: 'periods', label: 'Periode evaluasi', icon: Clock3 },
   { id: 'audit', label: 'Audit trail', icon: History },
 ];
@@ -121,7 +123,7 @@ export default function PRPGovernance() {
           <div className="gov-eyebrow"><FileCog size={13} /> PRP / GOVERNANCE WORKSPACE</div>
           <h1 className="gov-title">Konfigurasi kinerja</h1>
           <p className="gov-lede">
-            Desain struktur KPI dengan bentuk tabel yang sama persis dengan lembar isian user. Setiap publish membuat versi baru dan langsung tersinkron realtime ke user KPI.
+            Buat struktur dan rumus KPI, lalu kirim formulir ke Unit Kerja. Setiap pengiriman menyimpan versi per periode; perubahan draft tidak mengubah isian yang sudah dikirim.
           </p>
         </div>
         <div className="gov-meta">PERIODE AKTIF · {activePeriod?.label || 'Belum ada'}</div>
@@ -134,7 +136,7 @@ export default function PRPGovernance() {
               <Icon size={15} />{label}<ChevronRight size={13} className="chev" />
             </button>
           ))}
-          <div className="gov-note">Edit inline · simulasi realtime · publish ke seluruh user KPI.</div>
+          <div className="gov-note">Desain formulir → kirim ke unit → unit isi Isian → PRP tinjau capaian. Live sync konfigurasi tidak mengubah snapshot formulir terkirim.</div>
           <button type="button" className="gov-button" onClick={exportData}><Download size={14} /> Export JSON</button>
           <label className="gov-button" style={{ marginTop: '.45rem' }}>
             <Upload size={14} /> Import JSON
@@ -144,6 +146,7 @@ export default function PRPGovernance() {
 
         <main style={{ minWidth: 0 }}>
           {activeTab === 'kpi-builder' && <KPITableDesigner />}
+          {activeTab === 'submissions' && <KPISubmissionInbox />}
 
           {activeTab === 'periods' && (
             <div className="gov-table">
