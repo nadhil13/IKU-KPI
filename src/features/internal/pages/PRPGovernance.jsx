@@ -1,14 +1,19 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Clock3, Download, FileCog, History, Table2, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Download, Settings2, Upload, ArrowUpRight, RotateCcw
+} from 'lucide-react';
 import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
+import { Link, useSearchParams } from 'react-router-dom';
 import KPITableDesigner from '../components/KPITableDesigner';
 import KPISubmissionInbox from '../components/KPISubmissionInbox';
 import AllSubmissionsTable from '../components/AllSubmissionsTable';
 import SystemSettings from '../components/SystemSettings';
 import { readAudit, readSystemConfig, writeAudit } from '../adminStore';
 import { useAuth } from '../../auth/context/AuthContext';
-import { Link } from 'react-router-dom';
+
+gsap.registerPlugin(ScrollTrigger);
 
 const DEFAULT_PERIODS = [
   { id: '2025/2026', label: 'Tahun Akademik 2025/2026', start: '2025-08-01', end: '2026-07-31', status: 'Active', inputOpen: true },
@@ -16,12 +21,14 @@ const DEFAULT_PERIODS = [
 ];
 
 const TABS = [
-  { id: 'kpi-builder', label: 'Desainer tabel KPI', icon: Table2 },
-  { id: 'submissions', label: 'Submission Unit', icon: FileCog },
-  { id: 'periods', label: 'Periode evaluasi', icon: Clock3 },
-  { id: 'audit', label: 'Audit trail', icon: History },
-  { id: 'settings', label: 'Pengaturan sistem', icon: FileCog },
+  { idx: '01', id: 'kpi-builder', label: 'Desainer Tabel KPI', desc: 'Struktur & formula' },
+  { idx: '02', id: 'submissions', label: 'Pusat Review Unit', desc: 'Inbox IKU & KPI' },
+  { idx: '03', id: 'periods', label: 'Periode & Tenggat', desc: 'Siklus akademik' },
+  { idx: '04', id: 'audit', label: 'Audit Trail', desc: 'Jejak aktivitas' },
+  { idx: '05', id: 'settings', label: 'Kebijakan Sistem', desc: 'Parameter global' },
 ];
+
+const VALID_TAB_IDS = new Set(TABS.map((t) => t.id));
 
 const readJSON = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; }
@@ -31,15 +38,25 @@ export default function PRPGovernance() {
   const { currentUser } = useAuth();
   const actor = currentUser?.name || currentUser?.email || 'Admin lokal';
   const pageRef = useRef(null);
-  const [activeTab, setActiveTab] = useState('kpi-builder');
+  const tabStageRef = useRef(null);
+  const tabBarRef = useRef(null);
+  const tabLineRef = useRef(null);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab');
+  const activeTab = VALID_TAB_IDS.has(rawTab) ? rawTab : 'kpi-builder';
+
+  const selectTab = (tabId) => {
+    setSearchParams({ tab: tabId }, { replace: true });
+  };
+
   const [periods, setPeriods] = useState(() => readJSON('prp_periods', DEFAULT_PERIODS));
   const [audit, setAudit] = useState(() => readJSON('prp_audit', []));
   const [feedback, setFeedback] = useState('');
   const [search, setSearch] = useState('');
-  // Filter audit terstruktur: jenis aksi, pelaku, dan rentang tanggal (YYYY-MM-DD).
   const [auditFilter, setAuditFilter] = useState({ action: '', actor: '', from: '', to: '' });
-  // Submission KPI yang dipilih dari daftar terpadu untuk dibuka di inbox.
-  const [kpiFocus, setKpiFocus] = useState(null);
+  const [kpiSelected, setKpiSelected] = useState(null);
+
   useEffect(() => {
     const refresh = () => setAudit(readAudit());
     window.addEventListener('prp-admin-updated', refresh);
@@ -49,6 +66,7 @@ export default function PRPGovernance() {
       window.removeEventListener('storage', refresh);
     };
   }, []);
+
   const auditActions = useMemo(() => [...new Set(audit.map((item) => item.action).filter(Boolean))].sort(), [audit]);
   const auditActors = useMemo(() => [...new Set(audit.map((item) => item.actor).filter(Boolean))].sort(), [audit]);
   const filteredAudit = audit.filter((item) => {
@@ -59,6 +77,7 @@ export default function PRPGovernance() {
       && (!auditFilter.from || day >= auditFilter.from)
       && (!auditFilter.to || day <= auditFilter.to);
   });
+
   /** Unduh audit terfilter sebagai berkas JSON atau CSV (CSV aman untuk koma/kutip). */
   const downloadAudit = (format) => {
     const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -67,7 +86,11 @@ export default function PRPGovernance() {
       : JSON.stringify(filteredAudit, null, 2);
     const type = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json';
     const url = URL.createObjectURL(new Blob([format === 'csv' ? '\ufeff' + body : body], { type }));
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `prp-audit.${format}`; anchor.click(); URL.revokeObjectURL(url);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `prp-audit.${format}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
     writeAudit('EXPORT_AUDIT', `${filteredAudit.length} entri (${format.toUpperCase()})`, actor);
   };
 
@@ -78,17 +101,71 @@ export default function PRPGovernance() {
     for (const period of items) {
       if (!period || typeof period.id !== 'string' || !period.id.trim() || ids.has(period.id) || typeof period.label !== 'string' || !period.label.trim()
         || !['Active', 'Draft', 'Archived'].includes(period.status) || typeof period.inputOpen !== 'boolean'
-        || !validDate(period.start) || !validDate(period.end) || period.start > period.end) throw new Error('Setiap periode wajib memiliki ID unik, nama, status, flag input, dan rentang tanggal yang valid.');
+        || !validDate(period.start) || !validDate(period.end) || period.start > period.end) {
+        throw new Error('Setiap periode wajib memiliki ID unik, nama, status, flag input, dan rentang tanggal yang valid.');
+      }
       ids.add(period.id);
       const deadline = period.submissionDeadline;
-      if (deadline !== undefined && (typeof deadline !== 'string' || (deadline && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deadline) || !validDate(deadline.slice(0, 10)) || !Number.isFinite(new Date(deadline).getTime()) || deadline.slice(11) > '23:59' || deadline.slice(14) > '59' || deadline.slice(0, 10) < period.start || deadline.slice(0, 10) > period.end)))) throw new Error('Tenggat periode harus valid dan berada dalam rentang awal–akhir periode.');
+      if (deadline !== undefined && (typeof deadline !== 'string' || (deadline && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deadline) || !validDate(deadline.slice(0, 10)) || !Number.isFinite(new Date(deadline).getTime()) || deadline.slice(11) > '23:59' || deadline.slice(14) > '59' || deadline.slice(0, 10) < period.start || deadline.slice(0, 10) > period.end)))) {
+        throw new Error('Tenggat periode harus valid dan berada dalam rentang awal–akhir periode.');
+      }
     }
     if (items.filter((period) => period.status === 'Active').length > 1) throw new Error('Hanya satu periode boleh aktif.');
   };
 
+  // Entrance Masthead Choreography
   useGSAP(() => {
-    gsap.from('.gov-reveal', { y: 18, opacity: 0, duration: 0.65, stagger: 0.06, ease: 'expo.out' });
+    const tl = gsap.timeline({ defaults: { ease: 'expo.out' } });
+    tl.fromTo(
+      '.gov-title-line',
+      { yPercent: 115 },
+      { yPercent: 0, duration: 0.82, stagger: 0.07 }
+    )
+      .fromTo(
+        '.gov-reveal',
+        { y: 16, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.6, stagger: 0.05, clearProps: 'transform' },
+        '-=0.55'
+      )
+      .fromTo(
+        '.gov-keyline',
+        { scaleX: 0 },
+        { scaleX: 1, transformOrigin: 'left center', duration: 0.9, ease: 'expo.inOut' },
+        '-=0.6'
+      );
   }, { scope: pageRef });
+
+  // Sliding Underline Bar + Masked Stage Transition saat berpindah sub-tab
+  useGSAP(() => {
+    if (tabBarRef.current && tabLineRef.current) {
+      const activeBtn = tabBarRef.current.querySelector('[data-tab-active="true"]');
+      if (activeBtn) {
+        gsap.to(tabLineRef.current, {
+          x: activeBtn.offsetLeft,
+          width: activeBtn.offsetWidth,
+          opacity: 1,
+          duration: 0.45,
+          ease: 'expo.out',
+          overwrite: 'auto',
+        });
+      }
+    }
+
+    if (!tabStageRef.current) return;
+    gsap.fromTo(
+      tabStageRef.current,
+      { opacity: 0, y: 18, clipPath: 'inset(0% 0% 3% 0%)' },
+      {
+        opacity: 1,
+        y: 0,
+        clipPath: 'inset(0% 0% 0% 0%)',
+        duration: 0.52,
+        ease: 'expo.out',
+        clearProps: 'transform,clipPath',
+        onComplete: () => ScrollTrigger.refresh(),
+      }
+    );
+  }, { dependencies: [activeTab] });
 
   const activePeriod = useMemo(() => periods.find((period) => period.status === 'Active') || periods[0], [periods]);
 
@@ -102,10 +179,11 @@ export default function PRPGovernance() {
       setPeriods(next);
       window.dispatchEvent(new CustomEvent('prp-admin-updated'));
       setFeedback('Perubahan periode berhasil disimpan dan diaudit.');
-    } catch (error) { setFeedback(error.message); }
+    } catch (error) {
+      setFeedback(error.message);
+    }
   };
 
-  // Hanya satu periode boleh Active; periode lain otomatis diarsipkan.
   const updatePeriod = (id, field, value) => {
     savePeriods(periods.map((period) => {
       if (period.id === id) return { ...period, [field]: value };
@@ -149,92 +227,443 @@ export default function PRPGovernance() {
   return (
     <section ref={pageRef} className="governance-page">
       <style>{`
-        .governance-page{max-width:1680px;margin:0 auto;padding:.25rem 0 4rem;color:#0f172a}
-        .gov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:1.1rem}
-        .gov-eyebrow{display:flex;align-items:center;gap:.45rem;color:#64748b;font-size:.68rem;font-weight:800;letter-spacing:.12em}
-        .gov-title{margin:.55rem 0 .35rem;font:800 clamp(1.8rem,3vw,2.7rem)/1 Outfit,sans-serif;letter-spacing:-.05em}
-        .gov-lede{max-width:760px;margin:0;color:#64748b;font-size:.82rem;line-height:1.6}
-        .gov-meta{padding:.7rem .9rem;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#475569;font-size:.68rem;font-weight:750}
-        .gov-layout{display:flex;flex-direction:column;gap:1rem}
-        .gov-tabs{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.55rem;padding:.55rem .7rem;border:1px solid #e2e8f0;border-radius:14px;background:#fff}
-        .gov-tabs-list{display:flex;align-items:center;flex-wrap:wrap;gap:.35rem}
-        .gov-tabs-actions{display:flex;align-items:center;gap:.45rem;margin-left:auto}
-        .gov-tab{display:inline-flex;align-items:center;gap:.5rem;padding:.6rem .85rem;border:1px solid transparent;border-radius:9px;background:transparent;color:#64748b;text-align:left;font-size:.74rem;font-weight:750;cursor:pointer;transition:background .2s,color .2s,border-color .2s}
-        .gov-tab:hover{color:#0f172a;background:#f8fafc}
-        .gov-tab.active{background:#0f172a;color:#fff;border-color:#0f172a}
-        .gov-tab .chev{display:none}
-        .gov-note{display:none}
-        .gov-button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;box-sizing:border-box;padding:.55rem .8rem;border:1px solid #dbe3ec;border-radius:9px;background:#fff;color:#475569;font-weight:750;font-size:.68rem;cursor:pointer}
-        .gov-table{border:1px solid #e2e8f0;border-radius:15px;background:#fff;overflow:hidden}
-        .gov-table-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 1.1rem;border-bottom:1px solid #f1f5f9}
-        .gov-table-head h2{margin:0;font:800 .95rem Outfit,sans-serif}
-        .gov-table-head span{color:#94a3b8;font-size:.68rem}
-        .gov-field{display:block;width:100%;box-sizing:border-box;padding:.65rem;margin-top:.4rem;border:1px solid #dbe3ec;border-radius:8px;font:inherit}
-        .gov-period-row{display:grid;grid-template-columns:minmax(130px,1fr) 130px 130px minmax(180px,1fr) 100px 120px;gap:.6rem;align-items:center;padding:.8rem 1rem;border-bottom:1px solid #f1f5f9;font-size:.72rem;overflow:auto}
-        .gov-period-row input,.gov-period-row select{width:100%;box-sizing:border-box;padding:.45rem;border:1px solid #dbe3ec;border-radius:6px;font-size:.7rem}
-        .gov-period-row label{display:flex;align-items:center;gap:.35rem;color:#475569;font-weight:700}
-        .gov-period-row label input{width:auto}
-        .gov-audit-row{display:grid;grid-template-columns:180px 1fr 170px;gap:.75rem;padding:.8rem 1rem;border-bottom:1px solid #f1f5f9;font-size:.72rem}
-        .gov-placeholder{padding:2rem;color:#94a3b8;font-size:.78rem}
-        @media(max-width:900px){
-          .gov-head{align-items:flex-start;flex-direction:column}
-          .gov-period-row,.gov-audit-row{grid-template-columns:1fr 1fr}
-          .gov-tabs-actions{width:100%;justify-content:flex-start;margin-left:0}
+        .governance-page {
+          max-width: 1680px;
+          margin: 0 auto;
+          padding: 0 0 4rem;
+          color: #09090b;
+        }
+        .gov-meta-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 0.75rem;
+          padding-bottom: 0.9rem;
+          border-bottom: 1px solid #e4e4e7;
+          font-family: var(--ent-mono);
+          font-size: 0.65rem;
+          color: #71717a;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .gov-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          flex-wrap: wrap;
+          gap: 1.5rem;
+          padding: 1.65rem 0 1.4rem;
+        }
+        .gov-title {
+          margin: 0;
+          font: 800 clamp(1.85rem, 3.2vw, 2.75rem)/1.03 Outfit, sans-serif;
+          letter-spacing: -0.04em;
+          color: #09090b;
+        }
+        .gov-title-mask {
+          overflow: hidden;
+          display: block;
+          padding-bottom: 0.05em;
+        }
+        .gov-title-line {
+          display: block;
+          will-change: transform;
+        }
+        .gov-lede {
+          max-width: 680px;
+          margin: 0.75rem 0 0;
+          color: #52525b;
+          font-size: 0.86rem;
+          line-height: 1.65;
+        }
+        .gov-keyline {
+          width: 100%;
+          height: 1.5px;
+          background: #09090b;
+        }
+        .gov-layout {
+          display: flex;
+          flex-direction: column;
+          gap: 1.35rem;
+        }
+        .gov-tabs {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 0.75rem;
+          border-bottom: 1px solid #e4e4e7;
+          background: #ffffff;
+        }
+        .gov-tabs-list {
+          position: relative;
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.25rem;
+        }
+        .gov-tab-underline {
+          position: absolute;
+          left: 0;
+          bottom: -1px;
+          height: 2px;
+          width: 0;
+          background: #09090b;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .gov-tabs-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.45rem 0;
+          margin-left: auto;
+        }
+        .gov-tab {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.48rem;
+          padding: 0.85rem 0.9rem;
+          border: none;
+          background: transparent;
+          color: #71717a;
+          text-align: left;
+          font-size: 0.78rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: color 0.2s ease;
+        }
+        .gov-tab:hover {
+          color: #09090b;
+        }
+        .gov-tab.active {
+          color: #09090b;
+          font-weight: 700;
+        }
+        .gov-tab-idx {
+          font-family: var(--ent-mono);
+          font-size: 0.62rem;
+          color: #a1a1aa;
+          font-weight: 600;
+        }
+        .gov-tab.active .gov-tab-idx {
+          color: #09090b;
+          font-weight: 700;
+        }
+        .gov-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.42rem;
+          box-sizing: border-box;
+          padding: 0.48rem 0.85rem;
+          border: 1px solid #d4d4d8;
+          border-radius: 6px;
+          background: #ffffff;
+          color: #09090b;
+          font-weight: 600;
+          font-size: 0.73rem;
+          cursor: pointer;
+          text-decoration: none;
+          transition: all 0.18s ease;
+          white-space: nowrap;
+        }
+        .gov-button:hover:not(:disabled) {
+          background: #f4f4f5;
+          border-color: #09090b;
+        }
+        .gov-button-primary {
+          background: #09090b;
+          color: #ffffff;
+          border-color: #09090b;
+        }
+        .gov-button-primary:hover:not(:disabled) {
+          background: #27272a;
+          color: #ffffff;
+          border-color: #27272a;
+        }
+        .gov-table {
+          border: 1px solid #e4e4e7;
+          border-radius: 8px;
+          background: #ffffff;
+          overflow: hidden;
+        }
+        .gov-table-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 1rem;
+          padding: 1.05rem 1.25rem;
+          border-bottom: 1px solid #e4e4e7;
+          background: #fafafa;
+        }
+        .gov-table-head h2 {
+          margin: 0;
+          font: 800 0.96rem Outfit, sans-serif;
+          color: #09090b;
+          letter-spacing: -0.015em;
+        }
+        .gov-table-head span {
+          display: block;
+          margin-top: 0.18rem;
+          color: #71717a;
+          font-size: 0.72rem;
+        }
+        .gov-field {
+          display: block;
+          width: 100%;
+          box-sizing: border-box;
+          padding: 0.56rem 0.75rem;
+          border: 1px solid #d4d4d8;
+          border-radius: 6px;
+          background: #ffffff;
+          color: #09090b;
+          font: inherit;
+          font-size: 0.78rem;
+          outline: none;
+          transition: border-color 0.18s ease;
+        }
+        .gov-field:focus {
+          border-color: #09090b;
+        }
+        .gov-period-row {
+          display: grid;
+          grid-template-columns: minmax(170px, 1.2fr) 140px 140px minmax(200px, 1.2fr) 115px 125px;
+          gap: 0.75rem;
+          align-items: center;
+          padding: 0.9rem 1.25rem;
+          border-bottom: 1px solid #e4e4e7;
+          font-size: 0.76rem;
+          transition: background 0.18s ease;
+        }
+        .gov-period-row:hover {
+          background: #fafafa;
+        }
+        .gov-period-row:last-child {
+          border-bottom: none;
+        }
+        .gov-period-row input:not([type="checkbox"]),
+        .gov-period-row select {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 0.48rem 0.62rem;
+          border: 1px solid #d4d4d8;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          background: #ffffff;
+          color: #09090b;
+          outline: none;
+        }
+        .gov-period-row input:not([type="checkbox"]):focus,
+        .gov-period-row select:focus {
+          border-color: #09090b;
+        }
+        .gov-period-row label {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          color: #27272a;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .gov-audit-row {
+          display: grid;
+          grid-template-columns: 200px 1fr 175px;
+          gap: 1rem;
+          align-items: center;
+          padding: 0.85rem 1.25rem;
+          border-bottom: 1px solid #e4e4e7;
+          font-size: 0.76rem;
+          transition: background 0.18s ease;
+        }
+        .gov-audit-row:hover {
+          background: #fafafa;
+        }
+        .gov-audit-row:last-child {
+          border-bottom: none;
+        }
+        .gov-placeholder {
+          padding: 2.5rem 1.5rem;
+          text-align: center;
+          color: #71717a;
+          font-size: 0.82rem;
+        }
+        .gov-feedback-banner {
+          margin-bottom: 0.85rem;
+          padding: 0.7rem 0.95rem;
+          border-left: 2px solid #09090b;
+          background: #fafafa;
+          border-top: 1px solid #e4e4e7;
+          border-right: 1px solid #e4e4e7;
+          border-bottom: 1px solid #e4e4e7;
+          color: #09090b;
+          font-size: 0.78rem;
+          font-weight: 600;
+        }
+        @media (max-width: 1024px) {
+          .gov-period-row {
+            grid-template-columns: 1fr 1fr;
+          }
+          .gov-audit-row {
+            grid-template-columns: 1fr;
+            gap: 0.35rem;
+          }
+          .gov-tabs-actions {
+            width: 100%;
+            justify-content: flex-start;
+            margin-left: 0;
+          }
         }
       `}</style>
 
-      <div className="gov-head gov-reveal">
-        <div>
-          <div className="gov-eyebrow"><FileCog size={13} /> PRP / GOVERNANCE WORKSPACE</div>
-          <h1 className="gov-title">Konfigurasi kinerja</h1>
-          <p className="gov-lede">
-            Buat struktur dan rumus KPI ala Excel, lalu kirim formulir ke Unit Kerja. Setiap pengiriman menyimpan versi per periode; perubahan draft tidak mengubah isian yang sudah dikirim.
-          </p>
-        </div>
-        <div className="gov-meta">PERIODE AKTIF · {activePeriod?.label || 'Belum ada'}</div>
+      <div className="gov-meta-top gov-reveal">
+        <span>SYS // PRP.GOVERNANCE</span>
+        <span>SIKLUS AKTIF: <strong style={{ color: '#09090b' }}>{activePeriod?.label || 'Belum diatur'}</strong></span>
       </div>
 
-      <div className="gov-layout gov-reveal">
-        <aside className="gov-tabs">
-          <div className="gov-tabs-list">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button key={id} type="button" className={`gov-tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>
-                <Icon size={15} />{label}<ChevronRight size={13} className="chev" />
+      <div className="gov-head">
+        <div>
+          <h1 className="gov-title">
+            <span className="gov-title-mask">
+              <span className="gov-title-line">Konfigurasi &amp; Tata Kelola</span>
+            </span>
+          </h1>
+          <p className="gov-lede gov-reveal">
+            Arsitektur tabel dan formula KPI, pusat verifikasi submission lintas unit, manajemen siklus evaluasi akademik, serta audit kebijakan institusi.
+          </p>
+        </div>
+        <div className="gov-reveal" style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <button type="button" className="gov-button" onClick={exportData}>
+            <Download size={13} /> Export JSON
+          </button>
+          <label className="gov-button">
+            <Upload size={13} /> Import JSON
+            <input hidden type="file" accept="application/json" onChange={importData} />
+          </label>
+        </div>
+      </div>
+
+      <div className="gov-keyline" />
+
+      <div className="gov-layout">
+        <aside className="gov-tabs gov-reveal" aria-label="Sub-modul tata kelola PRP">
+          <div ref={tabBarRef} className="gov-tabs-list">
+            {TABS.map(({ idx, id, label }) => (
+              <button
+                key={id}
+                type="button"
+                data-tab-active={activeTab === id ? 'true' : undefined}
+                className={`gov-tab ${activeTab === id ? 'active' : ''}`}
+                onClick={() => selectTab(id)}
+              >
+                <span className="gov-tab-idx">{idx}</span>
+                <span>{label}</span>
               </button>
             ))}
-          </div>
-          <div className="gov-tabs-actions">
-            <button type="button" className="gov-button" onClick={exportData}><Download size={14} /> Export JSON</button>
-            <label className="gov-button">
-              <Upload size={14} /> Import JSON
-              <input hidden type="file" accept="application/json" onChange={importData} />
-            </label>
+            <div ref={tabLineRef} className="gov-tab-underline" aria-hidden="true" />
           </div>
         </aside>
 
-        <main style={{ minWidth: 0 }}>
-          <div role="status" aria-live="polite" style={{ marginBottom: '.75rem' }}>{feedback}</div>
+        <main ref={tabStageRef} style={{ minWidth: 0 }}>
+          {feedback && (
+            <div role="status" aria-live="polite" className="gov-feedback-banner">
+              {feedback}
+            </div>
+          )}
+
           {activeTab === 'kpi-builder' && <KPITableDesigner />}
-          {activeTab === 'submissions' && <><div className="gov-table-head"><strong>Pusat review IKU & KPI</strong><Link to="/internal/iku-submissions" className="gov-button" style={{ width: 'auto' }}>Buka submission IKU →</Link></div><AllSubmissionsTable onReviewKpi={(target) => setKpiFocus({ ...target })} /><KPISubmissionInbox focus={kpiFocus} /></>}
+
+          {activeTab === 'submissions' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+              <div
+                className="ent-card"
+                style={{
+                  padding: '1rem 1.3rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                }}
+              >
+                <div>
+                  <strong style={{ fontSize: '0.92rem', fontFamily: 'Outfit, sans-serif', color: '#0f172a', display: 'block' }}>
+                    Pusat Review Terpadu — IKU Kementerian & KPI Operasional
+                  </strong>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Verifikasi kelengkapan isian, tautan bukti pendukung HTTPS, serta persetujuan dan penguncian data unit.
+                  </span>
+                </div>
+                <Link to="/internal/iku-submissions" className="gov-button gov-button-primary">
+                  Buka Workspace Submission IKU <ArrowUpRight size={14} />
+                </Link>
+              </div>
+              <AllSubmissionsTable onReviewKpi={(target) => setKpiSelected({ ...target })} />
+              <KPISubmissionInbox selected={kpiSelected} onSelect={setKpiSelected} />
+            </div>
+          )}
+
           {activeTab === 'settings' && <SystemSettings />}
 
           {activeTab === 'periods' && (
             <div className="gov-table">
               <div className="gov-table-head">
-                <div><h2>Periode evaluasi</h2><span>Satu periode aktif untuk pengisian KPI</span></div>
-                <button type="button" className="gov-button" style={{ width: 'auto' }} onClick={addPeriod}>+ Tambah periode</button>
+                <div>
+                  <h2>Manajemen Periode Evaluasi</h2>
+                  <span>Hanya satu periode yang dapat berstatus Aktif untuk pengisian KPI & IKU secara serentak</span>
+                </div>
+                <button type="button" className="gov-button gov-button-primary" onClick={addPeriod}>
+                  + Tambah Periode Baru
+                </button>
               </div>
               {periods.map((period) => (
                 <div className="gov-period-row" key={period.id}>
-                  <input aria-label="Nama periode" key={`label-${period.label}`} defaultValue={period.label} onBlur={(event) => updatePeriod(period.id, 'label', event.target.value.trim())} />
-                  <input aria-label="Tanggal mulai" key={`start-${period.start}`} type="date" defaultValue={period.start || ''} onBlur={(event) => updatePeriod(period.id, 'start', event.target.value)} />
-                  <input aria-label="Tanggal akhir" key={`end-${period.end}`} type="date" defaultValue={period.end || ''} onBlur={(event) => updatePeriod(period.id, 'end', event.target.value)} />
-                  <div><input aria-label="Tenggat periode opsional" key={`deadline-${period.submissionDeadline}`} type="datetime-local" defaultValue={period.submissionDeadline || ''} onBlur={(event) => updatePeriod(period.id, 'submissionDeadline', event.target.value)} /><small>Kosong: tenggat global {readSystemConfig().submissionDeadline || '(belum diatur)'}</small></div>
+                  <input
+                    aria-label="Nama periode"
+                    key={`label-${period.label}`}
+                    defaultValue={period.label}
+                    onBlur={(event) => updatePeriod(period.id, 'label', event.target.value.trim())}
+                  />
+                  <input
+                    aria-label="Tanggal mulai"
+                    key={`start-${period.start}`}
+                    type="date"
+                    defaultValue={period.start || ''}
+                    onBlur={(event) => updatePeriod(period.id, 'start', event.target.value)}
+                  />
+                  <input
+                    aria-label="Tanggal akhir"
+                    key={`end-${period.end}`}
+                    type="date"
+                    defaultValue={period.end || ''}
+                    onBlur={(event) => updatePeriod(period.id, 'end', event.target.value)}
+                  />
+                  <div>
+                    <input
+                      aria-label="Tenggat periode opsional"
+                      key={`deadline-${period.submissionDeadline}`}
+                      type="datetime-local"
+                      defaultValue={period.submissionDeadline || ''}
+                      onBlur={(event) => updatePeriod(period.id, 'submissionDeadline', event.target.value)}
+                    />
+                    <small style={{ display: 'block', marginTop: '3px', color: '#64748b', fontSize: '0.65rem' }}>
+                      Fallback global: {readSystemConfig().submissionDeadline || 'Belum diatur'}
+                    </small>
+                  </div>
                   <select value={period.status} onChange={(event) => updatePeriod(period.id, 'status', event.target.value)}>
-                    <option>Active</option><option>Draft</option><option>Archived</option>
+                    <option>Active</option>
+                    <option>Draft</option>
+                    <option>Archived</option>
                   </select>
                   <label>
-                    <input type="checkbox" checked={period.inputOpen !== false} onChange={(event) => updatePeriod(period.id, 'inputOpen', event.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={period.inputOpen !== false}
+                      onChange={(event) => updatePeriod(period.id, 'inputOpen', event.target.checked)}
+                    />
                     Input dibuka
                   </label>
                 </div>
@@ -244,27 +673,103 @@ export default function PRPGovernance() {
 
           {activeTab === 'audit' && (
             <div className="gov-table">
-              <div className="gov-table-head"><div><h2>Audit trail</h2><span>Riwayat lokal · maksimum 500 entri · bukan log server permanen</span></div>
-                <div style={{ display: 'flex', gap: '.5rem' }}>
-                  <button type="button" className="gov-button" style={{ width: 'auto' }} onClick={() => downloadAudit('csv')}>Export CSV ({filteredAudit.length})</button>
-                  <button type="button" className="gov-button" style={{ width: 'auto' }} onClick={() => downloadAudit('json')}>Export JSON</button>
+              <div className="gov-table-head">
+                <div>
+                  <h2>Log Audit Aktivitas Sistem</h2>
+                  <span>Rekam jejak perubahan konfigurasi, pengguna, dan keputusan review (maksimum 500 entri lokal)</span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button type="button" className="gov-button" onClick={() => selectTab('settings')}>
+                    <Settings2 size={14} /> Kebijakan Sistem
+                  </button>
+                  <button type="button" className="gov-button" onClick={() => downloadAudit('csv')}>
+                    <Download size={14} /> Export CSV ({filteredAudit.length})
+                  </button>
+                  <button type="button" className="gov-button" onClick={() => downloadAudit('json')}>
+                    <Download size={14} /> Export JSON
+                  </button>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '.6rem', padding: '.8rem 1rem' }}>
-                <input className="gov-field" type="search" aria-label="Cari audit" placeholder="Cari aktivitas, detail, pelaku, atau waktu…" value={search} onChange={(event) => setSearch(event.target.value)} />
-                <select className="gov-field" aria-label="Filter aksi" value={auditFilter.action} onChange={(e) => setAuditFilter((f) => ({ ...f, action: e.target.value }))}><option value="">Semua aksi</option>{auditActions.map((a) => <option key={a}>{a}</option>)}</select>
-                <select className="gov-field" aria-label="Filter pelaku" value={auditFilter.actor} onChange={(e) => setAuditFilter((f) => ({ ...f, actor: e.target.value }))}><option value="">Semua pelaku</option>{auditActors.map((a) => <option key={a}>{a}</option>)}</select>
-                <input className="gov-field" type="date" aria-label="Dari tanggal" value={auditFilter.from} onChange={(e) => setAuditFilter((f) => ({ ...f, from: e.target.value }))} />
-                <input className="gov-field" type="date" aria-label="Sampai tanggal" value={auditFilter.to} onChange={(e) => setAuditFilter((f) => ({ ...f, to: e.target.value }))} />
-                <button type="button" className="gov-button" onClick={() => { setSearch(''); setAuditFilter({ action: '', actor: '', from: '', to: '' }); }}>Reset filter</button>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))',
+                  gap: '0.65rem',
+                  padding: '0.95rem 1.3rem',
+                  background: '#f8fafc',
+                  borderBottom: '1px solid #f1f5f9',
+                }}
+              >
+                <input
+                  className="gov-field"
+                  type="search"
+                  aria-label="Cari audit"
+                  placeholder="Cari aktivitas, detail, pelaku…"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+                <select
+                  className="gov-field"
+                  aria-label="Filter aksi"
+                  value={auditFilter.action}
+                  onChange={(e) => setAuditFilter((f) => ({ ...f, action: e.target.value }))}
+                >
+                  <option value="">Semua aksi</option>
+                  {auditActions.map((a) => <option key={a}>{a}</option>)}
+                </select>
+                <select
+                  className="gov-field"
+                  aria-label="Filter pelaku"
+                  value={auditFilter.actor}
+                  onChange={(e) => setAuditFilter((f) => ({ ...f, actor: e.target.value }))}
+                >
+                  <option value="">Semua pelaku</option>
+                  {auditActors.map((a) => <option key={a}>{a}</option>)}
+                </select>
+                <input
+                  className="gov-field"
+                  type="date"
+                  aria-label="Dari tanggal"
+                  value={auditFilter.from}
+                  onChange={(e) => setAuditFilter((f) => ({ ...f, from: e.target.value }))}
+                />
+                <input
+                  className="gov-field"
+                  type="date"
+                  aria-label="Sampai tanggal"
+                  value={auditFilter.to}
+                  onChange={(e) => setAuditFilter((f) => ({ ...f, to: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="gov-button"
+                  onClick={() => {
+                    setSearch('');
+                    setAuditFilter({ action: '', actor: '', from: '', to: '' });
+                  }}
+                >
+                  <RotateCcw size={13} /> Reset Filter
+                </button>
               </div>
-              {filteredAudit.length
-                ? filteredAudit.map((item) => (
+              {filteredAudit.length ? (
+                filteredAudit.map((item) => (
                   <div className="gov-audit-row" key={item.id}>
-                    <strong>{item.action}<br /><small>{item.actor || 'Pelaku tidak tercatat'}</small></strong><span>{item.detail}</span><time dateTime={item.at}>{Number.isFinite(Date.parse(item.at)) ? new Date(item.at).toLocaleString('id-ID') : item.at}</time>
+                    <div>
+                      <strong style={{ color: '#0f172a', fontSize: '0.75rem', letterSpacing: '0.02em' }}>{item.action}</strong>
+                      <small style={{ display: 'block', color: '#64748b', marginTop: '2px' }}>{item.actor || 'Pelaku tidak tercatat'}</small>
+                    </div>
+                    <span style={{ color: '#334155', lineHeight: 1.5 }}>{item.detail}</span>
+                    <time
+                      dateTime={item.at}
+                      style={{ color: '#64748b', fontSize: '0.71rem', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}
+                    >
+                      {Number.isFinite(Date.parse(item.at)) ? new Date(item.at).toLocaleString('id-ID') : item.at}
+                    </time>
                   </div>
                 ))
-                : <div className="gov-placeholder">Tidak ada aktivitas yang sesuai.</div>}
+              ) : (
+                <div className="gov-placeholder">Tidak ada aktivitas audit yang sesuai dengan kriteria pencarian.</div>
+              )}
             </div>
           )}
         </main>

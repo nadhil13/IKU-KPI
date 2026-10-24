@@ -956,3 +956,229 @@ img {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SWISS ARCHITECTURAL ENTERPRISE SYSTEM (ANTI-AI · PURE CLEAN VIEW)
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --ent-bg: #ffffff;
+  --ent-surface: #ffffff;
+  --ent-surface-subtle: #fafafa;
+  --ent-surface-muted: #f4f4f5;
+  --ent-border: #e4e4e7;
+  --ent-border-strong: #09090b;
+  --ent-ink: #09090b;
+  --ent-ink-secondary: #27272a;
+  --ent-ink-muted: #52525b;
+  --ent-ink-subtle: #a1a1aa;
+  --ent-accent: #09090b;
+  --ent-accent-teal: #094E68;
+  --ent-accent-sky: #09090b;
+  --ent-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ent-shadow-xs: none;
+  --ent-shadow-sm: 0 8px 24px -8px rgba(9, 9, 11, 0.06);
+  --ent-shadow-md: 0 16px 36px -12px rgba(9, 9, 11, 0.09);
+  --ent-shadow-lg: 0 28px 60px -16px rgba(9, 9, 11, 0.16);
+}
+
+.ent-mono {
+  font-family: var(--ent-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ent-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.24rem 0.58rem;
+  border-radius: 4px;
+  background: #fafafa;
+  border: 1px solid #e4e4e7;
+  color: #27272a;
+  font-family: var(--ent-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.ent-card {
+  background: #ffffff;
+  border: 1px solid var(--ent-border);
+  border-radius: 8px;
+  box-shadow: none;
+  transition: border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ent-card-hover:hover {
+  border-color: #09090b;
+  transform: translateY(-2px);
+}
+
+.ent-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.48rem;
+  padding: 0.58rem 1rem;
+  border-radius: 6px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1.2;
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  color: #09090b;
+  cursor: pointer;
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ent-btn:hover:not(:disabled) {
+  background: #f4f4f5;
+  border-color: #09090b;
+  color: #09090b;
+}
+
+.ent-btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.ent-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.ent-btn-primary,
+.ent-btn-teal {
+  background: #09090b;
+  border-color: #09090b;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.ent-btn-primary:hover:not(:disabled),
+.ent-btn-teal:hover:not(:disabled) {
+  background: #27272a;
+  border-color: #27272a;
+  color: #ffffff;
+}
+
+.ent-input,
+.ent-select,
+.ent-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.58rem 0.8rem;
+  border: 1px solid #d4d4d8;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #09090b;
+  font-family: inherit;
+  font-size: 0.81rem;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  outline: none;
+}
+
+.ent-input:focus,
+.ent-select:focus,
+.ent-textarea:focus {
+  border-color: #09090b;
+  box-shadow: 0 0 0 2px rgba(9, 9, 11, 0.08);
+}
+
+.ent-input:disabled,
+.ent-select:disabled,
+.ent-textarea:disabled {
+  background: #fafafa;
+  color: #71717a;
+  cursor: not-allowed;
+}
+
+.ent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.52rem;
+  border-radius: 4px;
+  font-family: var(--ent-mono);
+  font-size: 0.63rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid #e4e4e7;
+  background: #fafafa;
+  color: #3f3f46;
+  white-space: nowrap;
+}
+
+.ent-badge::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.ent-badge-dot {
+  display: none;
+}
+
+.ent-badge-info,
+.ent-badge-submitted {
+  background: #fafafa;
+  border-color: #09090b;
+  color: #09090b;
+}
+
+.ent-badge-approved {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.ent-badge-revision {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.ent-badge-rejected {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.ent-badge-locked {
+  background: #f4f4f5;
+  border-color: #d4d4d8;
+  color: #52525b;
+}
+
+/* Architectural Hairline & Ledger Primitives */
+.arch-rule {
+  width: 100%;
+  height: 1px;
+  background: #e4e4e7;
+  transform-origin: left center;
+}
+
+.arch-rule-strong {
+  width: 100%;
+  height: 1.5px;
+  background: #09090b;
+  transform-origin: left center;
+}
+
+.arch-mask {
+  overflow: hidden;
+  display: block;
+}

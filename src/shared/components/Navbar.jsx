@@ -1,10 +1,11 @@
 import { useRef, useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, ArrowRight, Sparkles } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Menu, X, ArrowRight } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import LiquidGlassCanvas from './LiquidGlassCanvas';
+import { getWindowLenis } from '../../lib/smoothScroll';
 import logoPln from '../../assets/logo_pln.png';
 import './Navbar.css';
 
@@ -22,17 +23,16 @@ export default function Navbar() {
   const ctaRef = useRef(null);
 
   const [isOpen, setIsOpen] = useState(false);
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [activeSection, setActiveSection] = useState('beranda');
   const [isFolded, setIsFolded] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const isFoldedRef = useRef(false);
 
   // Resize handler
   useEffect(() => {
     const handleResize = () => {
-      setWindowWidth(window.innerWidth);
       if (window.innerWidth > 1024) setIsOpen(false);
     };
     window.addEventListener('resize', handleResize);
@@ -211,30 +211,36 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Smooth scroll to section
-  const gotoSection = (e, id) => {
+  // Smooth scroll to section or route navigation
+  const handleNavClick = (e, item) => {
     e.preventDefault();
-    if (location.pathname !== '/') {
-      window.location.href = `/#${id}`;
+    setIsOpen(false);
+    if (item.to) {
+      navigate(item.to);
       return;
     }
-    const el = document.getElementById(id);
-    if (el) {
-      const topOffset = el.getBoundingClientRect().top + window.pageYOffset - 85;
-      window.scrollTo({ top: topOffset, behavior: 'smooth' });
+    if (location.pathname !== '/') {
+      navigate(`/#${item.id}`);
+      return;
     }
-    setActiveSection(id);
-    setIsOpen(false);
+    const el = document.getElementById(item.id);
+    if (el) {
+      const topOffset = el.getBoundingClientRect().top + window.scrollY - 85;
+      const lenis = getWindowLenis();
+      if (lenis) lenis.scrollTo(topOffset, { duration: 1.0 });
+      else window.scrollTo({ top: topOffset, behavior: 'smooth' });
+    }
+    setActiveSection(item.id);
   };
 
   const navLinks = [
     { label: 'Beranda', id: 'beranda' },
     { label: 'Indikator IKU', id: 'iku' },
     { label: 'Indikator KPI', id: 'kpi' },
-    { label: 'Arsitektur Sistem', id: 'arsitektur' },
+    { label: 'Arsitektur', id: 'arsitektur' },
+    { label: 'Kerangka', id: 'framework', to: '/framework' },
+    { label: 'Dokumen', id: 'documents', to: '/documents' },
   ];
-
-  const isDesktop = windowWidth > 1024;
 
   return (
     <div
@@ -427,12 +433,12 @@ export default function Navbar() {
           }}
         >
           {navLinks.map((item) => {
-            const active = activeSection === item.id;
+            const active = item.to ? location.pathname === item.to : location.pathname === '/' && activeSection === item.id;
             return (
               <button
                 key={item.id}
                 className="nav-btn-item"
-                onClick={(e) => gotoSection(e, item.id)}
+                onClick={(e) => handleNavClick(e, item)}
                 style={{
                   position: 'relative',
                   background: active ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
@@ -559,40 +565,43 @@ export default function Navbar() {
       {/* ════ MOBILE DRAWER ════ */}
       {isOpen && (
         <div className="navbar-mobile-drawer">
-          {navLinks.map((item) => (
-            <button
-              key={item.id}
-              onClick={(e) => gotoSection(e, item.id)}
-              style={{
-                background: activeSection === item.id ? 'rgba(0, 155, 185, 0.08)' : 'transparent',
-                border: 'none',
-                textAlign: 'left',
-                fontSize: '0.96rem',
-                fontWeight: activeSection === item.id ? 700 : 500,
-                color: activeSection === item.id ? '#007a93' : '#334155',
-                padding: '0.75rem 1rem',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <span>{item.label}</span>
-              {activeSection === item.id && (
-                <div
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: '#007a93',
-                  }}
-                />
-              )}
-            </button>
-          ))}
+          {navLinks.map((item) => {
+            const isItemActive = item.to ? location.pathname === item.to : location.pathname === '/' && activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={(e) => handleNavClick(e, item)}
+                style={{
+                  background: isItemActive ? 'rgba(0, 155, 185, 0.08)' : 'transparent',
+                  border: 'none',
+                  textAlign: 'left',
+                  fontSize: '0.96rem',
+                  fontWeight: isItemActive ? 700 : 500,
+                  color: isItemActive ? '#007a93' : '#334155',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span>{item.label}</span>
+                {isItemActive && (
+                  <div
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: '#007a93',
+                    }}
+                  />
+                )}
+              </button>
+            );
+          })}
 
           <Link
             to="/login"

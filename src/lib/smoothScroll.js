@@ -5,9 +5,13 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 gsap.registerPlugin(ScrollTrigger);
 
 let activeLenis = null;
+let activeWindowLenis = null;
 
-/** Instance Lenis aktif (null jika belum dipasang / reduced motion). */
+/** Instance Lenis aktif pada area internal (null jika belum dipasang / reduced motion). */
 export const getLenis = () => activeLenis;
+
+/** Instance Lenis aktif pada window publik (null jika belum dipasang / reduced motion). */
+export const getWindowLenis = () => activeWindowLenis;
 
 /**
  * Memasang smooth scroll Lenis pada container scroll internal dan
@@ -21,7 +25,7 @@ export function mountSmoothScroll(wrapper, content) {
     wrapper,
     content,
     autoRaf: false,
-    lerp: 0.085,
+    lerp: 0.09,
     wheelMultiplier: 0.95,
     touchMultiplier: 1.4,
     smoothWheel: true,
@@ -55,11 +59,44 @@ export function mountSmoothScroll(wrapper, content) {
   };
 }
 
-/** Scroll halus ke elemen/posisi di container internal (fallback ke native). */
+/**
+ * Memasang smooth scroll Lenis pada window halaman publik (Landing, Tentang, Kerangka, dll.)
+ * dan menyinkronkannya dengan GSAP ScrollTrigger.
+ */
+export function mountWindowSmoothScroll() {
+  if (typeof window === 'undefined') return () => {};
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return () => {};
+
+  const lenis = new Lenis({
+    autoRaf: false,
+    lerp: 0.085,
+    wheelMultiplier: 0.95,
+    touchMultiplier: 1.35,
+    smoothWheel: true,
+    syncTouch: false,
+    prevent: (node) => Boolean(node?.closest?.('[data-lenis-prevent]')),
+  });
+
+  const onTick = (time) => lenis.raf(time * 1000);
+  lenis.on('scroll', ScrollTrigger.update);
+  gsap.ticker.add(onTick);
+  gsap.ticker.lagSmoothing(0);
+  activeWindowLenis = lenis;
+
+  return () => {
+    gsap.ticker.remove(onTick);
+    lenis.destroy();
+    if (activeWindowLenis === lenis) activeWindowLenis = null;
+  };
+}
+
+/** Scroll halus ke elemen/posisi di container internal atau window (fallback ke native). */
 export function smoothScrollTo(target, options = {}) {
-  if (activeLenis) {
-    activeLenis.scrollTo(target, { duration: 1.1, easing: (t) => 1 - Math.pow(1 - t, 4), ...options });
+  const instance = activeLenis || activeWindowLenis;
+  if (instance) {
+    instance.scrollTo(target, { duration: 1.05, easing: (t) => 1 - Math.pow(1 - t, 4), ...options });
     return;
   }
   if (target instanceof Element) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else if (typeof target === 'number') window.scrollTo({ top: target, behavior: 'smooth' });
 }

@@ -17,11 +17,10 @@ import './Profile.css';
 
 gsap.registerPlugin(ScrollTrigger);
 
-
 const accessRows = [
   { label: 'Modul 8 IKU Kementerian', key: 'iku' },
   { label: 'Modul KPI Unit & Fakultas', key: 'kpi' },
-  { label: 'Manajemen pengguna', key: 'admin' },
+  { label: 'Tata Kelola & Manajemen Pengguna', key: 'admin' },
 ];
 
 export default function Profile() {
@@ -31,9 +30,7 @@ export default function Profile() {
   const [saved, setSaved] = useState(false);
 
   const isAdmin = ['dual', 'superadmin_prp'].includes(currentUser?.role);
-  const canAccess = (key) => key === 'admin'
-    ? isAdmin
-    : currentUser?.allowedPortals?.includes(key);
+  const canAccess = (key) => (key === 'admin' ? isAdmin : currentUser?.allowedPortals?.includes(key));
 
   useGSAP(() => {
     const scroller = document.querySelector('.internal-main-scroll');
@@ -41,52 +38,31 @@ export default function Profile() {
 
     gsap.fromTo(
       '.profile-hero-item',
-      { y: 24, opacity: 0 },
-      {
-        y: 0,
-        opacity: 1,
-        duration: 0.8,
-        stagger: 0.08,
-        ease: 'expo.out',
-      },
+      { y: 18, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.65, stagger: 0.06, ease: 'expo.out', clearProps: 'transform' }
     );
 
     revealItems.forEach((item, index) => {
       gsap.fromTo(
         item,
-        { y: 34, opacity: 0 },
+        { y: 26, opacity: 0 },
         {
           y: 0,
           opacity: 1,
-          duration: 0.85,
+          duration: 0.72,
           delay: index * 0.04,
           ease: 'expo.out',
+          clearProps: 'transform',
           scrollTrigger: scroller
             ? {
-              trigger: item,
-              scroller,
-              start: 'top 88%',
-              end: 'top 58%',
-              toggleActions: 'play none none reverse',
-            }
+                trigger: item,
+                scroller,
+                start: 'top 90%',
+                once: true,
+              }
             : undefined,
-        },
-      );
-    });
-
-    gsap.to('.profile-monogram', {
-      y: -18,
-      rotate: 2,
-      ease: 'none',
-      scrollTrigger: scroller
-        ? {
-          trigger: pageRef.current,
-          scroller,
-          start: 'top top',
-          end: 'bottom top',
-          scrub: 1.2,
         }
-        : undefined,
+      );
     });
   }, { scope: pageRef, dependencies: [currentUser?.id] });
 
@@ -101,16 +77,16 @@ export default function Profile() {
     <section ref={pageRef} className="profile-page">
       <header className="profile-hero">
         <div className="profile-hero-copy">
-          <div className="profile-kicker profile-hero-item">
-            <ShieldCheck size={14} /> SESSION / IDENTITY
+          <div className="ent-eyebrow profile-hero-item">
+            <ShieldCheck size={12} /> IDENTITAS & KEAMANAN SESI
           </div>
-          <h1 className="profile-title profile-hero-item">Profil sesi saya</h1>
+          <h1 className="profile-title profile-hero-item">Profil Sesi Saya</h1>
           <p className="profile-subtitle profile-hero-item">
-            Pusat kendali identitas, otorisasi, dan jejak akses untuk ruang kerja KPI.
+            Kelola nama tampilan, periksa cakupan otorisasi modul aktif, serta pantau parameter keamanan sesi Anda.
           </p>
         </div>
         <div className="profile-live-state profile-hero-item">
-          <i /> Sesi aktif <span>·</span> diperbarui langsung
+          <i /> Sesi Terautentikasi · Aktif
         </div>
       </header>
 
@@ -119,13 +95,13 @@ export default function Profile() {
           {currentUser?.avatar || 'USR'}
         </div>
         <div className="profile-overview-main">
-          <span className="profile-overline">Authenticated principal</span>
+          <span className="profile-overline">Prinsipal Terautentikasi</span>
           <h2>{currentUser?.name}</h2>
           <p>{currentUser?.unit}</p>
         </div>
         <div className="profile-overview-meta">
-          <span>Role</span><strong>{currentUser?.roleTitle}</strong>
-          <span>Account ID</span><strong>{currentUser?.id}</strong>
+          <span>Otoritas</span><strong>{currentUser?.roleTitle}</strong>
+          <span>ID Sesi</span><strong>{currentUser?.id}</strong>
         </div>
         <ArrowUpRight className="profile-corner-icon" size={18} />
       </div>
@@ -135,32 +111,29 @@ export default function Profile() {
           <div className="profile-panel-heading">
             <span className="profile-index">01</span>
             <div>
-              <span className="profile-overline">Editable record</span>
-              <h3>Informasi akun</h3>
+              <span className="profile-overline">Identitas Pengguna</span>
+              <h3>Informasi Akun</h3>
             </div>
           </div>
           <form className="profile-form" onSubmit={handleSubmit}>
             <label>
-              Nama tampilan
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
+              Nama Tampilan Resmi
+              <input value={name} onChange={(event) => setName(event.target.value)} />
             </label>
             <label>
-              Email autentikasi
+              Alamat Email Autentikasi
               <div className="profile-input-locked">
                 <Mail size={15} />
                 {currentUser?.email}
-                <span>LOCKED</span>
+                <span>TERKUNCI</span>
               </div>
             </label>
             <button className="profile-submit" type="submit">
-              <Check size={15} /> Simpan perubahan
+              <Check size={15} /> Simpan Perubahan Identitas
             </button>
             {saved && (
               <p className="profile-feedback" role="status">
-                Identitas diperbarui dan disinkronkan ke sesi aktif.
+                Identitas berhasil diperbarui dan disinkronkan ke sesi aktif.
               </p>
             )}
           </form>
@@ -170,8 +143,8 @@ export default function Profile() {
           <div className="profile-panel-heading">
             <span className="profile-index">02</span>
             <div>
-              <span className="profile-overline">Authorization matrix</span>
-              <h3>Cakupan otorisasi</h3>
+              <span className="profile-overline">Matriks Hak Akses</span>
+              <h3>Cakupan Otorisasi</h3>
             </div>
           </div>
           <div className="profile-access-list">
@@ -181,57 +154,56 @@ export default function Profile() {
                   <span className="profile-access-dot" />
                   {row.label}
                 </div>
-                <span className={canAccess(row.key)
-                  ? 'profile-access-status is-active'
-                  : 'profile-access-status'}>
-                  {canAccess(row.key) ? 'ACTIVE' : 'RESTRICTED'}
+                <span className={canAccess(row.key) ? 'profile-access-status is-active' : 'profile-access-status'}>
+                  {canAccess(row.key) ? 'DIIZINKAN' : 'DIBATASI'}
                 </span>
               </div>
             ))}
           </div>
           <div className="profile-note">
-            <KeyRound size={15} />
-            Kebijakan akses diterapkan berdasarkan peran sesi dan tidak dapat diubah
-            dari halaman ini.
+            <KeyRound size={15} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>
+              Kebijakan isolasi akses ditetapkan berdasarkan kredensial peran sesi dan dikelola terpusat oleh Superadmin PRP.
+            </span>
           </div>
         </article>
       </div>
 
       <div className="profile-grid profile-grid-lower">
-        <article className="profile-panel profile-reveal profile-session-panel">
+        <article className="profile-panel profile-reveal">
           <div className="profile-panel-heading">
             <span className="profile-index">03</span>
             <div>
-              <span className="profile-overline">Live session</span>
-              <h3>Status koneksi</h3>
+              <span className="profile-overline">Telemetri Sesi</span>
+              <h3>Status Koneksi</h3>
             </div>
           </div>
           <div className="profile-metrics">
             <div>
               <Activity size={17} />
               <strong>ONLINE</strong>
-              <span>Session channel</span>
+              <span>Kanal Sesi</span>
             </div>
             <div>
               <Clock3 size={17} />
               <strong>AKTIF</strong>
-              <span>Token lifetime</span>
+              <span>Validitas Sesi</span>
             </div>
             <div>
               <UserRound size={17} />
               <strong>{currentUser?.shortName || 'USER'}</strong>
-              <span>Current operator</span>
+              <span>Operator Aktif</span>
             </div>
           </div>
         </article>
+
         <article className="profile-panel profile-reveal profile-quote">
-          <span className="profile-overline">Operational principle</span>
+          <span className="profile-overline">Prinsip Tata Kelola ITPLN</span>
           <p>
-            “Akses yang baik bukan yang paling luas, tetapi yang paling tepat,
-            tercatat, dan dapat dipertanggungjawabkan.”
+            “Otorisasi kinerja yang unggul bukan yang paling luas, melainkan yang paling presisi, terukur, dan dapat dipertanggungjawabkan.”
           </p>
           <span className="profile-signature">
-            PERFORMA ITPLN / INTERNAL CONTROL
+            PERFORMA ITPLN • ENTERPRISE GOVERNANCE
           </span>
         </article>
       </div>
