@@ -9,10 +9,18 @@ Submission mendukung catatan, bukti berupa tautan HTTPS, verifikasi bukti,
 persetujuan, penolakan, revisi, penguncian, pembukaan kembali, dan snapshot riwayat.
 Halaman IKU memakai indikator generik dengan perhitungan aktual/target, bukan
 rumus resmi kementerian. Pengaturan bukti KPI berlaku setelah kebijakan disimpan.
-Pusat review PRP menyediakan akses review KPI dan tautan ke review IKU;
-keduanya belum digabung menjadi satu tabel lintas-modul.
+Pusat review PRP kini memiliki tabel terpadu IKU + KPI (filter modul/status,
+kolom kelengkapan dan bukti, deep link ke detail). Audit log punya filter aksi,
+pelaku, rentang tanggal, serta export CSV/JSON. Persetujuan IKU dan KPI mewajibkan
+checklist kelengkapan; verifikasi bukti KPI wajib catatan; membuka kembali
+submission terkunci meminta konfirmasi. Halaman pengguna punya kartu
+"Akun administrator" untuk menyaring akun Superadmin PRP.
 
-Validasi akhir: lint dan build exit 0; 10 pengujian lulus. Peringatan ukuran bundle
+Keterbatasan tersisa: penyimpanan localStorage, bukti berupa tautan (bukan
+unggah berkas), audit log dapat diubah dan dibatasi 500 entri, serta belum ada
+tingkat kewenangan terpisah untuk membuka kembali (hanya Superadmin PRP).
+
+Validasi akhir: lint dan build exit 0; 12 pengujian lulus. Peringatan ukuran bundle
 masih ada. Semua fitur tetap prototipe browser-local, bukan keamanan produksi.
 Bukti berupa tautan, bukan unggahan berkas. Log dibatasi 500 entri, bukan immutable.
 

@@ -34,7 +34,7 @@ export default function SystemSettings() {
         <small>Tenggat global menjadi fallback jika periode tidak memiliki tenggat sendiri. Semua waktu menggunakan zona waktu lokal browser.</small>
         <label><input type="checkbox" checked={config.evidenceRequired} onChange={(event) => change('evidenceRequired', event.target.checked)} /> Bukti pendukung wajib</label>
         <label><input type="checkbox" checked={config.maintenanceMode} onChange={(event) => change('maintenanceMode', event.target.checked)} /> Mode pemeliharaan</label>
-        <p style={{ color: '#64748b', lineHeight: 1.6 }}>Demo lokal: pengaturan dan audit hanya tersimpan di browser ini, bukan kebijakan keamanan server. Mode pemeliharaan, kewajiban bukti, tenggat, dan panjang password tidak otomatis ditegakkan pada login atau submission. Integrasi backend diperlukan untuk penerapan menyeluruh. Audit lokal dapat diubah/dihapus dan dibatasi 500 entri.</p>
+        <p style={{ color: '#64748b', lineHeight: 1.6 }}>Demo lokal: pengaturan dan audit hanya tersimpan di browser ini, bukan kebijakan keamanan server. Pengaturan ditegakkan di aplikasi: mode pemeliharaan memblokir login non-superadmin dan perubahan data workflow, kewajiban bukti dan tenggat diperiksa saat submission/persetujuan, dan panjang password minimum berlaku saat membuat akun atau mengganti password. Penegakan ini terjadi di browser; integrasi backend tetap diperlukan untuk keamanan server. Audit lokal dapat diubah/dihapus dan dibatasi 500 entri.</p>
         <div role="status" aria-live="polite">{feedback}</div>
         <button className="gov-button" type="submit">Simpan konfigurasi</button>
       </div>

@@ -4,6 +4,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import KPITableDesigner from '../components/KPITableDesigner';
 import KPISubmissionInbox from '../components/KPISubmissionInbox';
+import AllSubmissionsTable from '../components/AllSubmissionsTable';
 import SystemSettings from '../components/SystemSettings';
 import { readAudit, readSystemConfig, writeAudit } from '../adminStore';
 import { useAuth } from '../../auth/context/AuthContext';
@@ -35,6 +36,10 @@ export default function PRPGovernance() {
   const [audit, setAudit] = useState(() => readJSON('prp_audit', []));
   const [feedback, setFeedback] = useState('');
   const [search, setSearch] = useState('');
+  // Filter audit terstruktur: jenis aksi, pelaku, dan rentang tanggal (YYYY-MM-DD).
+  const [auditFilter, setAuditFilter] = useState({ action: '', actor: '', from: '', to: '' });
+  // Submission KPI yang dipilih dari daftar terpadu untuk dibuka di inbox.
+  const [kpiFocus, setKpiFocus] = useState(null);
   useEffect(() => {
     const refresh = () => setAudit(readAudit());
     window.addEventListener('prp-admin-updated', refresh);
@@ -44,7 +49,27 @@ export default function PRPGovernance() {
       window.removeEventListener('storage', refresh);
     };
   }, []);
-  const filteredAudit = audit.filter((item) => [item.action, item.detail, item.actor, item.at].join(' ').toLowerCase().includes(search.toLowerCase()));
+  const auditActions = useMemo(() => [...new Set(audit.map((item) => item.action).filter(Boolean))].sort(), [audit]);
+  const auditActors = useMemo(() => [...new Set(audit.map((item) => item.actor).filter(Boolean))].sort(), [audit]);
+  const filteredAudit = audit.filter((item) => {
+    const day = typeof item.at === 'string' ? item.at.slice(0, 10) : '';
+    return [item.action, item.detail, item.actor, item.at].join(' ').toLowerCase().includes(search.toLowerCase())
+      && (!auditFilter.action || item.action === auditFilter.action)
+      && (!auditFilter.actor || item.actor === auditFilter.actor)
+      && (!auditFilter.from || day >= auditFilter.from)
+      && (!auditFilter.to || day <= auditFilter.to);
+  });
+  /** Unduh audit terfilter sebagai berkas JSON atau CSV (CSV aman untuk koma/kutip). */
+  const downloadAudit = (format) => {
+    const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const body = format === 'csv'
+      ? ['waktu,aksi,pelaku,detail', ...filteredAudit.map((item) => [item.at, item.action, item.actor, item.detail].map(cell).join(','))].join('\r\n')
+      : JSON.stringify(filteredAudit, null, 2);
+    const type = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json';
+    const url = URL.createObjectURL(new Blob([format === 'csv' ? '\ufeff' + body : body], { type }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `prp-audit.${format}`; anchor.click(); URL.revokeObjectURL(url);
+    writeAudit('EXPORT_AUDIT', `${filteredAudit.length} entri (${format.toUpperCase()})`, actor);
+  };
 
   const validatePeriods = (items) => {
     if (!Array.isArray(items) || !items.length) throw new Error('Daftar periode harus berisi minimal satu periode.');
@@ -190,7 +215,7 @@ export default function PRPGovernance() {
         <main style={{ minWidth: 0 }}>
           <div role="status" aria-live="polite" style={{ marginBottom: '.75rem' }}>{feedback}</div>
           {activeTab === 'kpi-builder' && <KPITableDesigner />}
-          {activeTab === 'submissions' && <><div className="gov-table-head"><strong>Pusat review IKU & KPI</strong><Link to="/internal/iku-submissions" className="gov-button" style={{ width: 'auto' }}>Buka submission IKU →</Link></div><KPISubmissionInbox /></>}
+          {activeTab === 'submissions' && <><div className="gov-table-head"><strong>Pusat review IKU & KPI</strong><Link to="/internal/iku-submissions" className="gov-button" style={{ width: 'auto' }}>Buka submission IKU →</Link></div><AllSubmissionsTable onReviewKpi={(target) => setKpiFocus({ ...target })} /><KPISubmissionInbox focus={kpiFocus} /></>}
           {activeTab === 'settings' && <SystemSettings />}
 
           {activeTab === 'periods' && (
@@ -220,12 +245,19 @@ export default function PRPGovernance() {
           {activeTab === 'audit' && (
             <div className="gov-table">
               <div className="gov-table-head"><div><h2>Audit trail</h2><span>Riwayat lokal · maksimum 500 entri · bukan log server permanen</span></div>
-                <button type="button" className="gov-button" style={{ width: 'auto' }} onClick={() => {
-                  const url = URL.createObjectURL(new Blob([JSON.stringify(filteredAudit, null, 2)], { type: 'application/json' }));
-                  const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'prp-audit.json'; anchor.click(); URL.revokeObjectURL(url);
-                }}>Export audit ({filteredAudit.length})</button>
+                <div style={{ display: 'flex', gap: '.5rem' }}>
+                  <button type="button" className="gov-button" style={{ width: 'auto' }} onClick={() => downloadAudit('csv')}>Export CSV ({filteredAudit.length})</button>
+                  <button type="button" className="gov-button" style={{ width: 'auto' }} onClick={() => downloadAudit('json')}>Export JSON</button>
+                </div>
               </div>
-              <input className="gov-field" type="search" aria-label="Cari audit" placeholder="Cari aktivitas, detail, pelaku, atau waktu…" value={search} onChange={(event) => setSearch(event.target.value)} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '.6rem', padding: '.8rem 1rem' }}>
+                <input className="gov-field" type="search" aria-label="Cari audit" placeholder="Cari aktivitas, detail, pelaku, atau waktu…" value={search} onChange={(event) => setSearch(event.target.value)} />
+                <select className="gov-field" aria-label="Filter aksi" value={auditFilter.action} onChange={(e) => setAuditFilter((f) => ({ ...f, action: e.target.value }))}><option value="">Semua aksi</option>{auditActions.map((a) => <option key={a}>{a}</option>)}</select>
+                <select className="gov-field" aria-label="Filter pelaku" value={auditFilter.actor} onChange={(e) => setAuditFilter((f) => ({ ...f, actor: e.target.value }))}><option value="">Semua pelaku</option>{auditActors.map((a) => <option key={a}>{a}</option>)}</select>
+                <input className="gov-field" type="date" aria-label="Dari tanggal" value={auditFilter.from} onChange={(e) => setAuditFilter((f) => ({ ...f, from: e.target.value }))} />
+                <input className="gov-field" type="date" aria-label="Sampai tanggal" value={auditFilter.to} onChange={(e) => setAuditFilter((f) => ({ ...f, to: e.target.value }))} />
+                <button type="button" className="gov-button" onClick={() => { setSearch(''); setAuditFilter({ action: '', actor: '', from: '', to: '' }); }}>Reset filter</button>
+              </div>
               {filteredAudit.length
                 ? filteredAudit.map((item) => (
                   <div className="gov-audit-row" key={item.id}>

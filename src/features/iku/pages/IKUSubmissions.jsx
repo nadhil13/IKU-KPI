@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../auth/context/AuthContext';
 import { readSystemConfig } from '../../internal/adminStore';
 import { IKU_INDICATORS, IKU_TRANSITIONS, emptyIkuValues, getIkuPeriods, ikuInputIssue, ikuPercentage, listIkuSubmissions, saveIkuSubmission, reviewIkuSubmission, verifyIkuEvidence, subscribeIku } from '../ikuWorkflowStore';
@@ -10,12 +11,15 @@ export default function IKUSubmissions() {
   const admin = currentUser?.role === 'superadmin_prp';
   const [tick, refresh] = useState(0);
   const periods = getIkuPeriods();
-  const [period, setPeriod] = useState(() => periods.find((p) => p.status === 'Active')?.id || periods[0].id);
-  const [selected, setSelected] = useState('');
+  // Deep link dari daftar submission terpadu: ?period=<id>&id=<submissionId>.
+  const [params] = useSearchParams();
+  const [period, setPeriod] = useState(() => (periods.some((p) => p.id === params.get('period')) ? params.get('period') : periods.find((p) => p.status === 'Active')?.id || periods[0].id));
+  const [selected, setSelected] = useState(() => params.get('id') || '');
   const [values, setValues] = useState(emptyIkuValues);
   const [reason, setReason] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [checked, setChecked] = useState(false); // Konfirmasi pemeriksaan kelengkapan sebelum menyetujui.
   const records = listIkuSubmissions(currentUser).filter((r) => r.period === period);
   const record = admin ? records.find((r) => r.id === selected) : records[0];
   const issue = ikuInputIssue(period);
@@ -26,7 +30,7 @@ export default function IKUSubmissions() {
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
-    setValues(record?.values || emptyIkuValues()); setReason(''); setDirty(false);
+    setValues(record?.values || emptyIkuValues()); setReason(''); setDirty(false); setChecked(false);
   }, [record?.id, record?.updatedAt, period]);
   // Configuration and permissions are also re-read on every store mutation.
   void tick;
@@ -37,6 +41,18 @@ export default function IKUSubmissions() {
   const change = (id, field, value) => { setDirty(true); setValues((rows) => rows.map((r) => r.id === id ? { ...r, [field]: value } : r)); };
   const display = admin ? record?.values || [] : values;
   const maintenance = readSystemConfig().maintenanceMode;
+  // Ringkasan kelengkapan untuk reviewer: isian aktual/target dan status bukti per indikator.
+  const completeness = record ? {
+    filled: record.values.filter((r) => r.actual !== '' && r.target !== '').length,
+    withEvidence: record.values.filter((r) => r.evidence).length,
+    verified: record.values.filter((r) => r.evidence && r.verification === 'VERIFIED').length,
+    total: record.values.length,
+  } : null;
+  const decide = (status) => {
+    // Membuka kembali data terkunci adalah aksi sensitif: minta konfirmasi eksplisit.
+    if (record.status === 'LOCKED' && !window.confirm('Buka kembali submission yang sudah dikunci? Unit dapat mengubah data lagi.')) return;
+    run(() => reviewIkuSubmission(currentUser, record.id, status, reason), 'Keputusan PRP tersimpan.');
+  };
   return <section className="iku-submissions">
     <style>{`
       .iku-submissions{max-width:1320px;margin:auto;padding:clamp(16px,3vw,36px);color:#0f172a}
@@ -76,7 +92,7 @@ export default function IKUSubmissions() {
       {admin && record?.status === 'SUBMITTED' && row.evidence && <div className="iku-actions">{['VERIFIED', 'REJECTED'].map((status) => <button key={status} disabled={maintenance || !reason.trim()} onClick={() => run(() => verifyIkuEvidence(currentUser, record.id, row.id, status, reason), 'Hasil verifikasi bukti disimpan.')}>{status === 'VERIFIED' ? 'Verifikasi bukti' : 'Tolak bukti'}</button>)}</div>}
     </article>)}</div>
     {!admin && <div className="iku-card iku-actions"><button disabled={!editable} onClick={() => run(() => saveIkuSubmission(currentUser, period, values), 'Draft tersimpan.')}>Simpan draft</button><button disabled={!editable} onClick={() => run(() => saveIkuSubmission(currentUser, period, values, true), 'Submission terkirim. Input kini terkunci.')}>Kirim submission</button></div>}
-    {admin && record && <div className="iku-card"><h2>Keputusan & verifikasi</h2><label>Alasan / catatan wajib (juga untuk verifikasi bukti)<textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Tuliskan dasar keputusan atau hasil pemeriksaan bukti…" /></label><div className="iku-actions">{(IKU_TRANSITIONS[record.status] || []).map((status) => <button key={status} disabled={maintenance || !reason.trim()} onClick={() => run(() => reviewIkuSubmission(currentUser, record.id, status, reason), 'Keputusan PRP tersimpan.')}>{actions[status]}</button>)}</div><p>Reopen mengembalikan status ke Perlu revisi; batas periode dan tenggat tetap berlaku. Verifikasi URL dilakukan manual, bukan pemeriksaan otomatis isi dokumen.</p></div>}
+    {admin && record && <div className="iku-card"><h2>Keputusan & verifikasi</h2><label>Alasan / catatan wajib (juga untuk verifikasi bukti)<textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Tuliskan dasar keputusan atau hasil pemeriksaan bukti…" /></label><p>Kelengkapan: <strong>{completeness.filled}/{completeness.total}</strong> indikator terisi • bukti <strong>{completeness.verified}/{completeness.withEvidence}</strong> terverifikasi</p><label style={{ flexDirection: 'row', alignItems: 'center' }}><input type="checkbox" style={{ width: 'auto' }} checked={checked} onChange={(e) => setChecked(e.target.checked)} />Saya telah memeriksa kelengkapan isian dan bukti pendukung.</label><div className="iku-actions">{(IKU_TRANSITIONS[record.status] || []).map((status) => <button key={status} disabled={maintenance || !reason.trim() || (status === 'APPROVED' && !checked)} onClick={() => decide(status)}>{record.status === 'LOCKED' && status === 'NEEDS_REVISION' ? 'Buka kembali (unlock)' : actions[status]}</button>)}</div><p>Reopen mengembalikan status ke Perlu revisi; batas periode dan tenggat tetap berlaku. Verifikasi URL dilakukan manual, bukan pemeriksaan otomatis isi dokumen.</p></div>}
     {record && <div className="iku-card"><h2>Riwayat & snapshot ({record.history.length})</h2>{[...record.history].reverse().map((entry, i) => <details key={`${entry.at}-${i}`} style={{ padding: '12px 0', borderBottom: '1px solid #e2e8f0' }}><summary>{new Date(entry.at).toLocaleString('id-ID')} • {entry.action} • {entry.actor.email}</summary><p>{entry.reason}</p><p>{entry.from || 'Baru'} → {entry.status}</p><pre>{JSON.stringify(entry.snapshot, null, 2)}</pre></details>)}</div>}
   </section>;
 }

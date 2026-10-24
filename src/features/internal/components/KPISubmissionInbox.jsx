@@ -5,16 +5,21 @@ import { KPI_TRANSITIONS, readKpiWorkflow, readUnitSubmission, readUnitEvidence,
 import { formatIndonesianNumber } from '../../kpi/kpiSchema';
 
 const labels = { SUBMITTED: 'Dikirim unit', APPROVED: 'Disetujui', NEEDS_REVISION: 'Perlu revisi / buka kembali', REJECTED: 'Ditolak', LOCKED: 'Dikunci' };
-export default function KPISubmissionInbox() {
+/** Label tombol transisi: dari LOCKED, NEEDS_REVISION berarti membuka kembali submission. */
+const actionLabel = (from, to) => (from === 'LOCKED' && to === 'NEEDS_REVISION' ? 'Buka kembali (unlock)' : labels[to]);
+
+export default function KPISubmissionInbox({ focus }) {
   const { currentUser } = useAuth();
   const [state, setState] = useState(readKpiWorkflow);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(focus || null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [note, setNote] = useState('');
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => subscribeKpiWorkflow(() => setState(readKpiWorkflow())), []);
+  // Buka detail saat dipilih dari daftar submission terpadu.
+  useEffect(() => { if (focus) { setSelected(focus); setNote(''); setComplete(false); setError(''); } }, [focus]);
   const mutate = (action) => {
     setError('');
     try {
@@ -49,10 +54,20 @@ export default function KPISubmissionInbox() {
       {!readUnitEvidence(form.id, record.email, state).length && <p>Belum ada bukti.</p>}
       {readUnitEvidence(form.id, record.email, state).map((e) => <div key={e.id} style={{ marginBottom: 12 }}>
         <a href={e.url} target="_blank" rel="noopener noreferrer">{e.label}</a> · {e.indicatorId} · {e.status} · {e.note}
-        {record.status === 'SUBMITTED' && <><button onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'VERIFIED', note, currentUser))}>Verifikasi bukti</button><button onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'REJECTED', note, currentUser))}>Tolak bukti</button></>}
+        {record.status === 'SUBMITTED' && <><button disabled={!note.trim()} title={note.trim() ? '' : 'Isi catatan pemeriksaan terlebih dahulu'} onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'VERIFIED', note, currentUser))}>Verifikasi bukti</button><button disabled={!note.trim()} onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'REJECTED', note, currentUser))}>Tolak bukti</button></>}
       </div>)}
       <label><input type="checkbox" checked={complete} onChange={(e) => setComplete(e.target.checked)} />Saya telah memeriksa kelengkapan isian dan bukti.</label>
-      <div>{(KPI_TRANSITIONS[record.status] || []).filter((s) => s !== 'SUBMITTED').map((status) => <button key={status} disabled={status === 'APPROVED' && !complete} onClick={() => mutate(() => reviewUnitKpi(form.id, record.email, status, note, currentUser))}>{labels[status]}</button>)}</div>
+      {(() => {
+        // Ringkasan kelengkapan bukti sebagai dasar keputusan persetujuan.
+        const items = readUnitEvidence(form.id, record.email, state);
+        const verified = items.filter((e) => e.status === 'VERIFIED').length;
+        return <p>Bukti terverifikasi: {verified}/{items.length}{items.length && verified < items.length ? ' — setujui setelah semua bukti terverifikasi.' : ''}</p>;
+      })()}
+      <div>{(KPI_TRANSITIONS[record.status] || []).filter((s) => s !== 'SUBMITTED').map((status) => <button key={status} disabled={(status === 'APPROVED' && !complete) || (status !== 'APPROVED' && status !== 'LOCKED' && !note.trim())} onClick={() => {
+        // Membuka kembali data terkunci adalah aksi sensitif: minta konfirmasi eksplisit.
+        if (record.status === 'LOCKED' && !window.confirm('Buka kembali submission yang sudah dikunci? Unit dapat mengubah data lagi.')) return;
+        mutate(() => reviewUnitKpi(form.id, record.email, status, note, currentUser));
+      }}>{actionLabel(record.status, status)}</button>)}</div>
       <h4>Riwayat dan snapshot</h4>
       {(record.history || []).map((h, index) => <details key={index}><summary>{h.at} · {h.from} → {h.status} · {h.actor?.email || 'Legacy'} · {h.note}</summary><pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(h.snapshot, null, 2)}</pre></details>)}
       <KPIDataEntrySheet key={`${form.id}:${record.email}`} sectionsOverride={form.sections} valuesOverride={record.values} persist={false} readOnly />

@@ -43,8 +43,11 @@ export default function TeamPIC() {
       if (!event.key || event.key === 'prp_organization') setOrganization(loadOrganization());
       if (!event.key || event.key === 'prp_users') setAccounts(loadAccounts());
     };
+    // Event internal (tab yang sama) tidak membawa `key`, sehingga memuat ulang semua data.
+    const local = () => sync({});
     window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
+    window.addEventListener('prp-admin-updated', local);
+    return () => { window.removeEventListener('storage', sync); window.removeEventListener('prp-admin-updated', local); };
   }, []);
 
   const rows = useMemo(() => flatten(organization), [organization]);

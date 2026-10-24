@@ -133,7 +133,12 @@ export default function Users() {
         <div className="users-stat"><span>Total akun</span><strong>{users.length.toString().padStart(2, '0')}</strong><small>terdaftar di sistem</small></div>
         <div className="users-stat"><span>Akses aktif</span><strong>{users.filter((item) => item.status === 'Aktif').length.toString().padStart(2, '0')}</strong><small>tidak ada anomali</small></div>
         <div className="users-stat"><span>Ruang kerja</span><strong>02</strong><small>IKU dan KPI terisolasi</small></div>
-        <div className="users-stat"><span>Sesi Anda</span><strong>01</strong><small>{currentUser?.shortName || 'Administrator'}</small></div>
+        {/* Kartu akun administrator: klik untuk menampilkan hanya akun Superadmin PRP. */}
+        <button type="button" className="users-stat" style={{ textAlign: 'left', cursor: 'pointer', font: 'inherit' }} aria-pressed={filterRole === 'superadmin_prp'} onClick={() => setFilterRole((role) => (role === 'superadmin_prp' ? 'all' : 'superadmin_prp'))}>
+          <span>Akun administrator</span>
+          <strong>{users.filter((item) => item.role === 'superadmin_prp').length.toString().padStart(2, '0')}</strong>
+          <small>{users.filter((item) => item.role === 'superadmin_prp' && item.status === 'Aktif').length} aktif · {filterRole === 'superadmin_prp' ? 'klik untuk semua akun' : 'klik untuk kelola'}</small>
+        </button>
       </div>
 
       <div className="users-table-card">
