@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Plus, Search, SlidersHorizontal, ArrowUpRight, ShieldCheck, Pencil, Trash2, X, Check, KeyRound
+  Plus, Search, SlidersHorizontal, ShieldCheck, Pencil, Trash2, X, Check, KeyRound
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -45,6 +45,15 @@ export default function Users() {
       window.removeEventListener('storage', refresh);
     };
   }, []);
+
+  useEffect(() => {
+    if (!editing) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setEditing(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editing]);
 
   const persist = (next) => {
     setUsers(next);
@@ -163,6 +172,7 @@ export default function Users() {
   });
 
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const entrance = gsap.timeline({ defaults: { ease: 'expo.out' } });
     entrance
       .fromTo('.users-head-anim', { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.05, clearProps: 'transform' })
@@ -183,7 +193,7 @@ export default function Users() {
           </p>
         </div>
         <button className="users-action users-head-anim" type="button" onClick={openCreate}>
-          <Plus size={16} /> Tambah Pengguna <ArrowUpRight size={15} />
+          <Plus size={16} /> Tambah Pengguna
         </button>
       </div>
 
@@ -226,7 +236,7 @@ export default function Users() {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Cari nama pengguna atau alamat email…"
+              placeholder="Cari nama pengguna atau alamat email..."
               aria-label="Cari pengguna"
             />
           </div>
@@ -246,7 +256,7 @@ export default function Users() {
           <span className="users-result-count">{filteredUsers.length.toString().padStart(2, '0')} AKUN</span>
         </div>
 
-        <div className="users-table-wrap">
+        <div className="users-table-wrap" data-lenis-prevent>
           <table className="users-table">
             <thead>
               <tr>
@@ -308,7 +318,7 @@ export default function Users() {
         </div>
 
         <footer className="users-footer">
-          <span>ACCESS GOVERNANCE • INTERNAL ITPLN</span>
+          <span>ACCESS GOVERNANCE · INTERNAL ITPLN</span>
           <span>Seluruh perubahan hak akses dan reset kredensial tercatat otomatis dalam Audit Trail</span>
         </footer>
       </div>
@@ -319,41 +329,44 @@ export default function Users() {
           role="dialog"
           aria-modal="true"
           aria-label="Tambah atau edit pengguna"
+          data-lenis-prevent
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setEditing(null);
+          }}
           style={{
             position: 'fixed',
             inset: 0,
             zIndex: 120,
-            background: 'rgba(15, 23, 42, 0.38)',
-            backdropFilter: 'blur(8px)',
+            background: 'rgba(6, 44, 61, 0.56)',
             display: 'grid',
             placeItems: 'center',
-            padding: '1.25rem',
+            padding: '1rem',
+            overflowY: 'auto',
           }}
         >
           <div
             style={{
               width: 'min(520px, 100%)',
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '20px',
-              boxShadow: '0 24px 56px rgba(15, 23, 42, 0.18)',
-              padding: '1.75rem',
-              animation: 'drawerSlideDown 0.24s cubic-bezier(0.16, 1, 0.3, 1)',
+              background: '#FFFFFF',
+              border: '1px solid #B8CAD4',
+              borderRadius: '8px',
+              boxShadow: '0 20px 48px rgba(7, 37, 52, 0.2)',
+              padding: 'clamp(1.15rem, 3vw, 1.75rem)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1.25rem' }}>
               <div>
                 <div className="ent-eyebrow" style={{ marginBottom: '0.35rem' }}>KONFIGURASI AKUN</div>
-                <h2 style={{ margin: 0, fontSize: '1.2rem', fontFamily: 'Outfit, sans-serif', color: '#0f172a' }}>
+                <h2 style={{ margin: 0, fontSize: '1.2rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
                   {users.some((u) => u.id === editing.id) ? 'Edit Identitas Pengguna' : 'Tambah Pengguna Baru'}
                 </h2>
               </div>
               <button
                 type="button"
-                aria-label="Tutup"
+                aria-label="Tutup modal pengguna"
                 onClick={() => setEditing(null)}
                 className="ent-btn"
-                style={{ padding: '0.45rem' }}
+                style={{ minWidth: '40px', minHeight: '40px', padding: '0.45rem' }}
               >
                 <X size={17} />
               </button>
@@ -399,7 +412,7 @@ export default function Users() {
                 />
               </label>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '0.75rem' }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
                   Peran Otoritas
                   <select
@@ -431,7 +444,7 @@ export default function Users() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '0.6rem', marginTop: '1.5rem' }}>
               <button type="button" className="ent-btn" onClick={() => setEditing(null)}>
                 Batal
               </button>

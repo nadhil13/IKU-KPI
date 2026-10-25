@@ -51,6 +51,10 @@ export default function Home() {
   const magBtnRef = useRef(null);
 
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+
     // 1. HERO MASKED LINE REVEAL & HAIRLINE DRAW
     const tl = gsap.timeline({ defaults: { ease: 'expo.out' } });
     tl.fromTo(
@@ -102,14 +106,22 @@ export default function Home() {
       };
     }
 
-    // Hero background slow architectural zoom
-    gsap.to('.hero-bg-inner', {
-      scale: 1.14,
-      duration: 24,
-      ease: 'none',
-      yoyo: true,
-      repeat: -1,
-    });
+    // Hero background scroll-scrubbed depth (user-driven, no endless loop)
+    gsap.fromTo(
+      '.hero-bg-inner',
+      { scale: 1.05, yPercent: 0 },
+      {
+        scale: 1.12,
+        yPercent: 6,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: '.hero-section',
+          start: 'top top',
+          end: 'bottom top',
+          scrub: true,
+        },
+      }
+    );
 
     // Hero scroll-scrubbed depth recession
     gsap.to('.hero-content-wrap', {
@@ -230,7 +242,7 @@ export default function Home() {
       );
     });
 
-    // 4. EDITORIAL REFERENCE LEDGER — SELF-DRAWING DIVIDERS & ROW STAGGER
+    // 4. EDITORIAL REFERENCE LEDGER: SELF-DRAWING DIVIDERS & ROW STAGGER
     gsap.utils.toArray('.ed-row-line').forEach((line) => {
       gsap.fromTo(
         line,
@@ -322,7 +334,7 @@ export default function Home() {
   }, { scope: mainRef });
 
   return (
-    <div ref={mainRef} style={{ background: '#ffffff', overflow: 'hidden', color: '#09090b' }}>
+    <div ref={mainRef} style={{ background: '#ffffff', overflow: 'hidden', color: '#072534' }}>
       <style>{`
         .home-ledger-grid {
           max-width: 1400px;
@@ -332,7 +344,7 @@ export default function Home() {
         }
         .corp-pillar-cell {
           padding: 2.25rem 1.85rem;
-          border-right: 1px solid #e4e4e7;
+          border-right: 1px solid #D8E4EA;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
@@ -342,7 +354,7 @@ export default function Home() {
           border-right: none;
         }
         .corp-pillar-cell:hover {
-          background: #fafafa;
+          background: #F7FAFB;
         }
         .ed-ledger-row {
           display: grid;
@@ -351,23 +363,30 @@ export default function Home() {
           gap: 1.5rem;
           padding: 1.85rem 1.25rem;
           text-decoration: none;
-          color: #09090b;
+          color: #072534;
           background: #ffffff;
           transition: background-color 0.28s cubic-bezier(0.16, 1, 0.3, 1),
             color 0.28s cubic-bezier(0.16, 1, 0.3, 1),
             padding-left 0.32s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .ed-ledger-row:hover {
-          background: #09090b;
+          background: #062C3D;
           color: #ffffff;
           padding-left: 1.85rem;
         }
+        .ed-ledger-row .ed-code {
+          color: #0E7480;
+          transition: color 0.25s ease;
+        }
+        .ed-ledger-row:hover .ed-code {
+          color: #38BDF8;
+        }
         .ed-ledger-row .ed-muted {
-          color: #71717a;
+          color: #475569;
           transition: color 0.25s ease;
         }
         .ed-ledger-row:hover .ed-muted {
-          color: #a1a1aa;
+          color: #94B8C7;
         }
         .ed-ledger-row .ed-arrow {
           transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -379,10 +398,11 @@ export default function Home() {
           display: inline-flex;
           align-items: center;
           gap: 0.65rem;
+          min-height: 44px;
           padding: 0.85rem 1.45rem;
-          border: 1px solid #09090b;
+          border: 1px solid #094E68;
           border-radius: 6px;
-          background: #09090b;
+          background: #094E68;
           color: #ffffff;
           font-family: var(--ent-mono);
           font-size: 0.72rem;
@@ -390,11 +410,12 @@ export default function Home() {
           letter-spacing: 0.08em;
           text-transform: uppercase;
           text-decoration: none;
-          transition: background-color 0.22s ease, color 0.22s ease;
+          transition: background-color 0.22s ease, border-color 0.22s ease, color 0.22s ease;
         }
         .arch-inline-cta:hover {
-          background: #ffffff;
-          color: #09090b;
+          background: #0E7480;
+          border-color: #0E7480;
+          color: #ffffff;
         }
         @media (max-width: 1024px) {
           .home-ledger-grid {
@@ -405,7 +426,7 @@ export default function Home() {
           }
           .corp-pillar-cell:nth-child(1),
           .corp-pillar-cell:nth-child(2) {
-            border-bottom: 1px solid #e4e4e7;
+            border-bottom: 1px solid #D8E4EA;
           }
           .ed-ledger-row {
             grid-template-columns: 48px 1fr 32px;
@@ -421,17 +442,17 @@ export default function Home() {
           }
           .corp-pillar-cell {
             border-right: none !important;
-            border-bottom: 1px solid #e4e4e7;
+            border-bottom: 1px solid #D8E4EA;
             padding: 1.65rem 1.25rem;
           }
         }
       `}</style>
 
-      {/* ─── 1. HERO SECTION (Architectural Entry) ─── */}
+      {/* ─── 1. HERO SECTION (ITPLN Architectural Entry) ─── */}
       <section
         id="beranda"
         className="hero-section"
-        style={{ position: 'relative', height: '100vh', minHeight: '600px', overflow: 'hidden' }}
+        style={{ position: 'relative', height: '100dvh', minHeight: '600px', overflow: 'hidden' }}
       >
         <div className="hero-bg" style={{ position: 'absolute', inset: '-10%', zIndex: 0 }}>
           <div
@@ -452,7 +473,7 @@ export default function Home() {
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(180deg, rgba(9, 9, 11, 0.42) 0%, rgba(9, 9, 11, 0.28) 42%, rgba(9, 9, 11, 0.84) 100%)',
+              'linear-gradient(180deg, rgba(6, 44, 61, 0.58) 0%, rgba(6, 44, 61, 0.42) 45%, rgba(6, 44, 61, 0.90) 100%)',
             zIndex: 1,
           }}
         />
@@ -468,7 +489,7 @@ export default function Home() {
                 fontFamily: 'var(--ent-mono)',
                 fontSize: '0.72rem',
                 fontWeight: 600,
-                letterSpacing: '0.22em',
+                letterSpacing: '0.2em',
                 color: '#ffffff',
                 textTransform: 'uppercase',
                 marginBottom: '1.65rem',
@@ -477,26 +498,26 @@ export default function Home() {
                 gap: '0.85rem',
               }}
             >
-              <div style={{ width: '32px', height: '1.5px', background: '#ffffff' }} />
-              ITPLN // ENTERPRISE PERFORMANCE ARCHITECTURE
+              <div style={{ width: '32px', height: '2px', background: '#1B9AAA' }} />
+              INSTITUT TEKNOLOGI PLN · DIREKTORAT PRP
             </div>
 
             <h1
               className="home-hero-title"
               style={{
                 color: '#ffffff',
-                fontWeight: 300,
+                fontWeight: 400,
                 margin: '0 0 0.5rem',
                 lineHeight: 1.02,
                 letterSpacing: '-0.045em',
               }}
             >
               <span style={{ display: 'block', overflow: 'hidden', paddingBottom: '0.06em' }}>
-                <span className="hero-mask-line" style={{ display: 'block' }}>Performance</span>
+                <span className="hero-mask-line" style={{ display: 'block' }}>Portal Kinerja</span>
               </span>
               <span style={{ display: 'block', overflow: 'hidden', paddingBottom: '0.08em' }}>
                 <span className="hero-mask-line" style={{ display: 'block' }}>
-                  <strong style={{ fontWeight: 800 }}>Portal.</strong>
+                  <strong style={{ fontWeight: 800 }}>Terpadu ITPLN.</strong>
                 </span>
               </span>
             </h1>
@@ -515,14 +536,14 @@ export default function Home() {
             <p
               className="reveal-hero-sub home-hero-desc"
               style={{
-                color: 'rgba(250, 250, 250, 0.9)',
+                color: '#F1F7FA',
                 maxWidth: '620px',
                 fontWeight: 400,
                 lineHeight: 1.72,
                 marginBottom: '2.4rem',
               }}
             >
-              Sistem tata kelola kinerja institusional berstandar korporasi global. Menyelaraskan realisasi 8 Indikator Kinerja Utama Kementerian dengan presisi evaluasi KPI Operasional Unit &amp; Fakultas.
+              Ruang evaluasi dan pelaporan kinerja resmi Institut Teknologi PLN yang menyatukan pencapaian 8 Indikator Kinerja Utama Kementerian dengan evaluasi KPI Operasional Unit dan Fakultas.
             </p>
 
             <div className="reveal-hero-sub" style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -534,8 +555,9 @@ export default function Home() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.85rem',
+                  minHeight: '46px',
                   background: '#ffffff',
-                  color: '#09090b',
+                  color: '#072534',
                   fontFamily: 'var(--ent-mono)',
                   fontSize: '0.78rem',
                   fontWeight: 700,
@@ -546,7 +568,7 @@ export default function Home() {
                   border: '1px solid #ffffff',
                 }}
               >
-                Autentikasi Akses
+                Masuk Ruang Kerja
                 <ArrowRight size={16} strokeWidth={2} />
               </Link>
 
@@ -556,12 +578,11 @@ export default function Home() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.6rem',
-                  padding: '1.15rem 1.85rem',
+                  minHeight: '46px',
+                  padding: '1.05rem 1.75rem',
                   borderRadius: '6px',
-                  background: 'rgba(9, 9, 11, 0.35)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.35)',
+                  background: '#062C3D',
+                  border: '1px solid rgba(255, 255, 255, 0.45)',
                   color: '#ffffff',
                   fontFamily: 'var(--ent-mono)',
                   fontSize: '0.76rem',
@@ -569,18 +590,18 @@ export default function Home() {
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
                   textDecoration: 'none',
-                  transition: 'background-color 0.25s ease, border-color 0.25s ease',
+                  transition: 'background-color 0.22s ease, border-color 0.22s ease',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)';
+                  e.currentTarget.style.background = '#094E68';
                   e.currentTarget.style.borderColor = '#ffffff';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(9, 9, 11, 0.35)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.35)';
+                  e.currentTarget.style.background = '#062C3D';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.45)';
                 }}
               >
-                Kerangka Strategis <ArrowUpRight size={15} />
+                Kerangka Strategis
               </Link>
             </div>
           </div>
@@ -592,15 +613,15 @@ export default function Home() {
         className="corp-pillars-strip"
         style={{
           background: '#ffffff',
-          borderBottom: '1px solid #e4e4e7',
+          borderBottom: '1px solid #D8E4EA',
           position: 'relative',
         }}
       >
-        <div className="ledger-top-rule" style={{ height: '2px', background: '#09090b', width: '100%' }} />
+        <div className="ledger-top-rule" style={{ height: '2px', background: '#094E68', width: '100%' }} />
         <div className="home-ledger-grid">
           {CORPORATE_PILLARS.map((pillar) => (
             <div key={pillar.idx} className="corp-pillar-cell">
-              <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#71717a', letterSpacing: '0.1em', marginBottom: '0.9rem' }}>
+              <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#0E7480', letterSpacing: '0.1em', marginBottom: '0.9rem' }}>
                 {pillar.idx} // PARAMETER
               </div>
               <div
@@ -612,7 +633,7 @@ export default function Home() {
                   fontFamily: 'Outfit, sans-serif',
                   fontSize: 'clamp(2.75rem, 4.5vw, 4.1rem)',
                   fontWeight: 700,
-                  color: '#09090b',
+                  color: '#072534',
                   letterSpacing: '-0.05em',
                   lineHeight: 0.95,
                   marginBottom: '0.85rem',
@@ -622,10 +643,10 @@ export default function Home() {
                 {pillar.pad ? String(pillar.target).padStart(2, '0') : pillar.target}{pillar.suffix}
               </div>
               <div>
-                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#09090b', letterSpacing: '-0.015em' }}>
+                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#072534', letterSpacing: '-0.015em' }}>
                   {pillar.label}
                 </div>
-                <div style={{ fontSize: '0.76rem', color: '#71717a', marginTop: '0.22rem', lineHeight: 1.5 }}>
+                <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: '0.22rem', lineHeight: 1.5 }}>
                   {pillar.sub}
                 </div>
               </div>
@@ -638,7 +659,7 @@ export default function Home() {
       <section
         id="iku"
         className="iku-section home-content-section"
-        style={{ background: '#ffffff', scrollMarginTop: '110px', borderBottom: '1px solid #e4e4e7' }}
+        style={{ background: '#ffffff', scrollMarginTop: '110px', borderBottom: '1px solid #D8E4EA' }}
       >
         <div
           className="home-flex-row"
@@ -647,11 +668,11 @@ export default function Home() {
           <div
             className="arch-photo-frame home-img-block"
             style={{
-              borderRadius: '6px',
+              borderRadius: '8px',
               overflow: 'hidden',
               position: 'relative',
-              background: '#f4f4f5',
-              border: '1px solid #e4e4e7',
+              background: '#EDF3F6',
+              border: '1px solid #D8E4EA',
             }}
           >
             <div
@@ -673,11 +694,11 @@ export default function Home() {
                 fontSize: '0.68rem',
                 fontWeight: 600,
                 letterSpacing: '0.14em',
-                color: '#71717a',
+                color: '#094E68',
                 textTransform: 'uppercase',
                 paddingBottom: '0.75rem',
                 marginBottom: '1.5rem',
-                borderBottom: '1.5px solid #09090b',
+                borderBottom: '2px solid #0E7480',
                 display: 'inline-block',
               }}
             >
@@ -688,7 +709,7 @@ export default function Home() {
               className="home-section-title"
               style={{
                 fontWeight: 800,
-                color: '#09090b',
+                color: '#072534',
                 letterSpacing: '-0.04em',
                 margin: '0 0 1.25rem',
                 lineHeight: 1.04,
@@ -699,8 +720,8 @@ export default function Home() {
               Kinerja Utama.
             </h3>
 
-            <p className="home-section-desc" style={{ color: '#52525b', fontWeight: 400, lineHeight: 1.78, margin: '0 0 2rem' }}>
-              Mengukur 8 standar utama kementerian secara presisi — mencakup keterserapan lulusan, pengalaman luar kampus, tridharma dosen di industri, praktisi mengajar, luaran riset, kemitraan global, pembelajaran kolaboratif, hingga akreditasi internasional.
+            <p className="home-section-desc" style={{ color: '#334155', fontWeight: 400, lineHeight: 1.78, margin: '0 0 2rem' }}>
+              Mengukur 8 standar utama kementerian secara terukur, mencakup kesiapan kerja lulusan, pengalaman mahasiswa di luar kampus, kegiatan tridharma dosen di industri, praktisi mengajar, luaran riset, kemitraan prodi, pembelajaran kolaboratif, dan akreditasi internasional.
             </p>
 
             <Link to="/iku-list" className="arch-inline-cta">
@@ -714,7 +735,7 @@ export default function Home() {
       <section
         id="kpi"
         className="kpi-section home-content-section"
-        style={{ background: '#fafafa', scrollMarginTop: '110px', borderBottom: '1px solid #e4e4e7' }}
+        style={{ background: '#F7FAFB', scrollMarginTop: '110px', borderBottom: '1px solid #D8E4EA' }}
       >
         <div
           className="home-flex-row home-flex-reverse"
@@ -723,11 +744,11 @@ export default function Home() {
           <div
             className="arch-photo-frame home-img-block"
             style={{
-              borderRadius: '6px',
+              borderRadius: '8px',
               overflow: 'hidden',
               position: 'relative',
-              background: '#e4e4e7',
-              border: '1px solid #d4d4d8',
+              background: '#EDF3F6',
+              border: '1px solid #BFD2DC',
             }}
           >
             <div
@@ -749,11 +770,11 @@ export default function Home() {
                 fontSize: '0.68rem',
                 fontWeight: 600,
                 letterSpacing: '0.14em',
-                color: '#71717a',
+                color: '#094E68',
                 textTransform: 'uppercase',
                 paddingBottom: '0.75rem',
                 marginBottom: '1.5rem',
-                borderBottom: '1.5px solid #09090b',
+                borderBottom: '2px solid #0E7480',
                 display: 'inline-block',
               }}
             >
@@ -764,7 +785,7 @@ export default function Home() {
               className="home-section-title"
               style={{
                 fontWeight: 800,
-                color: '#09090b',
+                color: '#072534',
                 letterSpacing: '-0.04em',
                 margin: '0 0 1.25rem',
                 lineHeight: 1.04,
@@ -775,8 +796,8 @@ export default function Home() {
               Indicator.
             </h3>
 
-            <p className="home-section-desc" style={{ color: '#52525b', fontWeight: 400, lineHeight: 1.78, margin: '0 0 2rem' }}>
-              Instrumen evaluasi tingkat unit kerja dan fakultas dengan mesin formula otomatis ala spreadsheet. Mengukur Perspektif Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), serta Kepatuhan (D) secara akuntabel.
+            <p className="home-section-desc" style={{ color: '#334155', fontWeight: 400, lineHeight: 1.78, margin: '0 0 2rem' }}>
+              Instrumen evaluasi unit kerja dan fakultas ITPLN dengan kalkulasi formula otomatis ala spreadsheet untuk menilai Perspektif Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), serta Kepatuhan (D).
             </p>
 
             <Link to="/guide" className="arch-inline-cta">
@@ -789,37 +810,37 @@ export default function Home() {
       {/* ─── 4. ENTERPRISE SYSTEM ARCHITECTURE ─── */}
       <EnterpriseArchitecture />
 
-      {/* ─── 5. EDITORIAL GOVERNANCE REFERENCE LEDGER (ANTI-AI SWISS INDEX) ─── */}
+      {/* ─── 5. EDITORIAL GOVERNANCE REFERENCE LEDGER ─── */}
       <section
         className="gov-res-section"
         style={{
           background: '#ffffff',
-          borderTop: '1px solid #e4e4e7',
-          borderBottom: '1px solid #e4e4e7',
+          borderTop: '1px solid #D8E4EA',
+          borderBottom: '1px solid #D8E4EA',
           padding: 'clamp(4.5rem, 7vw, 7rem) clamp(1.25rem, 4vw, 4rem)',
         }}
       >
         <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '2.75rem' }}>
             <div>
-              <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.14em', color: '#71717a', marginBottom: '0.65rem' }}>
+              <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.14em', color: '#0E7480', marginBottom: '0.65rem' }}>
                 04 // DIREKTORI DOKUMENTASI &amp; REGULASI
               </div>
-              <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 'clamp(2rem, 3.8vw, 3.1rem)', fontWeight: 800, color: '#09090b', letterSpacing: '-0.04em', lineHeight: 1.04, margin: 0 }}>
+              <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 'clamp(2rem, 3.8vw, 3.1rem)', fontWeight: 800, color: '#072534', letterSpacing: '-0.04em', lineHeight: 1.04, margin: 0 }}>
                 Indeks Tata Kelola Institusi.
               </h2>
             </div>
-            <p style={{ margin: 0, maxWidth: '440px', color: '#52525b', fontSize: '0.9rem', lineHeight: 1.65 }}>
-              Referensi terstruktur standar penilaian kementerian, kerangka kerja PDCA, dan regulasi internal Institut Teknologi PLN.
+            <p style={{ margin: 0, maxWidth: '440px', color: '#334155', fontSize: '0.9rem', lineHeight: 1.65 }}>
+              Referensi resmi standar penilaian kementerian, kerangka kerja PDCA, dan regulasi mutu internal Institut Teknologi PLN.
             </p>
           </div>
 
           <div>
-            <div className="ed-row-line" style={{ height: '1.5px', background: '#09090b', width: '100%' }} />
+            <div className="ed-row-line" style={{ height: '1.5px', background: '#094E68', width: '100%' }} />
             {EDITORIAL_INDEX.map((item) => (
               <div key={item.code}>
                 <Link to={item.to} className="ed-ledger-row">
-                  <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.82rem', fontWeight: 700 }}>
+                  <span className="ed-code" style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.82rem', fontWeight: 700 }}>
                     {item.code}
                   </span>
                   <span className="ed-muted ed-hide-tablet" style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.65rem', letterSpacing: '0.1em' }}>
@@ -835,14 +856,14 @@ export default function Home() {
                     <ArrowUpRight size={20} className="ed-arrow" />
                   </span>
                 </Link>
-                <div className="ed-row-line" style={{ height: '1px', background: '#e4e4e7', width: '100%' }} />
+                <div className="ed-row-line" style={{ height: '1px', background: '#D8E4EA', width: '100%' }} />
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── 6. DUAL KINETIC MARQUEE & ARCHITECTURAL SSO MONOLITH ─── */}
+      {/* ─── 6. DUAL KINETIC MARQUEE & ITPLN SSO MONOLITH ─── */}
       <section
         className="marquee-section"
         style={{
@@ -877,7 +898,7 @@ export default function Home() {
                   fontSize: 'clamp(4rem, 11vw, 11.5rem)',
                   fontWeight: 800,
                   color: 'transparent',
-                  WebkitTextStroke: '1px rgba(9, 9, 11, 0.06)',
+                  WebkitTextStroke: '1px rgba(9, 78, 104, 0.08)',
                   letterSpacing: '-0.04em',
                   paddingRight: '2.5rem',
                   lineHeight: 0.9,
@@ -898,7 +919,7 @@ export default function Home() {
                   fontSize: 'clamp(4rem, 11vw, 11.5rem)',
                   fontWeight: 800,
                   color: 'transparent',
-                  WebkitTextStroke: '1px rgba(9, 9, 11, 0.045)',
+                  WebkitTextStroke: '1px rgba(14, 116, 128, 0.07)',
                   letterSpacing: '-0.04em',
                   paddingRight: '2.5rem',
                   lineHeight: 0.9,
@@ -906,7 +927,7 @@ export default function Home() {
                   userSelect: 'none',
                 }}
               >
-                GOVERNANCE • PRECISION • INTEGRITY •
+                INSTITUT • TEKNOLOGI • PLN •
               </div>
             ))}
           </div>
@@ -920,7 +941,7 @@ export default function Home() {
             maxWidth: '1320px',
             margin: '0 auto',
             borderRadius: '8px',
-            border: '1px solid #09090b',
+            border: '1px solid #094E68',
             overflow: 'hidden',
             minHeight: '420px',
             display: 'flex',
@@ -929,7 +950,7 @@ export default function Home() {
             flexWrap: 'wrap',
             gap: '2.5rem',
             padding: 'clamp(2.5rem, 5vw, 4.5rem)',
-            background: '#09090b',
+            background: '#062C3D',
             willChange: 'transform, clip-path',
           }}
         >
@@ -941,7 +962,7 @@ export default function Home() {
               backgroundImage: 'url(/pln_view.jpg)',
               backgroundSize: 'cover',
               backgroundPosition: 'center 35%',
-              filter: 'contrast(1.08) brightness(0.75) saturate(0.85)',
+              filter: 'contrast(1.06) brightness(0.72) saturate(0.9)',
               zIndex: 0,
               willChange: 'transform',
             }}
@@ -952,7 +973,7 @@ export default function Home() {
               position: 'absolute',
               inset: 0,
               background:
-                'linear-gradient(100deg, rgba(9, 9, 11, 0.94) 0%, rgba(9, 9, 11, 0.78) 55%, rgba(9, 9, 11, 0.45) 100%)',
+                'linear-gradient(100deg, rgba(6, 44, 61, 0.95) 0%, rgba(6, 44, 61, 0.82) 55%, rgba(9, 78, 104, 0.52) 100%)',
               zIndex: 1,
             }}
           />
@@ -964,12 +985,12 @@ export default function Home() {
                 fontSize: '0.68rem',
                 fontWeight: 600,
                 letterSpacing: '0.18em',
-                color: '#d4d4d8',
+                color: '#94B8C7',
                 textTransform: 'uppercase',
                 marginBottom: '1.35rem',
               }}
             >
-              SSO // SINGLE SIGN-ON GATEWAY
+              SSO // GERBANG AUTENTIKASI ITPLN
             </div>
 
             <h2
@@ -983,21 +1004,21 @@ export default function Home() {
                 margin: '0 0 1.15rem',
               }}
             >
-              Masuki ekosistem kinerja
+              Masuk ke ruang kerja
               <br />
-              terpadu sekarang.
+              kinerja unit Anda.
             </h2>
 
             <p
               style={{
                 fontSize: 'clamp(0.92rem, 1.1vw, 1rem)',
-                color: 'rgba(250, 250, 250, 0.78)',
+                color: '#E2F1F7',
                 lineHeight: 1.7,
                 margin: 0,
                 maxWidth: '540px',
               }}
             >
-              Akses ruang kerja PRP Control Center, 8 IKU Kementerian, maupun KPI Operasional Unit sesuai otoritas Anda melalui satu gerbang autentikasi tunggal.
+              Direktorat PRP, Dekanat, Ketua Program Studi, dan Unit Kerja dapat melaporkan serta memverifikasi capaian melalui satu pintu masuk sesuai otoritas masing-masing.
             </p>
           </div>
 
@@ -1013,13 +1034,15 @@ export default function Home() {
           >
             <Link
               to="/login"
+              className="home-marquee-cta"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.85rem',
+                minHeight: '46px',
                 background: '#ffffff',
-                color: '#09090b',
-                padding: '1.15rem 2.2rem',
+                color: '#072534',
+                padding: '1.1rem 2.1rem',
                 borderRadius: '6px',
                 fontFamily: 'var(--ent-mono)',
                 fontSize: '0.8rem',
@@ -1031,7 +1054,7 @@ export default function Home() {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.background = '#f4f4f5';
+                e.currentTarget.style.background = '#EDF5F7';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'translateY(0)';
@@ -1048,7 +1071,7 @@ export default function Home() {
                 fontSize: '0.64rem',
                 fontWeight: 600,
                 letterSpacing: '0.1em',
-                color: '#a1a1aa',
+                color: '#94B8C7',
               }}
             >
               3 OTORITAS TERISOLASI · JEJAK AUDIT PENUH

@@ -1,234 +1,355 @@
 import { useRef } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 
 gsap.registerPlugin(ScrollTrigger);
 
+const GUIDE_SECTIONS = [
+  {
+    idx: '01',
+    tag: 'INDIKATOR WAJIB KEMENTERIAN',
+    title: 'Pelaporan 8 Indikator Kinerja Utama (IKU)',
+    desc: 'Biro, fakultas, dan lembaga penanggung jawab (PIC) menginput capaian aktual beserta angka pembilang dan penyebut sesuai formula Kepmendikbudristek No. 210/M/2023.',
+    checklist: [
+      'Pilih periode evaluasi aktif pada ruang kerja 8 IKU.',
+      'Isi nilai capaian aktual dan uraian ringkas kegiatan.',
+      'Lampirkan tautan bukti dokumen resmi berformat HTTPS (Google Drive institusi, repositori, atau SK resmi).',
+    ],
+  },
+  {
+    idx: '02',
+    tag: 'EVALUASI OPERASIONAL INTERNAL',
+    title: 'Pengisian Lembar Kerja KPI 4 Perspektif',
+    desc: 'Unit kerja dan dekanat mengisi target serta realisasi pada Perspektif Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), dan Kepatuhan (D). Skor terhitung otomatis sesuai rumus bobot.',
+    checklist: [
+      'Masukkan angka realisasi pada kolom input lembar kerja unit.',
+      'Periksa hasil kalkulasi persentase capaian dan skor terbobot secara langsung.',
+      'Simpan draf kerja atau ajukan ke Direktorat PRP untuk diverifikasi.',
+    ],
+  },
+  {
+    idx: '03',
+    tag: 'VERIFIKASI & PENETAPAN MUTU',
+    title: 'Pemeriksaan Bukti & Persetujuan Direktorat PRP',
+    desc: 'Auditor dan verifikator Direktorat PRP meninjau keabsahan setiap bukti pendukung sebelum mengunci skor akhir unit pada periode berjalan.',
+    checklist: [
+      'Setiap tautan bukti diperiksa satu per satu oleh verifikator PRP.',
+      'Jika bukti belum sesuai, pengajuan dikembalikan berstatus Revisi beserta catatan perbaikan.',
+      'Pengajuan yang telah lengkap disetujui (Approved) dan terekam pada jejak audit.',
+    ],
+  },
+];
+
 export default function Guide() {
-  const mainRef = useRef();
+  const mainRef = useRef(null);
 
   useGSAP(() => {
-    // Prevent layout shift bugs by refreshing scrolltrigger
-    ScrollTrigger.refresh();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
 
-    // 1. Hero Parallax (Extreme Elastic Distance)
-    gsap.to('.hero-parallax', {
-      y: 400,
-      opacity: 0,
-      scale: 0.85,
-      scrollTrigger: {
-        trigger: '.hero-section',
-        start: 'top top',
-        end: 'bottom top',
-        scrub: 1.5
-      }
-    });
-
-    // Watermark Extreme Parallax
-    gsap.to('.watermark-iku', {
-      y: 500,
-      x: -100,
-      scrollTrigger: { trigger: '.hero-section', start: 'top top', end: 'bottom top', scrub: 2 }
-    });
-
-    // 2. Animate content blocks dynamically on scroll
-    const blocks = gsap.utils.toArray('.guide-block');
-    blocks.forEach((block) => {
-      // Line draw perfectly synced
-      gsap.fromTo(block.querySelector('.g-line'),
-        { scaleX: 0 },
-        {
-          scaleX: 1, transformOrigin: 'left',
-          scrollTrigger: { trigger: block, start: 'top 100%', end: 'top 40%', scrub: 1 }
-        }
-      );
-
-      // Content slide up (Massive Travel Distance)
-      gsap.fromTo(block.querySelector('.g-content'),
-        { y: 250, opacity: 0 },
-        {
-          y: 0, opacity: 1,
-          scrollTrigger: { trigger: block, start: 'top 95%', end: 'top 40%', scrub: 1.5 }
-        }
-      );
-
-      // EXTREME Parallax for the massive background numbers
-      gsap.fromTo(block.querySelector('.g-num'),
-        { y: -250, scale: 0.7 },
-        {
-          y: 250, scale: 1.2,
-          scrollTrigger: { trigger: block, start: 'top bottom', end: 'bottom top', scrub: 2 }
-        }
-      );
-    });
-
-    // 3. Bottom CTA Reveal (Massive Swing)
-    gsap.fromTo('.cta-content',
-      { y: 300, opacity: 0, scale: 0.85 },
-      {
-        y: 0, opacity: 1, scale: 1,
-        scrollTrigger: { trigger: '.cta-section', start: 'top 100%', end: 'top 50%', scrub: 1.5 }
-      }
+    gsap.fromTo(
+      '.reveal-init',
+      { y: 32, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.9, stagger: 0.1, ease: 'expo.out', delay: 0.08 }
     );
 
-    // Initial page load reveals (Sharp, non-scrub)
-    gsap.fromTo('.reveal-init',
-      { y: 150, opacity: 0 },
-      { y: 0, opacity: 1, duration: 1.5, stagger: 0.15, ease: 'power4.out', delay: 0.1 }
-    );
-
+    gsap.utils.toArray('.guide-block').forEach((block) => {
+      const line = block.querySelector('.g-line');
+      const content = block.querySelector('.g-content');
+      if (line) {
+        gsap.fromTo(
+          line,
+          { scaleX: 0 },
+          {
+            scaleX: 1,
+            transformOrigin: 'left center',
+            duration: 0.9,
+            ease: 'expo.inOut',
+            scrollTrigger: { trigger: block, start: 'top 88%', once: true },
+          }
+        );
+      }
+      if (content) {
+        gsap.fromTo(
+          content,
+          { y: 32, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.8,
+            ease: 'power3.out',
+            scrollTrigger: { trigger: block, start: 'top 86%', once: true },
+          }
+        );
+      }
+    });
   }, { scope: mainRef });
 
   return (
-    <div ref={mainRef} style={{ background: '#ffffff', minHeight: '100vh', color: '#000000' }}>
+    <div ref={mainRef} style={{ background: '#ffffff', minHeight: '100dvh', color: '#072534' }}>
+      <style>{`
+        .guide-hero-grid {
+          display: grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: clamp(1.75rem, 4vw, 4rem);
+          align-items: end;
+        }
+        .guide-body-layout {
+          display: grid;
+          grid-template-columns: 260px 1fr;
+          gap: clamp(2rem, 4vw, 4rem);
+          align-items: start;
+        }
+        .guide-sticky-aside {
+          position: sticky;
+          top: 6.5rem;
+          padding-top: 3.5rem;
+        }
+        @media (max-width: 960px) {
+          .guide-hero-grid,
+          .guide-body-layout {
+            grid-template-columns: 1fr;
+          }
+          .guide-sticky-aside {
+            display: none;
+          }
+        }
+      `}</style>
 
       {/* ─── HERO SECTION ─── */}
-      <section className="hero-section" style={{ paddingTop: '10rem', paddingBottom: '4rem', paddingLeft: '4rem', paddingRight: '4rem', borderBottom: '1px solid #000000', position: 'relative', overflow: 'hidden' }}>
-
-        {/* Massive Subtle Watermark to balance the space */}
-        <div className="watermark-iku" style={{ position: 'absolute', top: '-5vw', right: '-2vw', fontSize: '28vw', fontWeight: 900, color: 'transparent', WebkitTextStroke: '1px rgba(0,0,0,0.04)', lineHeight: 0.8, userSelect: 'none', pointerEvents: 'none', zIndex: 0 }}>
-          IKU
-        </div>
-
-        <div className="hero-parallax" style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 1600, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem', alignItems: 'flex-end' }}>
+      <section
+        className="hero-section"
+        style={{
+          padding: 'clamp(7.5rem, 11vw, 10rem) clamp(1.25rem, 4vw, 4rem) clamp(3rem, 5vw, 4.5rem)',
+          borderBottom: '1px solid #D8E4EA',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ maxWidth: 1400, margin: '0 auto' }} className="guide-hero-grid">
           <div>
-            <div style={{ overflow: 'hidden' }}>
-              <h1 className="reveal-init" style={{ fontSize: 'clamp(5rem, 8vw, 8.5rem)', fontWeight: 400, letterSpacing: '-4px', lineHeight: 0.9, margin: 0 }}>
-                Klasifikasi
-              </h1>
+            <div className="reveal-init ent-eyebrow" style={{ marginBottom: '1.35rem' }}>
+              03 // PROSEDUR OPERASIONAL STANDAR
             </div>
-            <div style={{ overflow: 'hidden' }}>
-              <h1 className="reveal-init" style={{ fontSize: 'clamp(5rem, 8vw, 8.5rem)', fontWeight: 400, letterSpacing: '-4px', lineHeight: 0.9, margin: 0, color: '#999999' }}>
-                Indikator.
-              </h1>
-            </div>
+            <h1
+              className="reveal-init"
+              style={{
+                fontSize: 'clamp(2.5rem, 6vw, 5.2rem)',
+                fontWeight: 800,
+                letterSpacing: '-0.04em',
+                lineHeight: 1.02,
+                margin: 0,
+                color: '#072534',
+              }}
+            >
+              Panduan Pelaporan
+              <br />
+              <span style={{ color: '#094E68', fontWeight: 500 }}>&amp; Verifikasi Mutu.</span>
+            </h1>
           </div>
-          <div style={{ paddingBottom: '1rem', overflow: 'hidden' }}>
-            <p className="reveal-init" style={{ fontSize: '1.5rem', color: '#000000', margin: 0, lineHeight: 1.6, maxWidth: 550, fontWeight: 300 }}>
-              Panduan definitif untuk memahami hierarki, bobot, dan prioritas sistem. Arsitektur evaluasi murni tanpa kompromi.
+
+          <div style={{ paddingBottom: '0.35rem' }}>
+            <p
+              className="reveal-init"
+              style={{
+                fontSize: 'clamp(1rem, 1.25vw, 1.12rem)',
+                color: '#334155',
+                margin: 0,
+                lineHeight: 1.72,
+                maxWidth: 520,
+              }}
+            >
+              Tahapan kerja resmi bagi Unit PIC, Fakultas, Program Studi, dan Direktorat PRP dalam mengisi, melampirkan bukti pendukung, serta menyetujui capaian kinerja di lingkungan ITPLN.
             </p>
           </div>
         </div>
       </section>
 
-      {/* ─── SPLIT-SCREEN STICKY LAYOUT ─── */}
-      <section style={{ maxWidth: 1600, margin: '0 auto', display: 'flex', padding: '0 4rem', position: 'relative' }}>
-
-        {/* Left Sticky Column */}
-        <div style={{ width: '30%', position: 'relative', display: 'none', '@media(min-width: 1024px)': { display: 'block' } }}>
-          <div style={{ position: 'sticky', top: '6rem', paddingTop: '6rem', height: 'fit-content' }}>
-            <div className="reveal-init" style={{ display: 'inline-flex', alignItems: 'center', gap: '1rem', fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
-              <ArrowRight size={20} style={{ transform: 'rotate(45deg)' }} />
-              Direktori Utama
-            </div>
-          </div>
-        </div>
-
-        {/* Right Scrolling Column */}
-        <div style={{ width: '100%', flex: 1, paddingTop: '4rem', paddingBottom: '8rem' }}>
-
-          {/* ITEM 1 */}
-          <div className="guide-block" style={{ padding: '6rem 0 10rem', position: 'relative' }}>
-            <div className="g-line" style={{ width: '100%', height: 1, background: '#000000', marginBottom: '4rem' }} />
-
-            <div style={{ position: 'relative' }}>
-              <div className="g-num" style={{ position: 'absolute', top: -100, right: 0, fontSize: 'clamp(12rem, 20vw, 25rem)', fontWeight: 400, color: '#f5f5f5', letterSpacing: '-10px', lineHeight: 0.8, zIndex: 0, userSelect: 'none' }}>
-                01
+      {/* ─── SPLIT-SCREEN EDITORIAL GUIDE ─── */}
+      <section style={{ maxWidth: 1400, margin: '0 auto', padding: '0 clamp(1.25rem, 4vw, 4rem)' }}>
+        <div className="guide-body-layout">
+          <aside className="guide-sticky-aside">
+            <div
+              style={{
+                padding: '1.25rem',
+                borderRadius: '8px',
+                background: '#F7FAFB',
+                border: '1px solid #D8E4EA',
+                borderLeft: '3px solid #094E68',
+              }}
+            >
+              <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.1em', color: '#0E7480', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+                TAHAPAN EVALUASI
               </div>
+              <ol style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', paddingLeft: '1.1rem', margin: 0, fontSize: '0.84rem', color: '#334155', fontWeight: 600 }}>
+                <li>Pelaporan 8 IKU Makro</li>
+                <li>Pengisian KPI 4 Perspektif</li>
+                <li>Verifikasi Direktorat PRP</li>
+              </ol>
+            </div>
+          </aside>
 
-              <div className="g-content" style={{ position: 'relative', zIndex: 1, maxWidth: 850 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: '2rem', color: '#000000' }}>
-                  [ Mandatori ]
+          <div style={{ padding: 'clamp(2rem, 4vw, 3.5rem) 0 clamp(4rem, 7vw, 6rem)' }}>
+            {GUIDE_SECTIONS.map((item) => (
+              <article key={item.idx} className="guide-block" style={{ padding: 'clamp(2.25rem, 4vw, 3.75rem) 0' }}>
+                <div className="g-line" style={{ width: '100%', height: 1.5, background: '#094E68', marginBottom: '2rem' }} />
+
+                <div className="g-content" style={{ maxWidth: 820 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        fontFamily: 'var(--ent-mono)',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '4px',
+                        background: '#094E68',
+                        color: '#ffffff',
+                      }}
+                    >
+                      TAHAP {item.idx}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'var(--ent-mono)',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        color: '#0E7480',
+                      }}
+                    >
+                      {item.tag}
+                    </span>
+                  </div>
+
+                  <h2
+                    style={{
+                      fontSize: 'clamp(1.65rem, 3.2vw, 2.5rem)',
+                      fontWeight: 800,
+                      color: '#072534',
+                      letterSpacing: '-0.03em',
+                      margin: '0 0 1rem',
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    {item.title}
+                  </h2>
+
+                  <p style={{ fontSize: '1.02rem', color: '#334155', lineHeight: 1.75, margin: '0 0 1.5rem' }}>
+                    {item.desc}
+                  </p>
+
+                  <ul
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.65rem',
+                      padding: '1.25rem 1.35rem',
+                      borderRadius: '8px',
+                      background: '#F7FAFB',
+                      border: '1px solid #D8E4EA',
+                    }}
+                  >
+                    {item.checklist.map((point, idx) => (
+                      <li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', fontSize: '0.9rem', color: '#072534', lineHeight: 1.55 }}>
+                        <CheckCircle2 size={17} color="#0E7480" style={{ flexShrink: 0, marginTop: '2px' }} />
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <h2 style={{ fontSize: 'clamp(3rem, 5vw, 5rem)', fontWeight: 400, color: '#000000', letterSpacing: '-2px', margin: '0 0 2rem', lineHeight: 1 }}>
-                  Prioritas Absolut.
-                </h2>
-                <p style={{ fontSize: '1.5rem', color: '#666666', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>
-                  Indikator hierarki tertinggi yang wajib dipenuhi oleh seluruh unit operasional. Ini adalah mandat fundamental yang menjadi jangkar evaluasi kinerja institusi dari kementerian pusat. Tidak ada negosiasi. Tuntaskan sepenuhnya.
-                </p>
-              </div>
-            </div>
+              </article>
+            ))}
           </div>
-
-          {/* ITEM 2 */}
-          <div className="guide-block" style={{ padding: '6rem 0 10rem', position: 'relative' }}>
-            <div className="g-line" style={{ width: '100%', height: 1, background: '#000000', marginBottom: '4rem' }} />
-
-            <div style={{ position: 'relative' }}>
-              <div className="g-num" style={{ position: 'absolute', top: -100, right: 0, fontSize: 'clamp(12rem, 20vw, 25rem)', fontWeight: 400, color: '#f5f5f5', letterSpacing: '-10px', lineHeight: 0.8, zIndex: 0, userSelect: 'none' }}>
-                02
-              </div>
-
-              <div className="g-content" style={{ position: 'relative', zIndex: 1, maxWidth: 850 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: '2rem', color: '#000000' }}>
-                  [ Pilihan ]
-                </div>
-                <h2 style={{ fontSize: 'clamp(3rem, 5vw, 5rem)', fontWeight: 400, color: '#000000', letterSpacing: '-2px', margin: '0 0 2rem', lineHeight: 1 }}>
-                  Keunggulan Fokus.
-                </h2>
-                <p style={{ fontSize: '1.5rem', color: '#666666', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>
-                  Fleksibilitas taktis. Anda bebas memilih indikator yang paling resonan dengan kekuatan dan spesialisasi program studi operasional. Dimensi ini menuntut perhitungan analitis untuk memaksimalkan rasio bobot kinerja.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* ITEM 3 */}
-          <div className="guide-block" style={{ padding: '6rem 0 4rem', position: 'relative' }}>
-            <div className="g-line" style={{ width: '100%', height: 1, background: '#000000', marginBottom: '4rem' }} />
-
-            <div style={{ position: 'relative' }}>
-              <div className="g-num" style={{ position: 'absolute', top: -100, right: 0, fontSize: 'clamp(12rem, 20vw, 25rem)', fontWeight: 400, color: '#f5f5f5', letterSpacing: '-10px', lineHeight: 0.8, zIndex: 0, userSelect: 'none' }}>
-                03
-              </div>
-
-              <div className="g-content" style={{ position: 'relative', zIndex: 1, maxWidth: 850 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: '2rem', color: '#000000' }}>
-                  [ Partisipatif ]
-                </div>
-                <h2 style={{ fontSize: 'clamp(3rem, 5vw, 5rem)', fontWeight: 400, color: '#000000', letterSpacing: '-2px', margin: '0 0 2rem', lineHeight: 1 }}>
-                  Ekosistem Bersama.
-                </h2>
-                <p style={{ fontSize: '1.5rem', color: '#666666', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>
-                  Metrik yang digerakkan oleh sinergi aktif mahasiswa, dosen, dan mitra industri. Penilaian murni berbasis kolaborasi lapangan. Keberhasilan diukur dari luasnya jejaring ekosistem operasional yang terbangun secara riil.
-                </p>
-              </div>
-            </div>
-          </div>
-
         </div>
       </section>
 
-      {/* ─── MASSIVE CTA SECTION ─── */}
-      <section className="cta-section" style={{ borderTop: '1px solid #000000', padding: '10rem 4rem 12rem', position: 'relative', overflow: 'hidden' }}>
-        <div className="cta-content" style={{ maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-
-          <div style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: '3rem', color: '#666666' }}>
-            [ Fase Eksekusi ]
-          </div>
-
-          <a href="#" style={{
-            fontSize: 'clamp(4rem, 8vw, 8rem)', fontWeight: 400, letterSpacing: '-4px', color: '#000000', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3rem', transition: 'all 0.4s ease', lineHeight: 1
+      {/* ─── ACTION FOOTER SECTION (VALID ROUTES, NO DEAD HREF="#") ─── */}
+      <section
+        className="cta-section"
+        style={{
+          background: '#062C3D',
+          color: '#ffffff',
+          borderTop: '2px solid #1B9AAA',
+          padding: 'clamp(4rem, 7vw, 6rem) clamp(1.25rem, 4vw, 4rem)',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1400,
+            margin: '0 auto',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '2rem',
           }}
-            onMouseEnter={e => {
-              e.currentTarget.style.color = '#999999';
-              const arrow = e.currentTarget.querySelector('.arrow');
-              if (arrow) arrow.style.transform = 'rotate(-45deg) translate(20px, -20px)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.color = '#000000';
-              const arrow = e.currentTarget.querySelector('.arrow');
-              if (arrow) arrow.style.transform = 'rotate(0deg) translate(0, 0)';
-            }}
-          >
-            Lihat Matriks
-            <ArrowRight className="arrow" size={96} strokeWidth={1} style={{ transition: 'transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)' }} />
-          </a>
+        >
+          <div style={{ maxWidth: 620 }}>
+            <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#94B8C7', marginBottom: '0.75rem' }}>
+              TINDAK LANJUT PELAPORAN
+            </div>
+            <h2 style={{ fontSize: 'clamp(1.85rem, 3.6vw, 2.85rem)', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.035em', margin: '0 0 0.65rem', lineHeight: 1.1 }}>
+              Periksa Matriks Indikator atau Mulai Pengisian.
+            </h2>
+            <p style={{ margin: 0, color: '#C5DEE8', fontSize: '0.96rem', lineHeight: 1.68 }}>
+              Tinjau spesifikasi formula pada katalog publik atau masuk ke portal internal menggunakan akun unit Anda.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
+            <Link
+              to="/iku-list"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                minHeight: '46px',
+                padding: '0.95rem 1.5rem',
+                borderRadius: '6px',
+                background: '#ffffff',
+                color: '#072534',
+                fontFamily: 'var(--ent-mono)',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+              }}
+            >
+              Lihat Matriks 8 IKU <ArrowRight size={15} />
+            </Link>
+
+            <Link
+              to="/login"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                minHeight: '46px',
+                padding: '0.95rem 1.5rem',
+                borderRadius: '6px',
+                background: '#094E68',
+                border: '1px solid #1B9AAA',
+                color: '#ffffff',
+                fontFamily: 'var(--ent-mono)',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+              }}
+            >
+              Masuk Ruang Kerja
+            </Link>
+          </div>
         </div>
       </section>
-
     </div>
   );
 }

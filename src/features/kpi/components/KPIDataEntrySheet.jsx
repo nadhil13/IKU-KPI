@@ -789,16 +789,154 @@ function UnitEvidence({ form, user, locked }) {
   const [url, setUrl] = useState('');
   const [indicatorId, setIndicatorId] = useState(form.sections[0]?.items[0]?.id || '');
   const [error, setError] = useState('');
-  const mutate = (action) => { try { setError(''); action(); } catch (err) { setError(err.message); } };
-  return <section aria-label="Bukti KPI" style={{ padding: '1rem', border: '1px solid #cbd5e1', borderRadius: 12 }}>
-    <h3>Bukti pendukung KPI</h3><p>Tautan HTTPS saja; berkas tidak disimpan. Bukti dapat diubah sebelum submit atau saat revisi.</p>
-    {error && <p role="alert">{error}</p>}
-    {!locked && <><label>Indikator <select value={indicatorId} onChange={(e) => setIndicatorId(e.target.value)}>{form.sections.flatMap((s) => s.items.map((i) => <option key={i.id} value={i.id}>{s.code} · {i.indikator}</option>))}</select></label>
-      <label>Label bukti <input value={label} onChange={(e) => setLabel(e.target.value)} /></label>
-      <label>URL HTTPS <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></label>
-      <button type="button" onClick={() => mutate(() => addUnitEvidence(form.id, user, { label, url, indicatorId }))}>Tambah bukti</button></>}
-    <ul>{readUnitEvidence(form.id, user.email).map((e) => <li key={e.id}><a href={e.url} target="_blank" rel="noopener noreferrer">{e.label}</a> · {e.indicatorId} · {e.status} {e.note && `— ${e.note}`} {!locked && <button type="button" onClick={() => mutate(() => removeUnitEvidence(form.id, user, e.id))}>Hapus {e.label}</button>}</li>)}</ul>
-  </section>;
+  const items = readUnitEvidence(form.id, user.email);
+  const mutate = (action) => {
+    try {
+      setError('');
+      action();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  return (
+    <section
+      aria-label="Bukti KPI"
+      style={{
+        padding: '1.25rem 1.4rem',
+        background: '#FFFFFF',
+        border: '1px solid #D8E4EA',
+        borderRadius: '8px',
+        display: 'grid',
+        gap: '0.85rem',
+      }}
+    >
+      <div>
+        <h3 style={{ margin: '0 0 0.25rem', fontFamily: 'Outfit, sans-serif', fontSize: '0.98rem', fontWeight: 700, color: '#072534' }}>
+          Bukti Pendukung KPI Unit
+        </h3>
+        <p style={{ margin: 0, fontSize: '0.78rem', color: '#334155', lineHeight: 1.55 }}>
+          Lampirkan tautan repositori HTTPS resmi (tanpa unggah berkas ke peramban). Daftar bukti dapat diperbarui sebelum pengiriman atau saat status revisi dibuka.
+        </p>
+      </div>
+      {error && (
+        <p
+          role="alert"
+          style={{
+            margin: 0,
+            padding: '0.65rem 0.85rem',
+            borderRadius: '6px',
+            background: '#FEF2F2',
+            border: '1px solid #FCA5A5',
+            color: '#7F1D1D',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+          }}
+        >
+          {error}
+        </p>
+      )}
+      {!locked && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gap: '0.65rem',
+            alignItems: 'end',
+          }}
+        >
+          <label style={{ display: 'grid', gap: '0.3rem', fontSize: '0.74rem', fontWeight: 700, color: '#072534' }}>
+            Indikator
+            <select className="ent-select" value={indicatorId} onChange={(e) => setIndicatorId(e.target.value)}>
+              {form.sections.flatMap((s) =>
+                s.items.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {s.code} · {i.indikator}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: '0.3rem', fontSize: '0.74rem', fontWeight: 700, color: '#072534' }}>
+            Label Bukti
+            <input
+              className="ent-input"
+              placeholder="Contoh: SK Penetapan / Laporan Audit"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: '0.3rem', fontSize: '0.74rem', fontWeight: 700, color: '#072534' }}>
+            URL HTTPS
+            <input
+              className="ent-input"
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://dokumen.itpln.ac.id/..."
+            />
+          </label>
+          <button
+            type="button"
+            className="ent-btn ent-btn-teal"
+            onClick={() =>
+              mutate(() => {
+                addUnitEvidence(form.id, user, { label, url, indicatorId });
+                setLabel('');
+                setUrl('');
+              })
+            }
+          >
+            Tambah Bukti
+          </button>
+        </div>
+      )}
+      {items.length > 0 ? (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.5rem' }}>
+          {items.map((e) => (
+            <li
+              key={e.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                padding: '0.6rem 0.8rem',
+                borderRadius: '6px',
+                background: '#F7FAFB',
+                border: '1px solid #D8E4EA',
+                fontSize: '0.76rem',
+                color: '#334155',
+              }}
+            >
+              <span>
+                <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700, color: '#094E68' }}>
+                  {e.label}
+                </a>{' '}
+                · <code style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.7rem', color: '#072534' }}>{e.indicatorId}</code> ·{' '}
+                <strong>{e.status}</strong>
+                {e.note ? ` · Catatan: ${e.note}` : ''}
+              </span>
+              {!locked && (
+                <button
+                  type="button"
+                  className="ent-btn"
+                  style={{ padding: '0.32rem 0.65rem', fontSize: '0.72rem', color: '#B91C1C' }}
+                  onClick={() => mutate(() => removeUnitEvidence(form.id, user, e.id))}
+                >
+                  Hapus {e.label}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p style={{ margin: 0, fontSize: '0.75rem', color: '#475569' }}>
+          Belum ada tautan bukti pendukung yang dilampirkan pada periode formulir ini.
+        </p>
+      )}
+    </section>
+  );
 }
 
 function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride = null, persist = true,
@@ -1000,17 +1138,24 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
 
   // ─── ULTRA GSAP SCROLL MOTION (TERHUBUNG KE .internal-main-scroll) ───
   useGSAP(() => {
+    const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const scrollerEl = document.querySelector('.internal-main-scroll');
 
     // 1. Sliding White Pill pada 5 Tab Perspektif (ALL, A, B, C, D)
     const tabIdx = activeSectionTab === 'ALL' ? 0 : Math.max(0, governedSections.findIndex((sec) => sec.code === activeSectionTab) + 1);
     if (tabPillRef.current) {
-      gsap.to(tabPillRef.current, {
-        xPercent: tabIdx * 100,
-        duration: 0.55,
-        ease: 'expo.out',
-      });
+      if (prefersReduced) {
+        gsap.set(tabPillRef.current, { xPercent: tabIdx * 100 });
+      } else {
+        gsap.to(tabPillRef.current, {
+          xPercent: tabIdx * 100,
+          duration: 0.55,
+          ease: 'expo.out',
+        });
+      }
     }
+
+    if (prefersReduced) return;
 
     // 2. Staggered Entrance Halus saat Tab Berubah
     gsap.fromTo(
@@ -1080,13 +1225,16 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
   }, [activeSectionTab, governedSections]);
 
   useGSAP(() => {
-    if (fillProgressRef.current) {
-      gsap.to(fillProgressRef.current, {
-        scaleX: calculated.completionRatio,
-        duration: 0.65,
-        ease: 'expo.out',
-      });
+    if (!fillProgressRef.current) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      gsap.set(fillProgressRef.current, { scaleX: calculated.completionRatio });
+      return;
     }
+    gsap.to(fillProgressRef.current, {
+      scaleX: calculated.completionRatio,
+      duration: 0.65,
+      ease: 'expo.out',
+    });
   }, { dependencies: [calculated.completionRatio], scope: containerRef });
 
   const handleCellChange = (key, val) => {
@@ -1246,12 +1394,12 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
   const isComplete = calculated.totalFilledInputs === calculated.totalInputsCount && calculated.totalInvalidInputs === 0;
   const workflowStatusLabel = ({ REJECTED: 'Ditolak', LOCKED: 'Dikunci' })[workflow.status] || WORKFLOW_LABELS[workflow.status] || WORKFLOW_LABELS[WORKFLOW_STATUS.DRAFT];
   const workflowStatusTone = {
-    [WORKFLOW_STATUS.NOT_STARTED]: { color: '#64748b', background: '#f8fafc', border: '#e2e8f0', icon: Clock3 },
-    [WORKFLOW_STATUS.DRAFT]: { color: '#334155', background: '#f8fafc', border: '#cbd5e1', icon: History },
-    [WORKFLOW_STATUS.SUBMITTED]: { color: '#166534', background: '#f0fdf4', border: '#bbf7d0', icon: CheckCircle2 },
-    [WORKFLOW_STATUS.NEEDS_REVISION]: { color: '#92400e', background: '#fffbeb', border: '#fde68a', icon: AlertTriangle },
-    [WORKFLOW_STATUS.APPROVED]: { color: '#1e3a8a', background: '#eff6ff', border: '#bfdbfe', icon: ShieldCheck },
-  }[workflow.status] || { color: '#334155', background: '#f8fafc', border: '#cbd5e1', icon: History };
+    [WORKFLOW_STATUS.NOT_STARTED]: { color: '#475569', background: '#F7FAFB', border: '#D8E4EA', icon: Clock3 },
+    [WORKFLOW_STATUS.DRAFT]: { color: '#094E68', background: '#F7FAFB', border: '#B8CAD4', icon: History },
+    [WORKFLOW_STATUS.SUBMITTED]: { color: '#14532D', background: '#F0FDF4', border: '#86EFAC', icon: CheckCircle2 },
+    [WORKFLOW_STATUS.NEEDS_REVISION]: { color: '#78350F', background: '#FFFBEB', border: '#FCD34D', icon: AlertTriangle },
+    [WORKFLOW_STATUS.APPROVED]: { color: '#094E68', background: '#EDF3F6', border: '#94B8C7', icon: ShieldCheck },
+  }[workflow.status] || { color: '#094E68', background: '#F7FAFB', border: '#D8E4EA', icon: History };
   const WorkflowIcon = workflowStatusTone.icon;
 
   // Builder Baris Tabel untuk Export Excel & PDF (Mencakup Bagian A, B, C, dan D)
@@ -1261,7 +1409,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
     calculated.sections.forEach((sec) => {
       if (isExcel) {
         html += `
-          <tr style="background-color: #F1F5F9; font-weight: bold; color: #0F172A;">
+          <tr style="background-color: #EDF3F6; font-weight: bold; color: #072534;">
             <td style="border:1px solid #CBD5E1; text-align:center; padding:8px;">${sec.code}</td>
             <td colspan="4" style="border:1px solid #CBD5E1; padding:8px;">${sec.title}</td>
             <td style="border:1px solid #CBD5E1; text-align:center; padding:8px;">${sec.weightDisplay}</td>
@@ -1286,13 +1434,13 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
             ? `${formatIndonesianNumber(Math.min(100, Math.max(0, item.ratioPercent)), 2)}%`
             : isExcel
               ? ''
-              : '—';
+              : '-';
         const skorStr =
           item.weightedScore !== null
             ? formatIndonesianNumber(item.weightedScore, 2)
             : isExcel
               ? ''
-              : '—';
+              : '-';
 
         const hasGroupBanner = Boolean(item.groupBannerTitle);
         const hasSplitTargets = Array.isArray(item.subrowTargets);
@@ -1301,8 +1449,8 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
           if (isExcel) {
             html += `
               <tr>
-                <td rowspan="${item.excelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#0F172A;">${item.excelNo}</td>
-                <td style="border:1px solid #CBD5E1; padding:7px; font-weight:bold; text-decoration:underline; color:#0F172A;">${item.groupBannerTitle}</td>
+                <td rowspan="${item.excelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${item.excelNo}</td>
+                <td style="border:1px solid #CBD5E1; padding:7px; font-weight:bold; text-decoration:underline; color:#072534;">${item.groupBannerTitle}</td>
                 <td style="border:1px solid #CBD5E1;"></td>
                 <td style="border:1px solid #CBD5E1;"></td>
                 <td style="border:1px solid #CBD5E1;"></td>
@@ -1342,21 +1490,21 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
               html += `
                 <tr>
                   ${!item.hideExcelNo && !hasGroupBanner
-                  ? `<td rowspan="${item.excelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#0F172A;">${item.excelNo}</td>`
+                  ? `<td rowspan="${item.excelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${item.excelNo}</td>`
                   : ''
                 }
                   ${!item.hideIndikatorCell
-                  ? `<td rowspan="${item.indikatorRowSpan}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; font-weight:600; color:#0F172A;">${item.indikator}</td>`
+                  ? `<td rowspan="${item.indikatorRowSpan}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; font-weight:600; color:#072534;">${item.indikator}</td>`
                   : ''
                 }
                   <td rowspan="${subCount}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; color:#334155;">${item.formula}</td>
                   <td style="border:1px solid #CBD5E1; padding:7px; color:#334155;">${sub.label}</td>
-                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#0F172A;">${sub.raw || ''}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#0F172A;">${item.bobotDisplay}</td>
-                  <td rowspan="${targetRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#0F172A;">${firstTargetText}</td>
+                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#072534;">${sub.raw || ''}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${item.bobotDisplay}</td>
+                  <td rowspan="${targetRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#072534;">${firstTargetText}</td>
                   <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#475569;">${item.satuan}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#0F172A;">${capStr}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#0F172A;">${skorStr}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${capStr}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${skorStr}</td>
                 </tr>
               `;
             } else {
@@ -1372,7 +1520,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
                 }
                   <td rowspan="${subCount}">${item.formula}</td>
                   <td>${sub.label}</td>
-                  <td class="right bold">${sub.raw || '—'}</td>
+                  <td class="right bold">${sub.raw || '-'}</td>
                   <td rowspan="${subCount}" class="center bold">${item.bobotDisplay}</td>
                   <td rowspan="${targetRowSpan}" class="center">${firstTargetText}</td>
                   <td rowspan="${subCount}" class="center">${item.satuan}</td>
@@ -1383,7 +1531,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
             }
           } else {
             const subTargetCellExcel = hasSplitTargets
-              ? `<td style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#0F172A;">${item.subrowTargets[sIdx] || ''}</td>`
+              ? `<td style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#072534;">${item.subrowTargets[sIdx] || ''}</td>`
               : '';
             const subTargetCellPdf = hasSplitTargets
               ? `<td class="center">${item.subrowTargets[sIdx] || ''}</td>`
@@ -1393,7 +1541,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
               html += `
                 <tr>
                   <td style="border:1px solid #CBD5E1; padding:7px; color:#334155;">${sub.label}</td>
-                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#0F172A;">${sub.raw || ''}</td>
+                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#072534;">${sub.raw || ''}</td>
                   ${subTargetCellExcel}
                 </tr>
               `;
@@ -1401,7 +1549,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
               html += `
                 <tr>
                   <td>${sub.label}</td>
-                  <td class="right bold">${sub.raw || '—'}</td>
+                  <td class="right bold">${sub.raw || '-'}</td>
                   ${subTargetCellPdf}
                 </tr>
               `;
@@ -1418,9 +1566,9 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
 
     if (isExcel) {
       html += `
-        <tr style="background-color: #F8FAFC; font-weight: bold; color: #0F172A;">
+        <tr style="background-color: #F7FAFB; font-weight: bold; color: #072534;">
           <td colspan="5" style="border:1px solid #CBD5E1; text-align:right; padding:9px;">
-            SKOR AKHIR KPI BERSIH — CAPAIAN (A+B+C: ${posFormatted}) + KEPATUHAN (D: ${penFormatted}):
+            SKOR AKHIR KPI BERSIH: CAPAIAN (A+B+C: ${posFormatted}) + KEPATUHAN (D: ${penFormatted}):
           </td>
           <td style="border:1px solid #CBD5E1; text-align:center; padding:9px;">100</td>
           <td colspan="3" style="border:1px solid #CBD5E1;"></td>
@@ -1431,7 +1579,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
       html += `
         <tr class="cat-row">
           <td colspan="5" class="right">
-            SKOR AKHIR KPI BERSIH — CAPAIAN (A+B+C: ${posFormatted}) + KEPATUHAN (D: ${penFormatted}):
+            SKOR AKHIR KPI BERSIH: CAPAIAN (A+B+C: ${posFormatted}) + KEPATUHAN (D: ${penFormatted}):
           </td>
           <td class="center">100</td>
           <td colspan="3"></td>
@@ -1626,7 +1774,7 @@ function KPIEntryContent({ onMetricsUpdate, readOnly = false, sectionsOverride =
       <body>
         <div class="doc-header">
           <div>
-            <div class="doc-title">LAPORAN EVALUASI CAPAIAN KPI — PERSPEKTIF ${calculated.sections.map((sec) => escapeHtml(sec.code)).join(', ')}</div>
+            <div class="doc-title">LAPORAN EVALUASI CAPAIAN KPI: PERSPEKTIF ${calculated.sections.map((sec) => escapeHtml(sec.code)).join(', ')}</div>
             <div class="doc-sub">Institut Teknologi Perusahaan Listrik Negara (ITPLN) • ${sectionSubtitle}</div>
           </div>
           <div style="text-align: right; font-size: 7.8pt; color: #475569;">
@@ -1711,23 +1859,24 @@ ${sectionSummaryHtml}
           align-items: center;
           gap: 0.55rem;
           padding: 0.7rem 1rem;
-          border-radius: 12px;
-          background: #0f172a;
-          color: #f8fafc;
+          border-radius: 8px;
+          background: #062C3D;
+          border: 1px solid #094E68;
+          color: #FFFFFF;
           font-size: 0.78rem;
           font-weight: 600;
-          box-shadow: 0 18px 40px rgba(15, 23, 42, 0.25);
-          animation: kpiToastIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 14px 32px rgba(7, 37, 52, 0.22);
+          animation: kpiToastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         @keyframes kpiToastIn {
-          from { opacity: 0; transform: translateY(14px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .clean-ledger-card {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03), 0 8px 24px rgba(15, 23, 42, 0.02);
+          background: #FFFFFF;
+          border: 1px solid #D8E4EA;
+          border-radius: 8px;
+          box-shadow: 0 1px 3px rgba(7, 37, 52, 0.03);
           overflow: hidden;
         }
         .clean-section-header {
@@ -1736,29 +1885,29 @@ ${sectionSummaryHtml}
           justify-content: space-between;
           flex-wrap: wrap;
           gap: 1rem;
-          padding: 1.25rem 1.5rem;
-          background: #f8fafc;
-          border-bottom: 1px solid #e2e8f0;
+          padding: 1.15rem 1.4rem;
+          background: #F7FAFB;
+          border-bottom: 1px solid #D8E4EA;
         }
         .clean-editorial-table {
           width: 100%;
           border-collapse: collapse;
           table-layout: fixed;
-          background: #ffffff;
-          color: #0f172a;
+          background: #FFFFFF;
+          color: #072534;
           font-size: 0.82rem;
         }
         .clean-editorial-table th {
-          background: #ffffff;
-          color: #64748b;
+          background: #EDF3F6;
+          color: #072534;
           font-family: 'Inter', sans-serif;
           font-size: 0.68rem;
           font-weight: 700;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.07em;
           text-transform: uppercase;
           padding: 0.85rem 1rem;
-          border-bottom: 1px solid #e2e8f0;
-          border-right: 1px solid #f1f5f9;
+          border-bottom: 1px solid #D8E4EA;
+          border-right: 1px solid #D8E4EA;
           text-align: left;
           vertical-align: middle;
         }
@@ -1767,116 +1916,136 @@ ${sectionSummaryHtml}
         }
         .clean-editorial-table td {
           padding: 0.75rem 1rem;
-          border-bottom: 1px solid #f1f5f9;
-          border-right: 1px solid #f1f5f9;
+          border-bottom: 1px solid #EDF3F6;
+          border-right: 1px solid #EDF3F6;
           vertical-align: middle;
-          color: #1e293b;
+          color: #072534;
           line-height: 1.45;
         }
         .clean-editorial-table td:last-child {
           border-right: none;
         }
         .kpi-indicator-tbody {
-          border-bottom: 1px solid #e2e8f0;
+          border-bottom: 1px solid #D8E4EA;
           transition: background-color 0.2s ease;
         }
         .kpi-indicator-tbody:last-child {
           border-bottom: none;
         }
         .kpi-indicator-tbody:hover {
-          background-color: #fcfcfd;
+          background-color: #F7FAFB;
         }
         .clean-input-cell {
           padding: 0.45rem 0.75rem !important;
-          background: #ffffff;
-          transition: all 0.2s ease;
+          background: #FFFFFF;
+          transition: background-color 0.2s ease;
         }
         .clean-input-cell.is-denominator {
-          background: #f8fafc;
+          background: #F7FAFB;
         }
         .clean-input-cell.is-focused {
-          background: #f8fafc;
-          box-shadow: inset 0 0 0 1.5px #475569;
+          background: #F7FAFB;
+          box-shadow: inset 0 0 0 1.5px #0E7480;
         }
         .clean-input-cell.is-invalid {
-          background: #fffafa;
-          box-shadow: inset 0 0 0 1.5px #94a3b8;
+          background: #FEF2F2;
+          box-shadow: inset 0 0 0 1.5px #B91C1C;
         }
         .clean-sheet-input {
           width: 100%;
-          border: 1px solid #e2e8f0;
-          border-radius: 7px;
-          background: #f8fafc;
+          min-height: 38px;
+          border: 1px solid #94A3B8;
+          border-radius: 6px;
+          background: #FFFFFF;
           padding: 0.48rem 0.75rem;
-          font-family: 'Outfit', 'Inter', sans-serif;
-          font-size: 0.86rem;
+          font-family: 'JetBrains Mono', 'Outfit', 'Inter', monospace;
+          font-size: 0.84rem;
           font-weight: 700;
-          color: #0f172a;
+          color: #072534;
           text-align: right;
           font-variant-numeric: tabular-nums;
-          outline: none;
           box-sizing: border-box;
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          transition: border-color 0.18s ease, background-color 0.18s ease;
         }
-        .clean-sheet-input:hover {
-          border-color: #cbd5e1;
-          background: #ffffff;
+        .clean-sheet-input:hover:not(:disabled) {
+          border-color: #094E68;
+          background: #FFFFFF;
         }
-        .clean-sheet-input:focus {
-          border-color: #475569;
-          background: #ffffff;
-          box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+        .clean-sheet-input:focus,
+        .clean-sheet-input:focus-visible {
+          outline: 2px solid #0E7480;
+          outline-offset: 1px;
+          border-color: #094E68;
+          background: #FFFFFF;
         }
         .clean-sheet-input:disabled {
           cursor: not-allowed;
-          color: #64748b;
-          background: #f1f5f9;
-          border-color: #e2e8f0;
+          color: #475569;
+          background: #EDF3F6;
+          border-color: #D8E4EA;
         }
         .clean-sheet-input::placeholder {
-          color: #cbd5e1;
-          font-weight: 400;
+          color: #64748B;
+          font-weight: 500;
           font-size: 0.76rem;
         }
         .clean-btn {
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 0.45rem;
-          padding: 0.58rem 0.95rem;
-          border-radius: 9px;
+          min-height: 38px;
+          padding: 0.55rem 0.95rem;
+          border-radius: 6px;
           font-size: 0.75rem;
           font-weight: 600;
           cursor: pointer;
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
-          color: #334155;
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          background: #FFFFFF;
+          border: 1px solid #D8E4EA;
+          color: #072534;
+          transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
         }
-        .clean-btn:hover {
-          background: #f8fafc;
-          border-color: #cbd5e1;
-          color: #0f172a;
-          transform: translateY(-1px);
+        .clean-btn:hover:not(:disabled) {
+          background: #F7FAFB;
+          border-color: #094E68;
+          color: #094E68;
+        }
+        .clean-btn:focus-visible {
+          outline: 2px solid #0E7480;
+          outline-offset: 2px;
         }
         .clean-btn:disabled {
-          opacity: 0.48;
+          opacity: 0.5;
           cursor: not-allowed;
-          transform: none;
-        }
-        .clean-btn:disabled:hover {
-          background: #ffffff;
-          border-color: #e2e8f0;
-          color: #334155;
         }
         .clean-btn-primary {
-          background: #f1f5f9;
-          border: 1px solid #cbd5e1;
-          color: #0f172a;
+          background: #094E68;
+          border: 1px solid #094E68;
+          color: #FFFFFF;
           font-weight: 700;
         }
-        .clean-btn-primary:hover {
-          background: #e2e8f0;
-          border-color: #94a3b8;
+        .clean-btn-primary:hover:not(:disabled) {
+          background: #072534;
+          border-color: #072534;
+          color: #FFFFFF;
+        }
+        @media (max-width: 768px) {
+          .clean-btn,
+          .clean-sheet-input {
+            min-height: 44px;
+          }
+          .clean-section-header {
+            padding: 1rem;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .kpi-structure-toast,
+          .kpi-indicator-tbody,
+          .clean-sheet-input,
+          .clean-btn {
+            animation: none !important;
+            transition: none !important;
+          }
         }
       `}</style>
 
@@ -1891,18 +2060,18 @@ ${sectionSummaryHtml}
           padding: '1rem 1.2rem',
           background: workflowStatusTone.background,
           border: `1px solid ${workflowStatusTone.border}`,
-          borderRadius: '14px',
+          borderRadius: '8px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
           <div
             style={{
-              width: '34px',
-              height: '34px',
+              width: '36px',
+              height: '36px',
               display: 'grid',
               placeItems: 'center',
-              borderRadius: '9px',
-              background: '#ffffff',
+              borderRadius: '6px',
+              background: '#FFFFFF',
               border: `1px solid ${workflowStatusTone.border}`,
               color: workflowStatusTone.color,
             }}
@@ -1912,11 +2081,11 @@ ${sectionSummaryHtml}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               <strong style={{ color: workflowStatusTone.color, fontSize: '0.86rem' }}>{workflowStatusLabel}</strong>
-              {isLocked && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', color: '#64748b' }}><LockKeyhole size={12} /> Data terkunci</span>}
+              {isLocked && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', color: '#475569' }}><LockKeyhole size={12} /> Data terkunci</span>}
             </div>
-            <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: '0.18rem' }}>
+            <div style={{ color: '#475569', fontSize: '0.73rem', marginTop: '0.18rem' }}>
               {isLocked
-                ? `Dikirim ${new Date(workflow.submittedAt).toLocaleString('id-ID')}`
+                ? `Dikirim ${workflow.submittedAt ? new Date(workflow.submittedAt).toLocaleString('id-ID') : 'pada sesi aktif'}`
                 : `${calculated.totalFilledInputs} dari ${calculated.totalInputsCount} isian wajib terpenuhi`}
             </div>
           </div>
@@ -1924,11 +2093,11 @@ ${sectionSummaryHtml}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' }}>
           <div style={{ minWidth: '145px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '0.66rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', fontSize: '0.66rem', fontWeight: 700, marginBottom: '0.3rem' }}>
               <span>KELENGKAPAN</span><span>{Math.round(calculated.completionRatio * 100)}%</span>
             </div>
-            <div style={{ height: '5px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
-              <div style={{ width: `${calculated.completionRatio * 100}%`, height: '100%', background: workflowStatusTone.color, borderRadius: '99px', transition: 'width 0.3s ease' }} />
+            <div style={{ height: '5px', background: '#D8E4EA', borderRadius: '99px', overflow: 'hidden' }}>
+              <div style={{ width: `${calculated.completionRatio * 100}%`, height: '100%', background: '#0E7480', borderRadius: '99px', transition: 'width 0.3s ease' }} />
             </div>
           </div>
           {!isLocked && (
@@ -1947,7 +2116,7 @@ ${sectionSummaryHtml}
       </div>
 
       {workflow.status === WORKFLOW_STATUS.NEEDS_REVISION && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.8rem 1rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', color: '#92400e', fontSize: '0.76rem' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.8rem 1rem', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '8px', color: '#78350F', fontSize: '0.76rem' }}>
           <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
           <div><strong>Perlu perbaikan:</strong> {workflow.revisionNote || 'Lembar kerja dibuka kembali untuk diperbaiki.'} Setelah selesai, submit ulang agar data terkunci kembali.</div>
         </div>
@@ -1959,18 +2128,17 @@ ${sectionSummaryHtml}
           position: 'sticky',
           top: '-0.5rem',
           zIndex: 25,
-          background: 'rgba(255, 255, 255, 0.94)',
-          backdropFilter: 'blur(16px)',
-          border: '1px solid #e2e8f0',
-          borderRadius: '14px',
-          padding: '0.85rem 1.2rem',
+          background: '#FFFFFF',
+          border: '1px solid #D8E4EA',
+          borderRadius: '8px',
+          padding: '0.85rem 1.15rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '0.85rem',
-          boxShadow: '0 4px 20px rgba(15, 23, 42, 0.04)',
-          overflow: 'hidden',
+          boxShadow: '0 2px 10px rgba(7, 37, 52, 0.05)',
+          maxWidth: '100%',
         }}
       >
         {/* Garis Scroll-Scrubbed Progress Halus di Bawah Sticky Bar */}
@@ -1981,7 +2149,7 @@ ${sectionSummaryHtml}
             left: 0,
             right: 0,
             height: '2px',
-            background: '#f1f5f9',
+            background: '#EDF3F6',
           }}
         >
           <div
@@ -1989,7 +2157,7 @@ ${sectionSummaryHtml}
             style={{
               width: '100%',
               height: '100%',
-              background: '#64748b',
+              background: '#0E7480',
               transformOrigin: 'left center',
               transform: 'scaleX(0)',
             }}
@@ -1997,75 +2165,84 @@ ${sectionSummaryHtml}
         </div>
 
         {/* Kiri: Segmented Control 5 Pilihan (Semua / A / B / C / D) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', overflowX: 'auto' }}>
-          <div
-            style={{
-              position: 'relative',
-              display: 'grid',
-              gridTemplateColumns: `repeat(${governedSections.length + 1}, 1fr)`,
-              background: '#f1f5f9',
-              padding: '3px',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              minWidth: `${Math.max(240, (governedSections.length + 1) * 122)}px`,
-            }}
-          >
-            {/* White Floating Active Pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', maxWidth: '100%', minWidth: 0 }}>
+          <div style={{ overflowX: 'auto', maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}>
             <div
-              ref={tabPillRef}
+              role="tablist"
+              aria-label="Filter bagian KPI"
               style={{
-                position: 'absolute',
-                top: '3px',
-                bottom: '3px',
-                left: '3px',
-                width: `calc((100% - 6px) / ${governedSections.length + 1})`,
-                background: '#ffffff',
-                borderRadius: '7px',
-                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04)',
-                border: '1px solid rgba(226, 232, 240, 0.8)',
-                zIndex: 1,
+                position: 'relative',
+                display: 'grid',
+                gridTemplateColumns: `repeat(${governedSections.length + 1}, 1fr)`,
+                background: '#EDF3F6',
+                padding: '3px',
+                borderRadius: '8px',
+                border: '1px solid #D8E4EA',
+                minWidth: `${Math.max(240, (governedSections.length + 1) * 116)}px`,
               }}
-            />
-            {[
-              { id: 'ALL', label: 'Semua Bagian', sub: 'Lengkap' },
-              ...governedSections.map((sec) => ({
-                id: sec.code,
-                label: `Bagian ${sec.code}`,
-                sub: sec.isPenaltySection
-                  ? `Penalti (${sec.weightDisplay ?? sec.totalWeight})`
-                  : `Bobot ${sec.weightDisplay ?? sec.totalWeight}`,
-              })),
-            ].map((tab) => {
-              const isSelected = activeSectionTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveSectionTab(tab.id)}
-                  style={{
-                    position: 'relative',
-                    zIndex: 2,
-                    border: 'none',
-                    background: 'transparent',
-                    padding: '0.42rem 0.5rem',
-                    cursor: 'pointer',
-                    color: isSelected ? '#0f172a' : '#64748b',
-                    transition: 'color 0.25s ease',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem', fontWeight: 700 }}>
-                    {tab.label}
-                  </div>
-                  <div style={{ fontSize: '0.6rem', color: isSelected ? '#475569' : '#94a3b8' }}>
-                    {tab.sub}
-                  </div>
-                </button>
-              );
-            })}
+            >
+              {/* White Floating Active Pill */}
+              <div
+                ref={tabPillRef}
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  top: '3px',
+                  bottom: '3px',
+                  left: '3px',
+                  width: `calc((100% - 6px) / ${governedSections.length + 1})`,
+                  background: '#FFFFFF',
+                  borderRadius: '6px',
+                  boxShadow: '0 1px 3px rgba(7, 37, 52, 0.08)',
+                  border: '1px solid #D8E4EA',
+                  zIndex: 1,
+                }}
+              />
+              {[
+                { id: 'ALL', label: 'Semua Bagian', sub: 'Lengkap' },
+                ...governedSections.map((sec) => ({
+                  id: sec.code,
+                  label: `Bagian ${sec.code}`,
+                  sub: sec.isPenaltySection
+                    ? `Penalti (${sec.weightDisplay ?? sec.totalWeight})`
+                    : `Bobot ${sec.weightDisplay ?? sec.totalWeight}`,
+                })),
+              ].map((tab) => {
+                const isSelected = activeSectionTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isSelected}
+                    onClick={() => setActiveSectionTab(tab.id)}
+                    style={{
+                      position: 'relative',
+                      zIndex: 2,
+                      minHeight: '44px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      background: 'transparent',
+                      padding: '0.42rem 0.5rem',
+                      cursor: 'pointer',
+                      color: isSelected ? '#072534' : '#334155',
+                      transition: 'color 0.2s ease',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem', fontWeight: 700 }}>
+                      {tab.label}
+                    </div>
+                    <div style={{ fontSize: '0.62rem', color: isSelected ? '#094E68' : '#475569', fontWeight: 600 }}>
+                      {tab.sub}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+          <div style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
             Tersimpan ({lastSaved})
           </div>
         </div>
@@ -2099,7 +2276,7 @@ ${sectionSummaryHtml}
         style={{
           width: '100%',
           height: '2px',
-          background: '#f1f5f9',
+          background: '#EDF3F6',
           borderRadius: '99px',
           overflow: 'hidden',
         }}
@@ -2109,7 +2286,7 @@ ${sectionSummaryHtml}
           style={{
             width: '100%',
             height: '100%',
-            background: '#475569',
+            background: '#0E7480',
             transformOrigin: 'left center',
             transform: 'scaleX(0)',
           }}
@@ -2119,24 +2296,23 @@ ${sectionSummaryHtml}
       {/* ─── 2. TABEL EDITORIAL KORPORAT (BAGIAN A, B, C & D) ─── */}
       {visibleSections.map((sec) => (
         <div key={sec.code} className="clean-ledger-card ledger-section-card">
-          {/* Header Perspektif Bersih (Alabaster Light #f8fafc) */}
+          {/* Header Perspektif Kampus ITPLN */}
           <div className="clean-section-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
               <div
                 style={{
                   width: '36px',
                   height: '36px',
-                  borderRadius: '9px',
-                  background: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  color: '#0f172a',
+                  borderRadius: '6px',
+                  background: '#094E68',
+                  color: '#FFFFFF',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontFamily: 'Outfit, sans-serif',
                   fontWeight: 800,
                   fontSize: '0.95rem',
-                  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+                  flexShrink: 0,
                 }}
               >
                 {sec.code}
@@ -2147,7 +2323,7 @@ ${sectionSummaryHtml}
                     fontSize: '0.65rem',
                     fontWeight: 700,
                     letterSpacing: '0.08em',
-                    color: '#64748b',
+                    color: '#475569',
                     textTransform: 'uppercase',
                   }}
                 >
@@ -2158,7 +2334,7 @@ ${sectionSummaryHtml}
                     fontFamily: 'Outfit, sans-serif',
                     fontSize: '1.08rem',
                     fontWeight: 800,
-                    color: '#0f172a',
+                    color: '#072534',
                     margin: '1px 0 0',
                     letterSpacing: '-0.3px',
                   }}
@@ -2172,23 +2348,24 @@ ${sectionSummaryHtml}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '1rem',
+                flexWrap: 'wrap',
+                gap: '0.75rem 1rem',
                 fontSize: '0.78rem',
                 color: '#475569',
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
               <span>
-                Terisi: <strong style={{ color: '#0f172a' }}>{sec.secCompleted} / {sec.secTotalItems}</strong> Butir
+                Terisi: <strong style={{ color: '#072534' }}>{sec.secCompleted} / {sec.secTotalItems}</strong> Butir
               </span>
-              <span style={{ color: '#cbd5e1' }}>|</span>
+              <span style={{ color: '#D8E4EA' }} aria-hidden="true">|</span>
               <span
                 style={{
                   padding: '0.35rem 0.85rem',
-                  borderRadius: '99px',
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  color: '#0f172a',
+                  borderRadius: '6px',
+                  background: '#FFFFFF',
+                  border: '1px solid #D8E4EA',
+                  color: '#072534',
                   fontWeight: 700,
                   fontFamily: 'Outfit, sans-serif',
                 }}
@@ -2199,7 +2376,7 @@ ${sectionSummaryHtml}
           </div>
 
           {/* Tabel Arsitektural Rapi */}
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }} data-lenis-prevent>
             <table className="clean-editorial-table" style={{ minWidth: '1060px' }}>
               <colgroup>
                 <col style={{ width: '54px' }} />
@@ -2219,13 +2396,13 @@ ${sectionSummaryHtml}
                   <th>INDIKATOR KINERJA</th>
                   <th>FORMULA</th>
                   <th>RUMUSAN MENCAPAI CAPAIAN</th>
-                  <th style={{ textAlign: 'right', background: '#f8fafc', color: '#0f172a' }}>
+                  <th style={{ textAlign: 'right', background: '#EDF3F6', color: '#072534' }}>
                     ISIAN
                   </th>
                   <th style={{ textAlign: 'center' }}>BOBOT</th>
                   <th style={{ textAlign: 'center' }}>NILAI 100% (TARGET)</th>
                   <th style={{ textAlign: 'center' }}>SATUAN</th>
-                  <th style={{ textAlign: 'right', background: '#f8fafc', color: '#0f172a' }}>
+                  <th style={{ textAlign: 'right', background: '#EDF3F6', color: '#072534' }}>
                     CAPAIAN & SKOR
                   </th>
                 </tr>
@@ -2241,13 +2418,13 @@ ${sectionSummaryHtml}
                   <tbody key={item.id} className="kpi-indicator-tbody">
                     {/* Baris Sub-Header Khusus Bagian C No 2: Klasterisasi Perguruan Tinggi Menuju Mandiri */}
                     {item.groupBannerTitle && (
-                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <tr style={{ background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
                         <td
                           style={{
                             textAlign: 'center',
                             fontWeight: 800,
                             fontFamily: 'Outfit, sans-serif',
-                            color: '#0f172a',
+                            color: '#072534',
                           }}
                         >
                           {item.excelNo || item.no}
@@ -2257,7 +2434,7 @@ ${sectionSummaryHtml}
                           style={{
                             fontWeight: 800,
                             fontFamily: 'Outfit, sans-serif',
-                            color: '#0f172a',
+                            color: '#072534',
                             fontSize: '0.84rem',
                             letterSpacing: '-0.1px',
                             textDecoration: 'underline',
@@ -2281,8 +2458,8 @@ ${sectionSummaryHtml}
                                 fontWeight: 700,
                                 fontFamily: 'Outfit, sans-serif',
                                 fontSize: '0.86rem',
-                                color: '#475569',
-                                background: '#ffffff',
+                                color: '#094E68',
+                                background: '#FFFFFF',
                               }}
                             >
                               {item.no}
@@ -2293,9 +2470,9 @@ ${sectionSummaryHtml}
                               rowSpan={rowCount}
                               style={{
                                 fontWeight: 600,
-                                color: '#0f172a',
+                                color: '#072534',
                                 fontSize: '0.84rem',
-                                background: '#ffffff',
+                                background: '#FFFFFF',
                               }}
                             >
                               <div>{item.indikator}</div>
@@ -2305,11 +2482,11 @@ ${sectionSummaryHtml}
                                     marginTop: '0.45rem',
                                     fontSize: '0.7rem',
                                     fontWeight: 600,
-                                    color: '#475569',
-                                    background: '#f8fafc',
-                                    border: '1px solid #e2e8f0',
+                                    color: '#334155',
+                                    background: '#F7FAFB',
+                                    border: '1px solid #D8E4EA',
                                     padding: '3px 7px',
-                                    borderRadius: '5px',
+                                    borderRadius: '4px',
                                     display: 'inline-block',
                                   }}
                                 >
@@ -2322,13 +2499,13 @@ ${sectionSummaryHtml}
                             <td
                               rowSpan={rowCount}
                               style={{
-                                color: '#475569',
+                                color: '#334155',
                                 fontSize: '0.79rem',
-                                background: '#ffffff',
+                                background: '#FFFFFF',
                               }}
                             >
                               {item.formula}
-                              {item.calcType === 'custom' && <small style={{ display: 'block', marginTop: '.4rem' }}>{describeKpiFormula(item.formulaExpr, item.subrows, buildKpiCellDirectory(governedSections).labels)}</small>}
+                              {item.calcType === 'custom' && <small style={{ display: 'block', marginTop: '.4rem', color: '#475569' }}>{describeKpiFormula(item.formulaExpr, item.subrows, buildKpiCellDirectory(governedSections).labels)}</small>}
                             </td>
                           </>
                         )}
@@ -2338,8 +2515,8 @@ ${sectionSummaryHtml}
                           style={{
                             fontSize: '0.8rem',
                             fontWeight: sub.isDenominator ? 700 : 500,
-                            color: sub.isDenominator ? '#0f172a' : '#334155',
-                            background: sub.isDenominator ? '#f8fafc' : 'transparent',
+                            color: sub.isDenominator ? '#072534' : '#334155',
+                            background: sub.isDenominator ? '#F7FAFB' : 'transparent',
                           }}
                         >
                           {sub.label}
@@ -2355,6 +2532,8 @@ ${sectionSummaryHtml}
                             ref={(el) => (inputRefs.current[sub.key] = el)}
                             type="text"
                             inputMode={sub.isTextInput ? 'text' : 'decimal'}
+                            aria-label={`${sec.code}.${item.no} ${sub.label}`}
+                            aria-invalid={Boolean(sub.isInvalid)}
                             className="clean-sheet-input"
                             value={sub.raw}
                             placeholder={sub.placeholder || '0'}
@@ -2374,15 +2553,15 @@ ${sectionSummaryHtml}
                               textAlign: 'center',
                               fontWeight: 700,
                               fontVariantNumeric: 'tabular-nums',
-                              color: '#0f172a',
-                              background: '#ffffff',
+                              color: '#072534',
+                              background: '#FFFFFF',
                             }}
                           >
                             {item.bobotDisplay}
                           </td>
                         )}
 
-                        {/* NILAI 100% (TARGET) — Mendukung terpecah 2 baris seperti pada Bagian D No 3 */}
+                        {/* NILAI 100% (TARGET) - Mendukung terpecah 2 baris seperti pada Bagian D No 3 */}
                         {hasSplitTargets ? (
                           <td
                             style={{
@@ -2390,7 +2569,7 @@ ${sectionSummaryHtml}
                               fontWeight: 600,
                               fontVariantNumeric: 'tabular-nums',
                               color: '#334155',
-                              background: '#ffffff',
+                              background: '#FFFFFF',
                             }}
                           >
                             {item.subrowTargets[sIdx] || ''}
@@ -2404,7 +2583,7 @@ ${sectionSummaryHtml}
                                 fontWeight: 600,
                                 fontVariantNumeric: 'tabular-nums',
                                 color: '#334155',
-                                background: '#ffffff',
+                                background: '#FFFFFF',
                               }}
                             >
                               {item.targetDisplay}
@@ -2420,8 +2599,8 @@ ${sectionSummaryHtml}
                               style={{
                                 textAlign: 'center',
                                 fontSize: '0.76rem',
-                                color: '#64748b',
-                                background: '#ffffff',
+                                color: '#475569',
+                                background: '#FFFFFF',
                               }}
                             >
                               {item.satuan}
@@ -2431,7 +2610,7 @@ ${sectionSummaryHtml}
                               rowSpan={rowCount}
                               style={{
                                 textAlign: 'right',
-                                background: '#fcfcfd',
+                                background: '#F7FAFB',
                                 fontVariantNumeric: 'tabular-nums',
                               }}
                             >
@@ -2440,19 +2619,19 @@ ${sectionSummaryHtml}
                                   fontFamily: 'Outfit, sans-serif',
                                   fontSize: '1.05rem',
                                   fontWeight: 800,
-                                  color: item.ratioPercent !== null ? '#0f172a' : '#cbd5e1',
+                                  color: item.ratioPercent !== null ? '#072534' : '#475569',
                                 }}
                               >
                                 {item.ratioPercent !== null
                                   ? `${formatIndonesianNumber(Math.min(100, Math.max(0, item.ratioPercent)), 2)}%`
-                                  : '—'}
+                                  : '-'}
                               </div>
 
                               <div
                                 style={{
                                   width: '100%',
                                   height: '3px',
-                                  background: '#e2e8f0',
+                                  background: '#D8E4EA',
                                   borderRadius: '99px',
                                   overflow: 'hidden',
                                   margin: '0.35rem 0',
@@ -2462,18 +2641,18 @@ ${sectionSummaryHtml}
                                   style={{
                                     width: `${progressPct}%`,
                                     height: '100%',
-                                    background: '#475569',
-                                    transition: 'width 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                                    background: '#0E7480',
+                                    transition: 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
                                   }}
                                 />
                               </div>
 
-                              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                              <div style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600 }}>
                                 Skor:{' '}
-                                <strong style={{ color: '#0f172a' }}>
+                                <strong style={{ color: '#072534' }}>
                                   {item.weightedScore !== null
                                     ? formatIndonesianNumber(item.weightedScore, 2)
-                                    : '—'}
+                                    : '-'}
                                 </strong>{' '}
                                 / {item.bobotDisplay}
                               </div>
@@ -2493,17 +2672,17 @@ ${sectionSummaryHtml}
       {/* ─── 3. FOOTER REKAPITULASI LENGKAP (A + B + C + D) ─── */}
       <div
         style={{
-          padding: '1rem 1.5rem',
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '14px',
+          padding: '1rem 1.4rem',
+          background: '#FFFFFF',
+          border: '1px solid #D8E4EA',
+          borderRadius: '8px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '1rem',
           fontSize: '0.78rem',
-          color: '#64748b',
+          color: '#475569',
         }}
       >
         <div>
@@ -2517,7 +2696,7 @@ ${sectionSummaryHtml}
             gap: '0.9rem',
             flexWrap: 'wrap',
             fontWeight: 700,
-            color: '#0f172a',
+            color: '#072534',
             fontFamily: 'Outfit, sans-serif',
             fontSize: '0.84rem',
             fontVariantNumeric: 'tabular-nums',
@@ -2528,15 +2707,15 @@ ${sectionSummaryHtml}
               <span>
                 {sec.code}{sec.isPenaltySection ? ' (Penalti)' : ''}: {formatIndonesianNumber(sec.secScore, 2)} / {sec.weightDisplay ?? formatIndonesianNumber(Number(sec.totalWeight) || 0, 2)}
               </span>
-              <span style={{ color: '#e2e8f0' }}>|</span>
+              <span style={{ color: '#D8E4EA' }} aria-hidden="true">|</span>
             </React.Fragment>
           ))}
           <span
             style={{
-              padding: '0.3rem 0.8rem',
-              borderRadius: '99px',
-              background: '#f1f5f9',
-              border: '1px solid #cbd5e1',
+              padding: '0.35rem 0.85rem',
+              borderRadius: '6px',
+              background: '#062C3D',
+              color: '#FFFFFF',
             }}
           >
             Skor Akhir KPI Bersih: {formatIndonesianNumber(calculated.netTotalScore, 2)} / 100 Poin

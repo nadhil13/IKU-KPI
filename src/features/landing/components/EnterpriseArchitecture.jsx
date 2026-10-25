@@ -14,25 +14,25 @@ const ROLES_DATA = [
     id: '01',
     title: 'Otoritas Khusus IKU',
     tag: 'IKU ONLY',
-    desc: 'Akun hanya dialihkan ke ruang kerja 8 IKU Kementerian. Jalur menuju KPI internal diputus otomatis oleh sistem.',
+    desc: 'Akun dialihkan khusus ke ruang kerja 8 IKU Kementerian. Akses menuju lembar kerja KPI internal dikunci selama sesi berlangsung.',
     iku: {
       unlocked: true,
-      mode: 'READ & EDIT',
+      mode: 'BACA & INPUT',
       actionText: 'Input & Evaluasi 8 IKU',
-      code: 'ACTIVE WORKSPACE',
+      code: 'RUANG KERJA AKTIF',
       metrics: [
-        { label: 'IKU 1 • Kesiapan Kerja Lulusan', val: '88.4%' },
-        { label: 'IKU 3 • Dosen Berkegiatan Industri', val: '92.0%' },
+        { label: 'Pengisian Realisasi & Bukti Tautan', val: 'AKTIF' },
+        { label: 'Cakupan Evaluasi Indikator Makro', val: '8 IKU' },
       ],
     },
     kpi: {
       unlocked: false,
       mode: 'TERKUNCI',
-      actionText: 'Akses Dibatasi Sistem',
-      code: 'LOCKED',
+      actionText: 'Akses Dibatasi Otoritas',
+      code: 'ISOLASI 403',
       metrics: [
-        { label: 'Capaian KPI Fakultas & Unit', val: '—' },
-        { label: 'Beban Kinerja Dosen (BKD)', val: '—' },
+        { label: 'Lembar Kerja KPI Fakultas & Unit', val: 'TERKUNCI' },
+        { label: 'Evaluasi Perspektif A, B, C, D', val: 'NONAKTIF' },
       ],
     },
   },
@@ -40,51 +40,51 @@ const ROLES_DATA = [
     id: '02',
     title: 'Otoritas Khusus KPI',
     tag: 'KPI ONLY',
-    desc: 'Akun difokuskan penuh pada pengisian KPI operasional internal ITPLN. Modul 8 IKU Kementerian dikunci dari sesi ini.',
+    desc: 'Akun difokuskan pada pengisian KPI operasional unit dan fakultas ITPLN. Modul 8 IKU Kementerian dikunci dari sesi ini.',
     iku: {
       unlocked: false,
       mode: 'TERKUNCI',
-      actionText: 'Akses Dibatasi Sistem',
-      code: 'LOCKED',
+      actionText: 'Akses Dibatasi Otoritas',
+      code: 'ISOLASI 403',
       metrics: [
-        { label: 'IKU 1 • Kesiapan Kerja Lulusan', val: '—' },
-        { label: 'IKU 3 • Dosen Berkegiatan Industri', val: '—' },
+        { label: 'Pengisian Realisasi & Bukti Tautan', val: 'TERKUNCI' },
+        { label: 'Cakupan Evaluasi Indikator Makro', val: 'NONAKTIF' },
       ],
     },
     kpi: {
       unlocked: true,
-      mode: 'READ & EDIT',
+      mode: 'BACA & INPUT',
       actionText: 'Input & Evaluasi KPI Unit',
-      code: 'ACTIVE WORKSPACE',
+      code: 'RUANG KERJA AKTIF',
       metrics: [
-        { label: 'Capaian KPI Fakultas & Unit', val: '87.9%' },
-        { label: 'Beban Kinerja Dosen (BKD)', val: '94.2%' },
+        { label: 'Lembar Kerja KPI Fakultas & Unit', val: 'AKTIF' },
+        { label: 'Evaluasi Perspektif A, B, C, D', val: '4 ASPEK' },
       ],
     },
   },
   {
     id: '03',
-    title: 'Integrator Utama',
+    title: 'Integrator Utama PRP',
     tag: 'SUPERADMIN PRP',
-    desc: 'Otoritas penuh pada kedua modul. Setelah autentikasi, pengguna dapat memilih masuk ke Menu IKU atau Menu KPI secara fleksibel.',
+    desc: 'Direktorat PRP memegang otoritas verifikasi lintas modul dan dapat berpindah antara Control Center, 8 IKU, serta KPI Unit.',
     iku: {
       unlocked: true,
-      mode: 'FULL ACCESS',
-      actionText: 'Pilihan Ruang Kerja 01',
-      code: 'READY TO ENTER',
+      mode: 'AKSES PENUH',
+      actionText: 'Verifikasi & Persetujuan IKU',
+      code: 'OTORITAS ROOT',
       metrics: [
-        { label: 'IKU 1 • Kesiapan Kerja Lulusan', val: '88.4%' },
-        { label: 'IKU 3 • Dosen Berkegiatan Industri', val: '92.0%' },
+        { label: 'Verifikasi Bukti & Persetujuan Unit', val: 'AKTIF' },
+        { label: 'Cakupan Evaluasi Indikator Makro', val: '8 IKU' },
       ],
     },
     kpi: {
       unlocked: true,
-      mode: 'FULL ACCESS',
-      actionText: 'Pilihan Ruang Kerja 02',
-      code: 'READY TO ENTER',
+      mode: 'AKSES PENUH',
+      actionText: 'Desainer Formula & Review KPI',
+      code: 'OTORITAS ROOT',
       metrics: [
-        { label: 'Capaian KPI Fakultas & Unit', val: '87.9%' },
-        { label: 'Beban Kinerja Dosen (BKD)', val: '94.2%' },
+        { label: 'Desainer Tabel & Formula KPI', val: 'AKTIF' },
+        { label: 'Review Submission Seluruh Unit', val: 'TERBUKA' },
       ],
     },
   },
@@ -113,6 +113,10 @@ export default function EnterpriseArchitecture() {
   const current = ROLES_DATA[activeIdx];
 
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+
     // 1. Smooth Reveal untuk Header (Selaras dengan Section 01 & 02 di Home.jsx)
     gsap.fromTo(
       '.topo-header-item',
@@ -126,31 +130,13 @@ export default function EnterpriseArchitecture() {
         scrollTrigger: {
           trigger: sectionRef.current,
           start: 'top 82%',
+          once: true,
         },
       }
     );
 
-    // 2. Ambient Loop untuk Aliran Data & Orbit SSO
-    gsap.to('.sso-orbit-dashed', {
-      rotation: 360,
-      transformOrigin: '50% 50%',
-      duration: 28,
-      repeat: -1,
-      ease: 'none',
-    });
-
-    gsap.fromTo(
-      '.svg-stream-pulse',
-      { strokeDashoffset: 240 },
-      {
-        strokeDashoffset: 0,
-        duration: 1.8,
-        repeat: -1,
-        ease: 'none',
-      }
-    );
-
-    // 3. Ultra-Smooth Inertial ScrollTrigger
+    // 2. Scroll-Scrubbed Topological Canvas (user-driven, tanpa loop tak terbatas)
+    const orbitEl = sectionRef.current?.querySelector('.sso-orbit-dashed');
     stInstanceRef.current = ScrollTrigger.create({
       trigger: pinWrapRef.current,
       start: 'top top',
@@ -162,9 +148,12 @@ export default function EnterpriseArchitecture() {
       onUpdate: (self) => {
         const p = self.progress;
 
-        // A. Update Hairline Progress di Atas Kanvas
+        // A. Update Hairline Progress & Orbit Sudut berdasar Scroll
         if (topLineFillRef.current) {
           topLineFillRef.current.style.transform = `scaleX(${p})`;
+        }
+        if (orbitEl) {
+          orbitEl.setAttribute('transform', `rotate(${(p * 180).toFixed(1)} 185 210)`);
         }
 
         // B. Kalkulasi Posisi Y Magnetis untuk Kabel SVG Kiri (85px -> 335px)
@@ -289,7 +278,7 @@ export default function EnterpriseArchitecture() {
 
   const renderBadgeIcon = (mode) => {
     if (mode === 'TERKUNCI') return <Lock size={13} />;
-    if (mode === 'FULL ACCESS') return <ShieldCheck size={13} />;
+    if (mode === 'AKSES PENUH') return <ShieldCheck size={13} />;
     return <Pencil size={13} />;
   };
 
@@ -299,11 +288,11 @@ export default function EnterpriseArchitecture() {
       ref={sectionRef}
       style={{
         background: '#ffffff',
-        color: '#111111',
+        color: '#072534',
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
         position: 'relative',
         overflow: 'hidden',
-        borderTop: '1px solid #f0f0f2',
+        borderTop: '1px solid #D8E4EA',
       }}
     >
       <style>{`
@@ -315,11 +304,20 @@ export default function EnterpriseArchitecture() {
           position: relative;
         }
         .role-item-row {
+          width: 100%;
+          text-align: left;
+          background: transparent;
+          border: none;
           cursor: pointer;
-          padding: 1.15rem 0;
+          padding: 1.15rem 0.5rem;
+          border-radius: 6px;
           will-change: transform, opacity;
-          transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-                      opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+          transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+                      opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+                      background-color 0.2s ease;
+        }
+        .role-item-row:hover {
+          background-color: #F7FAFB;
         }
         .role-desc-grid {
           display: grid;
@@ -332,11 +330,11 @@ export default function EnterpriseArchitecture() {
         }
         .workspace-plane {
           padding: 1.5rem 1.75rem;
-          border-radius: 1.5rem;
+          border-radius: 8px;
           will-change: transform, background-color, box-shadow;
-          transition: background-color 0.65s cubic-bezier(0.16, 1, 0.3, 1),
-                      color 0.65s cubic-bezier(0.16, 1, 0.3, 1),
-                      box-shadow 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+          transition: background-color 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+                      color 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+                      box-shadow 0.55s cubic-bezier(0.16, 1, 0.3, 1);
         }
         @media (max-width: 1080px) {
           .topo-layout {
@@ -352,53 +350,35 @@ export default function EnterpriseArchitecture() {
       <div
         ref={pinWrapRef}
         style={{
-          minHeight: '100vh',
+          minHeight: '100dvh',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          padding: 'clamp(2.25rem, 4vw, 3.5rem) clamp(1.5rem, 4vw, 3.5rem)',
+          padding: 'clamp(2.25rem, 4vw, 3.5rem) clamp(1.25rem, 4vw, 3.5rem)',
           maxWidth: '1400px',
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box',
         }}
       >
-        {/* ════ 1. HEADER BERSIH (100% SELARAS DENGAN SECTION 01 & 02 HOME.JSX) ════ */}
+        {/* ════ 1. HEADER ARSITEKTURAL ITPLN ════ */}
         <div style={{ textAlign: 'center', maxWidth: '780px', margin: '0 auto' }}>
           <div
             className="topo-header-item"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '1rem',
-              background: '#f5f5f7',
-              padding: '0.6rem 1.5rem',
-              borderRadius: '2rem',
+              fontFamily: 'var(--ent-mono)',
+              fontSize: '0.68rem',
+              fontWeight: 600,
+              letterSpacing: '0.14em',
+              color: '#094E68',
+              textTransform: 'uppercase',
+              paddingBottom: '0.65rem',
               marginBottom: '1.25rem',
+              borderBottom: '2px solid #0E7480',
+              display: 'inline-block',
             }}
           >
-            <span
-              style={{
-                fontSize: '0.9rem',
-                fontWeight: 800,
-                color: '#000000',
-                letterSpacing: '2px',
-              }}
-            >
-              03
-            </span>
-            <div style={{ width: '1px', height: '12px', background: '#cccccc' }} />
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                letterSpacing: '2px',
-                color: '#666666',
-                textTransform: 'uppercase',
-              }}
-            >
-              Arsitektur Hak Akses
-            </span>
+            03 // ARSITEKTUR HAK AKSES SSO
           </div>
 
           <h2
@@ -407,9 +387,9 @@ export default function EnterpriseArchitecture() {
               fontFamily: "'Outfit', sans-serif",
               fontSize: 'clamp(2rem, 4vw, 3.1rem)',
               fontWeight: 800,
-              color: '#111111',
-              letterSpacing: '-2px',
-              lineHeight: 1.1,
+              color: '#072534',
+              letterSpacing: '-0.035em',
+              lineHeight: 1.08,
               margin: '0 0 0.85rem',
             }}
           >
@@ -422,41 +402,42 @@ export default function EnterpriseArchitecture() {
             className="topo-header-item"
             style={{
               fontSize: 'clamp(0.92rem, 1.1vw, 1.02rem)',
-              color: '#666666',
+              color: '#334155',
               lineHeight: 1.7,
               margin: '0 auto',
               maxWidth: '600px',
             }}
           >
-            Satu gerbang autentikasi terpadu yang memisahkan otoritas pengelolaan
-            standar makro kementerian dan target mikro unit kerja secara presisi.
+            Satu gerbang autentikasi terpadu yang memisahkan otoritas pelaporan standar makro kementerian dan evaluasi mikro unit kerja.
           </p>
         </div>
 
-        {/* ════ 2. OPEN TOPOLOGICAL CANVAS (TANPA DOT MATRIX YANG TERPOTONG) ════ */}
+        {/* ════ 2. OPEN TOPOLOGICAL CANVAS ════ */}
         <div className="topo-layout" style={{ margin: 'auto 0' }}>
-          {/* ── KIRI: 3 SKENARIO OTORITAS LOGIN ── */}
+          {/* ── KIRI: 3 SKENARIO OTORITAS LOGIN (KEYBOARD ACCESSIBLE BUTTONS) ── */}
           <div style={{ display: 'flex', flexDirection: 'column', paddingRight: '1rem' }}>
             {ROLES_DATA.map((item, idx) => {
               const isActive = idx === activeIdx;
               return (
-                <div
+                <button
                   key={item.id}
+                  type="button"
+                  aria-pressed={isActive}
                   className="role-item-row"
                   onClick={() => handleSelectRole(idx)}
                   style={{
-                    opacity: isActive ? 1 : 0.28,
-                    transform: isActive ? 'translate3d(10px, 0, 0)' : 'translate3d(0px, 0, 0)',
+                    opacity: isActive ? 1 : 0.48,
+                    transform: isActive ? 'translate3d(8px, 0, 0)' : 'translate3d(0px, 0, 0)',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem' }}>
                     <span
                       style={{
-                        fontFamily: "'Outfit', sans-serif",
-                        fontSize: '0.85rem',
-                        fontWeight: 800,
-                        letterSpacing: '1px',
-                        color: '#111111',
+                        fontFamily: 'var(--ent-mono)',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.08em',
+                        color: isActive ? '#0E7480' : '#475569',
                       }}
                     >
                       {item.id}
@@ -467,14 +448,11 @@ export default function EnterpriseArchitecture() {
                         <h3
                           style={{
                             fontFamily: "'Outfit', sans-serif",
-                            fontSize: '1.35rem',
+                            fontSize: '1.32rem',
                             fontWeight: 800,
                             margin: 0,
-                            letterSpacing: '-0.5px',
-                            color: '#111111',
-                            transform: isActive ? 'scale(1.03)' : 'scale(1)',
-                            transformOrigin: 'left center',
-                            transition: 'transform 0.65s cubic-bezier(0.16, 1, 0.3, 1)',
+                            letterSpacing: '-0.025em',
+                            color: '#072534',
                           }}
                         >
                           {item.title}
@@ -482,16 +460,17 @@ export default function EnterpriseArchitecture() {
 
                         <span
                           style={{
-                            fontSize: '0.62rem',
+                            fontFamily: 'var(--ent-mono)',
+                            fontSize: '0.6rem',
                             fontWeight: 700,
-                            letterSpacing: '1px',
-                            padding: '0.22rem 0.65rem',
-                            borderRadius: '99px',
-                            background: '#111111',
+                            letterSpacing: '0.08em',
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '4px',
+                            background: '#094E68',
                             color: '#ffffff',
                             opacity: isActive ? 1 : 0,
                             transform: isActive ? 'translateX(0)' : 'translateX(-6px)',
-                            transition: 'all 0.55s cubic-bezier(0.16, 1, 0.3, 1)',
+                            transition: 'all 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
                             pointerEvents: 'none',
                           }}
                         >
@@ -511,7 +490,7 @@ export default function EnterpriseArchitecture() {
                           <p
                             style={{
                               fontSize: '0.88rem',
-                              color: '#666666',
+                              color: '#334155',
                               lineHeight: 1.6,
                               margin: 0,
                               maxWidth: '390px',
@@ -523,13 +502,13 @@ export default function EnterpriseArchitecture() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
 
-          {/* ── TENGAH: CONTINUOUS LIQUID BEZIER SVG ── */}
-          <div className="topo-svg-bridge" style={{ width: '370px', height: '420px', position: 'relative' }}>
+          {/* ── TENGAH: CONTINUOUS BEZIER SVG ── */}
+          <div className="topo-svg-bridge" style={{ width: '370px', height: '420px', position: 'relative' }} aria-hidden="true">
             <svg
               viewBox="0 0 370 420"
               fill="none"
@@ -541,10 +520,10 @@ export default function EnterpriseArchitecture() {
                 <g key={i}>
                   <path
                     d={`M 0 ${y} C 95 ${y}, 95 210, 185 210`}
-                    stroke="#f0f0f2"
+                    stroke="#D8E4EA"
                     strokeWidth="1.5"
                   />
-                  <circle cx="0" cy={y} r="3.5" fill="#d4d4d8" />
+                  <circle cx="0" cy={y} r="3.5" fill="#BFD2DC" />
                 </g>
               ))}
 
@@ -552,52 +531,52 @@ export default function EnterpriseArchitecture() {
               <path
                 ref={activeInPathRef}
                 d="M 0 85 C 95 85, 95 210, 185 210"
-                stroke="#111111"
-                strokeWidth="2.2"
+                stroke="#094E68"
+                strokeWidth="2.4"
               />
               <path
                 ref={activeInPulseRef}
                 className="svg-stream-pulse"
                 d="M 0 85 C 95 85, 95 210, 185 210"
-                stroke="#111111"
-                strokeWidth="3.8"
+                stroke="#0E7480"
+                strokeWidth="3.4"
                 strokeLinecap="round"
-                strokeDasharray="16 224"
+                strokeDasharray="24 220"
               />
-              <circle ref={activeNodeDotRef} cx="0" cy="85" r="5.5" fill="#111111" />
+              <circle ref={activeNodeDotRef} cx="0" cy="85" r="5.5" fill="#0E7480" />
 
               {/* 2 Jalur Keluar Menuju Modul IKU & KPI */}
               <path
                 className="out-path-iku"
                 d={OUT_PATH_IKU}
-                stroke="#111111"
+                stroke="#094E68"
                 strokeWidth="2.2"
                 strokeDasharray={!current.iku.unlocked ? '4 6' : 'none'}
               />
               <path
                 className="out-path-kpi"
                 d={OUT_PATH_KPI}
-                stroke="#111111"
+                stroke="#094E68"
                 strokeWidth="1.5"
                 strokeDasharray={!current.kpi.unlocked ? '4 6' : 'none'}
               />
 
-              {/* Pulse Mengalir ke IKU & KPI */}
+              {/* Highlight Jalur ke IKU & KPI */}
               <path
                 className="svg-stream-pulse out-pulse-iku"
                 d={OUT_PATH_IKU}
-                stroke="#111111"
-                strokeWidth="3.8"
+                stroke="#0E7480"
+                strokeWidth="3.4"
                 strokeLinecap="round"
-                strokeDasharray="16 224"
+                strokeDasharray="24 220"
               />
               <path
                 className="svg-stream-pulse out-pulse-kpi"
                 d={OUT_PATH_KPI}
-                stroke="#111111"
-                strokeWidth="3.8"
+                stroke="#0E7480"
+                strokeWidth="3.4"
                 strokeLinecap="round"
-                strokeDasharray="16 224"
+                strokeDasharray="24 220"
                 style={{ opacity: 0 }}
               />
 
@@ -606,8 +585,8 @@ export default function EnterpriseArchitecture() {
                 cx="370"
                 cy="95"
                 r="5"
-                fill={current.iku.unlocked ? '#111111' : '#ffffff'}
-                stroke={current.iku.unlocked ? '#111111' : '#cccccc'}
+                fill={current.iku.unlocked ? '#0E7480' : '#ffffff'}
+                stroke={current.iku.unlocked ? '#094E68' : '#94A3B8'}
                 strokeWidth="2"
                 style={{ transition: 'all 0.5s ease' }}
               />
@@ -615,8 +594,8 @@ export default function EnterpriseArchitecture() {
                 cx="370"
                 cy="325"
                 r="5"
-                fill={current.kpi.unlocked ? '#111111' : '#ffffff'}
-                stroke={current.kpi.unlocked ? '#111111' : '#cccccc'}
+                fill={current.kpi.unlocked ? '#0E7480' : '#ffffff'}
+                stroke={current.kpi.unlocked ? '#094E68' : '#94A3B8'}
                 strokeWidth="2"
                 style={{ transition: 'all 0.5s ease' }}
               />
@@ -629,18 +608,18 @@ export default function EnterpriseArchitecture() {
                   willChange: 'transform',
                 }}
               >
-                <circle cx="185" cy="210" r="46" fill="#ffffff" stroke="#efefef" strokeWidth="1" />
+                <circle cx="185" cy="210" r="46" fill="#ffffff" stroke="#D8E4EA" strokeWidth="1" />
                 <circle
                   className="sso-orbit-dashed"
                   cx="185"
                   cy="210"
                   r="38"
                   fill="none"
-                  stroke="#bcbcc2"
+                  stroke="#0E7480"
                   strokeWidth="1.2"
                   strokeDasharray="4 6"
                 />
-                <circle cx="185" cy="210" r="28" fill="#111111" />
+                <circle cx="185" cy="210" r="28" fill="#062C3D" />
                 <text
                   x="185"
                   y="207"
@@ -654,27 +633,28 @@ export default function EnterpriseArchitecture() {
                   x="185"
                   y="218"
                   textAnchor="middle"
-                  fill="#aaaaaa"
+                  fill="#94B8C7"
                   style={{ fontSize: '6.5px', fontWeight: 600, letterSpacing: '1px' }}
                 >
-                  GATE
+                  ITPLN
                 </text>
               </g>
             </svg>
           </div>
 
-          {/* ── KANAN: 2 FLOATING PLANES (SUDUT MEMBULAT SELARAS DENGAN HOME.JSX) ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
+          {/* ── KANAN: 2 ARCHITECTURAL PLANES ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {/* PLANE 1: 8 IKU KEMENTERIAN */}
             <div
               ref={ikuPlaneRef}
               className="workspace-plane"
               style={{
-                background: current.iku.unlocked ? '#111111' : '#fafafa',
-                color: current.iku.unlocked ? '#ffffff' : '#999999',
+                background: current.iku.unlocked ? '#062C3D' : '#F7FAFB',
+                color: current.iku.unlocked ? '#ffffff' : '#475569',
+                border: current.iku.unlocked ? '1px solid #094E68' : '1px solid #D8E4EA',
                 boxShadow: current.iku.unlocked
-                  ? '0 24px 48px rgba(0, 0, 0, 0.1)'
-                  : 'inset 0 0 0 1px #eeeeee',
+                  ? '0 20px 40px -12px rgba(7, 37, 52, 0.18)'
+                  : 'none',
               }}
             >
               <div
@@ -686,12 +666,12 @@ export default function EnterpriseArchitecture() {
                     style={{
                       width: '7px',
                       height: '7px',
-                      borderRadius: '50%',
-                      background: current.iku.unlocked ? '#ffffff' : '#cccccc',
+                      borderRadius: '1px',
+                      background: current.iku.unlocked ? '#38BDF8' : '#94A3B8',
                     }}
                   />
-                  <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', opacity: 0.75 }}>
-                    Dimensi Makro • Kemendikbudristek
+                  <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: current.iku.unlocked ? '#C5DEE8' : '#475569' }}>
+                    Dimensi Makro · Kemendikbudristek
                   </span>
                 </div>
 
@@ -700,12 +680,14 @@ export default function EnterpriseArchitecture() {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.35rem',
-                    fontSize: '0.66rem',
+                    fontFamily: 'var(--ent-mono)',
+                    fontSize: '0.63rem',
                     fontWeight: 700,
-                    padding: '0.25rem 0.65rem',
-                    borderRadius: '99px',
-                    background: current.iku.unlocked ? 'rgba(255,255,255,0.14)' : '#efefef',
-                    color: current.iku.unlocked ? '#ffffff' : '#777777',
+                    padding: '0.22rem 0.58rem',
+                    borderRadius: '4px',
+                    background: current.iku.unlocked ? '#094E68' : '#EDF3F6',
+                    border: current.iku.unlocked ? '1px solid #1B9AAA' : '1px solid #BFD2DC',
+                    color: current.iku.unlocked ? '#ffffff' : '#334155',
                   }}
                 >
                   {renderBadgeIcon(current.iku.mode)}
@@ -714,7 +696,7 @@ export default function EnterpriseArchitecture() {
               </div>
 
               <div className="plane-anim-content" style={{ marginBottom: '0.85rem' }}>
-                <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.22rem', fontWeight: 800, letterSpacing: '-0.5px' }}>
+                <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.22rem', fontWeight: 800, letterSpacing: '-0.025em', color: current.iku.unlocked ? '#ffffff' : '#334155' }}>
                   8 Indikator Kinerja Utama (IKU)
                 </div>
               </div>
@@ -724,24 +706,24 @@ export default function EnterpriseArchitecture() {
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.4rem',
+                  gap: '0.45rem',
                   padding: '0.7rem 0',
-                  borderTop: current.iku.unlocked ? '1px solid rgba(255,255,255,0.12)' : '1px solid #ececef',
-                  borderBottom: current.iku.unlocked ? '1px solid rgba(255,255,255,0.12)' : '1px solid #ececef',
+                  borderTop: current.iku.unlocked ? '1px solid #12485E' : '1px solid #D8E4EA',
+                  borderBottom: current.iku.unlocked ? '1px solid #12485E' : '1px solid #D8E4EA',
                   marginBottom: '0.8rem',
                 }}
               >
                 {current.iku.metrics.map((m, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                    <span style={{ opacity: current.iku.unlocked ? 0.8 : 0.6 }}>{m.label}</span>
-                    <span style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 700 }}>{m.val}</span>
+                    <span style={{ color: current.iku.unlocked ? '#C5DEE8' : '#475569' }}>{m.label}</span>
+                    <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.72rem', fontWeight: 700, color: current.iku.unlocked ? '#ffffff' : '#334155' }}>{m.val}</span>
                   </div>
                 ))}
               </div>
 
               <div className="plane-anim-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.73rem' }}>
-                <span style={{ opacity: 0.75 }}>{current.iku.actionText}</span>
-                <span style={{ fontWeight: 700, letterSpacing: '0.5px' }}>{current.iku.code}</span>
+                <span style={{ color: current.iku.unlocked ? '#94B8C7' : '#475569' }}>{current.iku.actionText}</span>
+                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: current.iku.unlocked ? '#38BDF8' : '#475569' }}>{current.iku.code}</span>
               </div>
             </div>
 
@@ -750,11 +732,12 @@ export default function EnterpriseArchitecture() {
               ref={kpiPlaneRef}
               className="workspace-plane"
               style={{
-                background: current.kpi.unlocked ? '#111111' : '#fafafa',
-                color: current.kpi.unlocked ? '#ffffff' : '#999999',
+                background: current.kpi.unlocked ? '#062C3D' : '#F7FAFB',
+                color: current.kpi.unlocked ? '#ffffff' : '#475569',
+                border: current.kpi.unlocked ? '1px solid #094E68' : '1px solid #D8E4EA',
                 boxShadow: current.kpi.unlocked
-                  ? '0 24px 48px rgba(0, 0, 0, 0.1)'
-                  : 'inset 0 0 0 1px #eeeeee',
+                  ? '0 20px 40px -12px rgba(7, 37, 52, 0.18)'
+                  : 'none',
               }}
             >
               <div
@@ -766,12 +749,12 @@ export default function EnterpriseArchitecture() {
                     style={{
                       width: '7px',
                       height: '7px',
-                      borderRadius: '50%',
-                      background: current.kpi.unlocked ? '#ffffff' : '#cccccc',
+                      borderRadius: '1px',
+                      background: current.kpi.unlocked ? '#38BDF8' : '#94A3B8',
                     }}
                   />
-                  <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', opacity: 0.75 }}>
-                    Dimensi Mikro • Internal ITPLN
+                  <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: current.kpi.unlocked ? '#C5DEE8' : '#475569' }}>
+                    Dimensi Mikro · Internal ITPLN
                   </span>
                 </div>
 
@@ -780,12 +763,14 @@ export default function EnterpriseArchitecture() {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.35rem',
-                    fontSize: '0.66rem',
+                    fontFamily: 'var(--ent-mono)',
+                    fontSize: '0.63rem',
                     fontWeight: 700,
-                    padding: '0.25rem 0.65rem',
-                    borderRadius: '99px',
-                    background: current.kpi.unlocked ? 'rgba(255,255,255,0.14)' : '#efefef',
-                    color: current.kpi.unlocked ? '#ffffff' : '#777777',
+                    padding: '0.22rem 0.58rem',
+                    borderRadius: '4px',
+                    background: current.kpi.unlocked ? '#094E68' : '#EDF3F6',
+                    border: current.kpi.unlocked ? '1px solid #1B9AAA' : '1px solid #BFD2DC',
+                    color: current.kpi.unlocked ? '#ffffff' : '#334155',
                   }}
                 >
                   {renderBadgeIcon(current.kpi.mode)}
@@ -794,7 +779,7 @@ export default function EnterpriseArchitecture() {
               </div>
 
               <div className="plane-anim-content" style={{ marginBottom: '0.85rem' }}>
-                <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.22rem', fontWeight: 800, letterSpacing: '-0.5px' }}>
+                <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: '1.22rem', fontWeight: 800, letterSpacing: '-0.025em', color: current.kpi.unlocked ? '#ffffff' : '#334155' }}>
                   Key Performance Indicator (KPI)
                 </div>
               </div>
@@ -804,41 +789,42 @@ export default function EnterpriseArchitecture() {
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.4rem',
+                  gap: '0.45rem',
                   padding: '0.7rem 0',
-                  borderTop: current.kpi.unlocked ? '1px solid rgba(255,255,255,0.12)' : '1px solid #ececef',
-                  borderBottom: current.kpi.unlocked ? '1px solid rgba(255,255,255,0.12)' : '1px solid #ececef',
+                  borderTop: current.kpi.unlocked ? '1px solid #12485E' : '1px solid #D8E4EA',
+                  borderBottom: current.kpi.unlocked ? '1px solid #12485E' : '1px solid #D8E4EA',
                   marginBottom: '0.8rem',
                 }}
               >
                 {current.kpi.metrics.map((m, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                    <span style={{ opacity: current.kpi.unlocked ? 0.8 : 0.6 }}>{m.label}</span>
-                    <span style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 700 }}>{m.val}</span>
+                    <span style={{ color: current.kpi.unlocked ? '#C5DEE8' : '#475569' }}>{m.label}</span>
+                    <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.72rem', fontWeight: 700, color: current.kpi.unlocked ? '#ffffff' : '#334155' }}>{m.val}</span>
                   </div>
                 ))}
               </div>
 
               <div className="plane-anim-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.73rem' }}>
-                <span style={{ opacity: 0.75 }}>{current.kpi.actionText}</span>
-                <span style={{ fontWeight: 700, letterSpacing: '0.5px' }}>{current.kpi.code}</span>
+                <span style={{ color: current.kpi.unlocked ? '#94B8C7' : '#475569' }}>{current.kpi.actionText}</span>
+                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: current.kpi.unlocked ? '#38BDF8' : '#475569' }}>{current.kpi.code}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ════ 3. MINIMALIST ARCHITECTURAL PROGRESS LINE (TANPA KAPSUL AI) ════ */}
+        {/* ════ 3. ARCHITECTURAL PROGRESS LINE & 44x44px STEP BUTTONS ════ */}
         <div
           style={{
             paddingTop: '1.25rem',
-            borderTop: '1px solid #efefef',
+            borderTop: '1px solid #D8E4EA',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
             position: 'relative',
           }}
         >
-          {/* Garis Progress Halus di Sepanjang Border Atas */}
           <div
             ref={topLineFillRef}
             style={{
@@ -847,7 +833,7 @@ export default function EnterpriseArchitecture() {
               left: 0,
               right: 0,
               height: '2px',
-              background: '#111111',
+              background: '#0E7480',
               transformOrigin: 'left center',
               transform: 'scaleX(0)',
               willChange: 'transform',
@@ -857,46 +843,51 @@ export default function EnterpriseArchitecture() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span
               style={{
-                fontFamily: "'Outfit', sans-serif",
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                color: '#111111',
-                letterSpacing: '1px',
+                fontFamily: 'var(--ent-mono)',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                color: '#072534',
+                letterSpacing: '0.08em',
               }}
             >
               0{activeIdx + 1} / 0{ROLES_DATA.length}
             </span>
-            <span style={{ width: '1px', height: '11px', background: '#dddddd' }} />
+            <span style={{ width: '1px', height: '12px', background: '#BFD2DC' }} />
             <span
               style={{
-                fontSize: '0.72rem',
+                fontFamily: 'var(--ent-mono)',
+                fontSize: '0.7rem',
                 fontWeight: 600,
-                letterSpacing: '1.5px',
+                letterSpacing: '0.1em',
                 textTransform: 'uppercase',
-                color: '#888888',
+                color: '#475569',
               }}
             >
               {current.title}
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
             {ROLES_DATA.map((r, i) => (
               <button
                 key={r.id}
                 type="button"
+                aria-label={`Pilih skenario ${r.title}`}
+                aria-pressed={activeIdx === i}
                 onClick={() => handleSelectRole(i)}
                 style={{
-                  border: 'none',
+                  border: activeIdx === i ? '1px solid #094E68' : '1px solid #BFD2DC',
                   cursor: 'pointer',
-                  padding: '0.3rem 0.7rem',
-                  borderRadius: '99px',
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  fontFamily: "'Outfit', sans-serif",
-                  background: activeIdx === i ? '#111111' : '#f5f5f7',
-                  color: activeIdx === i ? '#ffffff' : '#888888',
-                  transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                  minWidth: '44px',
+                  minHeight: '44px',
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '6px',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  fontFamily: 'var(--ent-mono)',
+                  background: activeIdx === i ? '#094E68' : '#F7FAFB',
+                  color: activeIdx === i ? '#ffffff' : '#072534',
+                  transition: 'background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease',
                 }}
               >
                 {r.id}

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowUp, CircleCheck, Copy, Ellipsis, Eye, History, MousePointerClick,
-  PanelRightClose, PanelRightOpen, Plus, RotateCcw, Send, Sigma, Table2, Trash2, TriangleAlert, Wand2,
+  PanelRightClose, PanelRightOpen, Plus, RotateCcw, Send, Sigma, Table2, Trash2, TriangleAlert,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
@@ -342,7 +342,7 @@ export default function KPITableDesigner() {
     <div ref={rootRef} className="kpi-designer-page" aria-busy={sending}>
       <header className="designer-hero">
         <div>
-          <div className="designer-kicker"><Wand2 size={15} /> PRP / KPI GOVERNANCE</div>
+          <div className="designer-kicker"><Table2 size={14} /> PRP / KPI GOVERNANCE</div>
           <h1>Desainer Tabel KPI</h1>
           <p>Edit langsung di sel seperti Excel. Klik formula bar <strong>fx</strong>, lalu klik sel Isian/Bobot/Target untuk membangun rumus. Draft tersimpan otomatis.</p>
         </div>
@@ -398,7 +398,7 @@ export default function KPITableDesigner() {
 
       {showPreview ? (
         <div className="designer-preview sheet-shell">
-          <p className="designer-sim-banner">PREVIEW SAJA — tidak membaca atau menyimpan nilai aktual Unit Kerja.</p>
+          <p className="designer-sim-banner">PREVIEW SAJA: tidak membaca atau menyimpan nilai aktual Unit Kerja.</p>
           <KPIDataEntrySheet sectionsOverride={normalized} persist={false} readOnly />
         </div>
       ) : (
@@ -407,7 +407,7 @@ export default function KPITableDesigner() {
             {/* ───────────── Formula bar ───────────── */}
             <div className={`formula-bar ${pickMode && formulaEditable ? 'picking' : ''}`}>
               <div className="formula-row">
-                <span className="name-box" title="Baris terpilih">{selected ? `${selectedSection.code}.${selected.no}` : '—'}</span>
+                <span className="name-box" title="Baris terpilih">{selected ? `${selectedSection.code}.${selected.no}` : '-'}</span>
                 <select
                   aria-label="Tipe perhitungan"
                   disabled={!selected}
@@ -472,10 +472,10 @@ export default function KPITableDesigner() {
                       </span>
                       {!formulaError && <span className="desc">= {describeKpiFormula(selectedExpr, selected.subrows, directory.labels)}</span>}
                       <span className="sim">
-                        Capaian <strong>{results.get(selected.id)?.ratioPercent == null ? '—' : `${formatIndonesianNumber(results.get(selected.id).ratioPercent)}%`}</strong>
+                        Capaian <strong>{results.get(selected.id)?.ratioPercent == null ? '-' : `${formatIndonesianNumber(results.get(selected.id).ratioPercent)}%`}</strong>
                         {' · '}Skor <strong>{formatIndonesianNumber(results.get(selected.id)?.weightedScore)}</strong>
                       </span>
-                      {selected.calcType !== 'custom' && <span className="hint">Preset — mengetik di fx otomatis mengubahnya jadi rumus bebas.</span>}
+                      {selected.calcType !== 'custom' && <span className="hint">Preset: mengetik di kolom fx otomatis mengubahnya menjadi rumus bebas.</span>}
                     </>
                   ) : (
                     <span className="hint">{CALC_TYPES[selected.calcType]?.expression}</span>
@@ -512,7 +512,7 @@ export default function KPITableDesigner() {
             </div>
 
             {/* ───────────── Grid ───────────── */}
-            <div className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`} role="region" aria-label="Lembar KPI" tabIndex={0}>
+            <div className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`} role="region" aria-label="Lembar KPI" tabIndex={0} data-lenis-prevent>
               <table className="sheet">
                 <colgroup>
                   <col className="c-gutter" /><col className="c-no" /><col className="c-ind" /><col className="c-sub" />
@@ -643,7 +643,7 @@ export default function KPITableDesigner() {
                                     </button>
                                   </td>
                                   <td rowSpan={span} className="result">
-                                    {result?.ratioPercent == null ? '—' : `${formatIndonesianNumber(result.ratioPercent)}%`}
+                                    {result?.ratioPercent == null ? '-' : `${formatIndonesianNumber(result.ratioPercent)}%`}
                                   </td>
                                   <td rowSpan={span} className="result">
                                     {formatIndonesianNumber(result?.weightedScore)}
@@ -698,7 +698,7 @@ export default function KPITableDesigner() {
           </div>
 
           {showPanel && (
-            <aside className="designer-aside" aria-label="Validasi dan riwayat">
+            <aside className="designer-aside" aria-label="Validasi dan riwayat" data-lenis-prevent>
               <section className="designer-panel">
                 <h2><TriangleAlert size={15} /> Validasi struktur</h2>
                 <p>

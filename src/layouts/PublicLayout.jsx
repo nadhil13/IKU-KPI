@@ -54,6 +54,10 @@ export default function PublicLayout() {
   // Architectural Curtain Wipe + Top Kinetic Laser pada setiap perpindahan rute publik
   // (tanpa menyisakan transform pada <main> agar ScrollTrigger pin tetap akurat 100%)
   useGSAP(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      ScrollTrigger.refresh();
+      return;
+    }
     if (curtainRef.current) {
       gsap.fromTo(
         curtainRef.current,
@@ -83,7 +87,7 @@ export default function PublicLayout() {
   }, { dependencies: [location.pathname] });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', position: 'relative', background: '#ffffff' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', position: 'relative', background: '#ffffff' }}>
       {/* Architectural Curtain Wipe Layer */}
       <div
         ref={curtainRef}
@@ -91,7 +95,7 @@ export default function PublicLayout() {
         style={{
           position: 'fixed',
           inset: 0,
-          background: '#09090b',
+          background: '#062C3D',
           transform: 'scaleY(0)',
           transformOrigin: 'top center',
           zIndex: 1090,
@@ -116,7 +120,7 @@ export default function PublicLayout() {
           style={{
             position: 'absolute',
             inset: 0,
-            background: '#09090b',
+            background: '#0E7480',
             transformOrigin: 'left center',
             transform: 'scaleX(0)',
           }}
@@ -126,7 +130,7 @@ export default function PublicLayout() {
           style={{
             position: 'absolute',
             inset: 0,
-            background: '#09090b',
+            background: '#094E68',
             transformOrigin: 'left center',
             transform: 'scaleX(0)',
             opacity: 0,

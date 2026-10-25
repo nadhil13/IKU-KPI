@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Target, TrendingUp, Users, BookOpen, Briefcase, Globe, Award, ShieldCheck, ArrowRight } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -6,165 +7,104 @@ import { useGSAP } from '@gsap/react';
 
 gsap.registerPlugin(ScrollTrigger);
 
-const ikuData = [
-  { icon: <Briefcase size={24} />, title: "Lulusan Mendapat Pekerjaan Layak", desc: "Alumni diserap di industri tingkat atas, membangun wirausaha sukses, atau melanjutkan studi lanjutan." },
-  { icon: <Globe size={24} />, title: "Pengalaman Mahasiswa di Luar Kampus", desc: "Mahasiswa aktif berpartisipasi dalam magang industri, proyek desa, riset, wirausaha, atau pertukaran pelajar." },
-  { icon: <Users size={24} />, title: "Dosen Berkegiatan di Luar Kampus", desc: "Tridharma dosen yang teraplikasi langsung di industri atau perguruan tinggi lain secara profesional." },
-  { icon: <BookOpen size={24} />, title: "Praktisi Mengajar di Kampus", desc: "Profesional industri membawa studi kasus dan pengalaman riil ke dalam ruang kelas akademik." },
-  { icon: <TrendingUp size={24} />, title: "Hasil Kerja Dosen Digunakan Masyarakat", desc: "Riset terapan, paten, atau teknologi tepat guna yang terimplementasi dan bermanfaat bagi masyarakat." },
-  { icon: <Target size={24} />, title: "Kerjasama Program Studi", desc: "Kemitraan strategis global yang memfasilitasi kurikulum mutakhir dan penyerapan lulusan." },
-  { icon: <Award size={24} />, title: "Kelas Kolaboratif dan Partisipatif", desc: "Transformasi pedagogik menggunakan Case Method dan pembelajaran berbasis proyek kelompok." },
-  { icon: <ShieldCheck size={24} />, title: "Program Studi Berstandar Internasional", desc: "Akreditasi global bergengsi yang memposisikan program studi setara standar pendidikan dunia." }
+const IKU_PILLARS = [
+  { code: 'IKU.01', icon: <Briefcase size={20} />, title: 'Lulusan Mendapat Pekerjaan Layak', desc: 'Lulusan bekerja dengan masa tunggu singkat, melanjutkan studi pascasarjana, atau berwirausaha mandiri.' },
+  { code: 'IKU.02', icon: <Globe size={20} />, title: 'Pengalaman Mahasiswa di Luar Kampus', desc: 'Mahasiswa memperoleh rekognisi SKS melalui magang industri energi/PLN, riset terapan, proyek desa, atau pertukaran pelajar.' },
+  { code: 'IKU.03', icon: <Users size={20} />, title: 'Dosen Berkegiatan di Luar Kampus', desc: 'Dosen tetap melaksanakan tridharma di kampus mitra, bekerja sebagai praktisi industri, atau membina mahasiswa berprestasi.' },
+  { code: 'IKU.04', icon: <BookOpen size={20} />, title: 'Praktisi Mengajar di Dalam Kampus', desc: 'Pengajar berkualifikasi doktor, bersertifikat kompetensi profesi, atau berasal dari praktisi industri ketenagalistrikan.' },
+  { code: 'IKU.05', icon: <TrendingUp size={20} />, title: 'Hasil Kerja Dosen Digunakan Masyarakat', desc: 'Publikasi ilmiah bereputasi, paten rekayasa energi, dan karya terapan dosen yang dimanfaatkan industri maupun masyarakat.' },
+  { code: 'IKU.06', icon: <Target size={20} />, title: 'Kemitraan Program Studi', desc: 'Kerja sama aktif program studi dengan BUMN, industri ketenagalistrikan, lembaga riset, dan perguruan tinggi mitra.' },
+  { code: 'IKU.07', icon: <Award size={20} />, title: 'Kelas Kolaboratif dan Partisipatif', desc: 'Evaluasi mata kuliah berbasis pemecahan studi kasus industri (Case Method) atau proyek kelompok (Team-Based Project).' },
+  { code: 'IKU.08', icon: <ShieldCheck size={20} />, title: 'Program Studi Berstandar Internasional', desc: 'Program studi memperoleh akreditasi atau sertifikasi internasional yang diakui Kemendikbudristek (IABEE, ASIIN, ABET).' },
 ];
 
-const pdcaData = [
-  { phase: 'PLAN', title: 'Pemetaan', text: 'Menetapkan target metrik dari rektorat ke unit terkecil secara hierarkis.' },
-  { phase: 'DO', title: 'Eksekusi', text: 'Pelaksanaan program kerja yang tercatat langsung dalam sistem basis data.' },
-  { phase: 'CHECK', title: 'Validasi', text: 'Sistem otomasi memverifikasi anomali data sebelum dipublikasikan.' },
-  { phase: 'ACT', title: 'Tindak Lanjut', text: 'Rekomendasi strategis dikeluarkan secara algoritmik untuk perbaikan kuartal.' }
+const PDCA_STEPS = [
+  {
+    phase: 'PLAN',
+    actor: 'Rektorat & Direktorat PRP',
+    title: 'Penetapan Target & Bobot',
+    text: 'Direktorat PRP menyusun kontrak kinerja tahunan, menetapkan target 8 IKU serta bobot 4 perspektif KPI untuk setiap fakultas dan unit.',
+  },
+  {
+    phase: 'DO',
+    actor: 'Fakultas, Prodi, & Unit PIC',
+    title: 'Pelaporan & Bukti Tautan',
+    text: 'Setiap PIC unit menginput capaian aktual ke lembar kerja dan melampirkan tautan dokumen bukti pendukung (HTTPS) pada periode aktif.',
+  },
+  {
+    phase: 'CHECK',
+    actor: 'Verifikator Direktorat PRP',
+    title: 'Pemeriksaan & Verifikasi Bukti',
+    text: 'Tim verifikator PRP memeriksa kelengkapan setiap tautan bukti, memberikan status persetujuan atau catatan revisi per indikator.',
+  },
+  {
+    phase: 'ACT',
+    actor: 'Rapat Tinjauan Manajemen',
+    title: 'Evaluasi & Tindak Lanjut Mutu',
+    text: 'Pimpinan institusi membahas hasil rekapitulasi capaian pada Rapat Tinjauan Manajemen (RTM) untuk perbaikan sasaran periode berikutnya.',
+  },
 ];
 
 export default function StrategicFramework() {
-  const mainRef = useRef();
+  const mainRef = useRef(null);
 
   useGSAP(() => {
-
-    /* ═══════════════════════════════════════════════
-       HERO — Cinematic entrance + line-draw + parallax
-       ═══════════════════════════════════════════════ */
-
-    const heroTl = gsap.timeline({ delay: 0.1 });
-
-    // 1. Decorative line draws in from center
-    heroTl.fromTo('.sf-hero-line',
-      { scaleX: 0 },
-      { scaleX: 1, duration: 1.2, ease: 'expo.inOut' }
-    );
-
-    // 2. Badge fades up
-    heroTl.from('.sf-badge',
-      { y: 20, opacity: 0, duration: 0.6, ease: 'power3.out' }, '-=0.6'
-    );
-
-    // 3. Each title line clips up from its overflow mask
-    heroTl.from('.sf-title-line',
-      { yPercent: 110, duration: 1, stagger: 0.12, ease: 'expo.out' }, '-=0.4'
-    );
-
-    // 4. Subtitle and stat items stagger in
-    heroTl.from('.sf-subtitle',
-      { y: 16, opacity: 0, duration: 0.7, ease: 'power3.out' }, '-=0.5'
-    );
-    heroTl.from('.sf-stat-item',
-      { y: 24, opacity: 0, duration: 0.6, stagger: 0.06, ease: 'power3.out' }, '-=0.4'
-    );
-
-    // 5. Number counter
-    const el8 = mainRef.current?.querySelector('.counter-8');
-    const el95 = mainRef.current?.querySelector('.counter-95');
-    if (el8 && el95) {
-      const c = { a: 0, b: 0 };
-      gsap.to(c, {
-        a: 8, b: 95, duration: 2, ease: 'power2.out', delay: 0.9,
-        onUpdate() {
-          el8.textContent = '0' + Math.floor(c.a);
-          el95.textContent = Math.floor(c.b) + '%';
-        }
-      });
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
     }
 
-    // 6. Parallax on scroll — content drifts upward at different rates
-    gsap.to('.sf-hero-content', {
-      y: -60, ease: 'none',
-      scrollTrigger: { trigger: '.sf-hero', start: 'top top', end: 'bottom top', scrub: 1 }
-    });
-    gsap.to('.sf-hero-stats', {
-      y: -25, ease: 'none',
-      scrollTrigger: { trigger: '.sf-hero', start: 'top top', end: 'bottom top', scrub: 1.5 }
-    });
+    const heroTl = gsap.timeline({ delay: 0.08, defaults: { ease: 'expo.out' } });
+    heroTl
+      .fromTo('.sf-hero-line', { scaleX: 0 }, { scaleX: 1, duration: 1.0, ease: 'expo.inOut' })
+      .from('.sf-badge', { y: 16, opacity: 0, duration: 0.6 }, '-=0.6')
+      .from('.sf-title-line', { yPercent: 110, duration: 0.95, stagger: 0.1 }, '-=0.45')
+      .from('.sf-subtitle', { y: 16, opacity: 0, duration: 0.65 }, '-=0.5')
+      .from('.sf-stat-item', { y: 20, opacity: 0, duration: 0.6, stagger: 0.06 }, '-=0.45');
 
-    /* ╔══════════════════════════════════════════════╗
-       ║  PILLARS — Horizontal pinned scroll           ║
-       ╚══════════════════════════════════════════════╝ */
+    // Horizontal pinned scroll ONLY on desktop >= 1024px (clean vertical grid on mobile/tablet)
+    const mm = gsap.matchMedia();
+    mm.add('(min-width: 1024px)', () => {
+      const hSection = mainRef.current?.querySelector('.sf-pillars');
+      const hTrack = mainRef.current?.querySelector('.sf-pillars-track');
+      if (hSection && hTrack) {
+        const sidebarW = () => hSection.querySelector('.sf-pillars-sidebar')?.offsetWidth || 0;
+        const dist = () => Math.max(0, hTrack.scrollWidth - (window.innerWidth - sidebarW()));
 
-    const hSection = mainRef.current?.querySelector('.sf-pillars');
-    const hTrack = mainRef.current?.querySelector('.sf-pillars-track');
-
-    if (hSection && hTrack) {
-      const sidebarW = () => hSection.querySelector('.sf-pillars-sidebar')?.offsetWidth || 0;
-      const dist = () => hTrack.scrollWidth - (window.innerWidth - sidebarW());
-
-      // Sidebar content reveal — opens on approach, closes when leaving
-      gsap.from('.sf-pillars-sidebar-inner > *', {
-        y: 30, opacity: 0, duration: 0.7, stagger: 0.1, ease: 'power3.out',
-        scrollTrigger: {
-          trigger: hSection, start: 'top 80%',
-          toggleActions: 'play none none reverse'
-        }
-      });
-
-      // Main horizontal pin
-      gsap.to(hTrack, {
-        x: () => -dist(),
-        ease: 'none',
-        scrollTrigger: {
-          trigger: hSection,
-          pin: true,
-          pinSpacing: true,
-          scrub: 0.6,
-          start: 'top top',
-          end: () => `+=${dist()}`,
-          invalidateOnRefresh: true
-        }
-      });
-    }
-
-    /* ╔══════════════════════════════════════════════╗
-       ║  PDCA — Timeline & Stagger open/close         ║
-       ╚══════════════════════════════════════════════╝ */
-
-    // 1. Headings Reveal
-    gsap.fromTo(['.sf-pdca-badge', '.sf-pdca-title'],
-      { y: 30, opacity: 0 },
-      {
-        y: 0, opacity: 1, duration: 0.8, stagger: 0.15, ease: 'power3.out',
-        scrollTrigger: {
-          trigger: '.sf-pdca',
-          start: 'top 80%',
-          toggleActions: 'play none none reverse'
-        }
+        gsap.to(hTrack, {
+          x: () => -dist(),
+          ease: 'none',
+          scrollTrigger: {
+            trigger: hSection,
+            pin: true,
+            pinSpacing: true,
+            scrub: 0.7,
+            start: 'top top',
+            end: () => `+=${dist()}`,
+            invalidateOnRefresh: true,
+          },
+        });
       }
-    );
+    });
 
-    // 2. Cards Reveal
-    gsap.fromTo('.sf-pdca-card',
-      { y: 60, opacity: 0 },
+    gsap.fromTo(
+      '.sf-pdca-card',
+      { y: 36, opacity: 0 },
       {
-        y: 0, opacity: 1, duration: 0.8, stagger: 0.12, ease: 'back.out(1.2)',
+        y: 0,
+        opacity: 1,
+        duration: 0.75,
+        stagger: 0.1,
+        ease: 'power3.out',
         scrollTrigger: {
           trigger: '.sf-pdca-grid',
-          start: 'top 85%',
-          toggleActions: 'play none none reverse'
-        }
+          start: 'top 86%',
+          once: true,
+        },
       }
     );
 
-    // 3. Dots Reveal
-    gsap.fromTo('.sf-pdca-dot',
-      { scale: 0, opacity: 0 },
-      {
-        scale: 1, opacity: 1, duration: 0.5, stagger: 0.12, ease: 'back.out(2)',
-        delay: 0.2, // slight delay after cards start
-        scrollTrigger: {
-          trigger: '.sf-pdca-grid',
-          start: 'top 85%',
-          toggleActions: 'play none none reverse'
-        }
-      }
-    );
-
-    // 4. Scrubbed line draw across the top of the cards
-    gsap.fromTo('.sf-pdca-line',
+    gsap.fromTo(
+      '.sf-pdca-line',
       { scaleX: 0 },
       {
         scaleX: 1,
@@ -172,331 +112,364 @@ export default function StrategicFramework() {
         scrollTrigger: {
           trigger: '.sf-pdca-grid',
           start: 'top 85%',
-          end: 'top 20%',
-          scrub: 1
-        }
+          end: 'top 30%',
+          scrub: 1,
+        },
       }
     );
 
+    return () => mm.revert();
   }, { scope: mainRef });
 
-  // ─── Inline style objects (clean & reusable) ────────────────────────────
-
-  const sectionBg = '#f8fafc';
-  const white = '#ffffff';
-  const borderLight = '1px solid rgba(0,0,0,0.05)';
-
-  const cardStyle = (idx) => ({
-    width: 360,
-    minHeight: 400,
-    background: white,
-    borderRadius: 24,
-    padding: '2.5rem 2.25rem',
-    display: 'flex',
-    flexDirection: 'column',
-    border: borderLight,
-    boxShadow: '0 12px 40px rgba(0,0,0,0.04)',
-    flexShrink: 0,
-    position: 'relative',
-    overflow: 'hidden',
-    transition: 'transform 0.35s cubic-bezier(.25,.46,.45,.94), box-shadow 0.35s ease'
-  });
-
   return (
-    <div ref={mainRef} style={{ background: sectionBg, color: 'var(--secondary)' }}>
+    <div ref={mainRef} style={{ background: '#F7FAFB', color: '#072534', overflow: 'hidden' }}>
+      <style>{`
+        .sf-pillars {
+          min-height: 100dvh;
+          display: flex;
+          overflow: hidden;
+          background: #F7FAFB;
+          border-top: 1px solid #D8E4EA;
+          border-bottom: 1px solid #D8E4EA;
+        }
+        .sf-pillars-sidebar {
+          width: 32vw;
+          min-width: 340px;
+          max-width: 460px;
+          flex-shrink: 0;
+          padding: 3rem 3.5vw;
+          background: #ffffff;
+          border-right: 1px solid #D8E4EA;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          z-index: 5;
+        }
+        .sf-pillars-track {
+          display: flex;
+          align-items: center;
+          gap: 1.5rem;
+          padding: 3rem 12vw 3rem 2.5rem;
+          flex-shrink: 0;
+          will-change: transform;
+        }
+        .sf-pillar-card {
+          width: 340px;
+          min-height: 360px;
+          background: #ffffff;
+          border-radius: 8px;
+          padding: 2rem 1.85rem;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid #D8E4EA;
+          border-top: 3px solid #094E68;
+          flex-shrink: 0;
+          text-decoration: none;
+          color: #072534;
+          transition: border-color 0.22s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .sf-pdca-card {
+          display: flex;
+          flex-direction: column;
+          position: relative;
+          padding: 2rem 1.75rem;
+          background: #F7FAFB;
+          border-radius: 8px;
+          border: 1px solid #D8E4EA;
+          transition: border-color 0.22s ease, background-color 0.22s ease;
+        }
+        @media (hover: hover) {
+          .sf-pillar-card:hover {
+            border-color: #0E7480;
+            transform: translateY(-4px);
+          }
+          .sf-pdca-card:hover {
+            background: #ffffff;
+            border-color: #094E68;
+          }
+        }
+        @media (max-width: 1023px) {
+          .sf-pillars {
+            min-height: auto;
+            flex-direction: column;
+            padding: 4rem 1.25rem;
+          }
+          .sf-pillars-sidebar {
+            width: 100%;
+            min-width: 0;
+            max-width: none;
+            border-right: none;
+            border: 1px solid #D8E4EA;
+            border-radius: 8px;
+            padding: 2rem 1.5rem;
+            margin-bottom: 1.5rem;
+          }
+          .sf-pillars-track {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+            gap: 1.25rem;
+            padding: 0;
+            width: 100%;
+          }
+          .sf-pillar-card {
+            width: 100%;
+            min-height: 0;
+          }
+        }
+      `}</style>
 
-      {/* ───────────── 1 · HERO ───────────── */}
+      {/* ─── 1. HERO ─── */}
       <section
         className="sf-hero"
         style={{
-          minHeight: 'calc(100vh - 72px)',
-          display: 'flex', flexDirection: 'column',
-          justifyContent: 'center', alignItems: 'center',
-          padding: '6rem 2.5rem 4rem',
-          position: 'relative', overflow: 'hidden',
-          background: sectionBg, textAlign: 'center'
+          minHeight: 'calc(100dvh - 72px)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 'clamp(7.5rem, 11vw, 9.5rem) clamp(1.25rem, 4vw, 2.5rem) 4.5rem',
+          position: 'relative',
+          background: '#ffffff',
+          textAlign: 'center',
         }}
       >
-        {/* Ambient glows */}
-        <div style={{ position: 'absolute', top: '-20%', left: '50%', transform: 'translateX(-50%)', width: 1100, height: 1100, borderRadius: '50%', background: 'radial-gradient(circle, rgba(27,141,153,0.04) 0%, transparent 60%)', pointerEvents: 'none' }} />
-
-        {/* Main content block */}
-        <div className="sf-hero-content" style={{ position: 'relative', zIndex: 1, maxWidth: 900, width: '100%' }}>
-
-          {/* Badge */}
-          <div className="sf-badge" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: 'rgba(27,141,153,0.05)', color: 'var(--primary)',
-            padding: '0.4rem 1.2rem', borderRadius: 100,
-            fontSize: '0.68rem', fontWeight: 700, letterSpacing: 3.5,
-            textTransform: 'uppercase', marginBottom: '3rem',
-            border: '1px solid rgba(27,141,153,0.08)'
-          }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--primary)', opacity: 0.7 }} />
-            Standardisasi Nasional
+        <div className="sf-hero-content" style={{ position: 'relative', zIndex: 1, maxWidth: 880, width: '100%' }}>
+          <div className="sf-badge ent-eyebrow" style={{ marginBottom: '2rem' }}>
+            02 // ARSITEKTUR TATA KELOLA MUTU ITPLN
           </div>
 
-          {/* Title — each line in its own overflow clip mask */}
-          <h1 style={{ fontSize: 'clamp(3.5rem, 7.5vw, 7rem)', fontWeight: 800, lineHeight: 1, letterSpacing: '-3px', margin: '0 0 2.5rem', color: 'var(--secondary)' }}>
+          <h1
+            style={{
+              fontSize: 'clamp(2.6rem, 6.8vw, 5.6rem)',
+              fontWeight: 800,
+              lineHeight: 1.02,
+              letterSpacing: '-0.04em',
+              margin: '0 0 1.75rem',
+              color: '#072534',
+            }}
+          >
             <div style={{ overflow: 'hidden', paddingBottom: 4 }}>
               <div className="sf-title-line">Kerangka</div>
             </div>
-            <div style={{ overflow: 'hidden', paddingBottom: 4 }}>
-              <div className="sf-title-line" style={{ color: 'var(--primary)' }}>Strategis.</div>
+            <div style={{ overflow: 'hidden', paddingBottom: 6 }}>
+              <div className="sf-title-line" style={{ color: '#094E68' }}>Strategis PDCA.</div>
             </div>
           </h1>
 
-          {/* Decorative line — draws in from center via GSAP */}
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
-            <div className="sf-hero-line" style={{ width: 80, height: 2, background: 'var(--primary)', opacity: 0.3, transformOrigin: 'center' }} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.75rem' }}>
+            <div className="sf-hero-line" style={{ width: 72, height: 2, background: '#0E7480', transformOrigin: 'center' }} />
           </div>
 
-          {/* Subtitle */}
-          <p className="sf-subtitle" style={{
-            fontSize: 'clamp(1rem, 1.5vw, 1.15rem)',
-            color: 'var(--text-muted)', lineHeight: 1.85,
-            maxWidth: 560, margin: '0 auto',
-          }}>
-            Dokumen teknis dan arsitektur operasional pemantauan kinerja Institut Teknologi PLN.
-            Dirancang untuk <strong style={{ color: 'var(--secondary)' }}>akurasi, skalabilitas, dan transparansi absolut.</strong>
+          <p
+            className="sf-subtitle"
+            style={{
+              fontSize: 'clamp(0.98rem, 1.3vw, 1.1rem)',
+              color: '#334155',
+              lineHeight: 1.75,
+              maxWidth: 600,
+              margin: '0 auto',
+            }}
+          >
+            Struktur kerja siklus penjaminan mutu Institut Teknologi PLN yang menyatukan sasaran 8 Indikator Kinerja Utama Kementerian dengan evaluasi 4 perspektif KPI Operasional Unit.
           </p>
         </div>
 
-        {/* Stats bar — horizontal, sits below title */}
+        {/* Factual Institutional Architecture Ledger */}
         <div
           className="sf-hero-stats"
           style={{
-            position: 'relative', zIndex: 1,
-            display: 'flex', alignItems: 'stretch',
-            gap: 0, marginTop: '4rem',
-            background: white, borderRadius: 20,
-            border: borderLight,
-            boxShadow: '0 16px 60px rgba(0,0,0,0.05)',
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            alignItems: 'stretch',
+            marginTop: '3.25rem',
+            background: '#F7FAFB',
+            borderRadius: '8px',
+            border: '1px solid #D8E4EA',
+            borderTop: '2px solid #094E68',
             overflow: 'hidden',
-            maxWidth: 680, width: '100%'
+            maxWidth: 720,
+            width: '100%',
           }}
         >
-          {/* Stat 1 */}
-          <div className="sf-stat-item" style={{ flex: 1, padding: '2rem 2.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: borderLight }}>
-            <div className="counter-8" style={{ fontSize: '3.2rem', fontWeight: 800, color: 'var(--secondary)', letterSpacing: -3, lineHeight: 1 }}>00</div>
-            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 3, textTransform: 'uppercase', marginTop: 6 }}>Indikator</div>
+          <div className="sf-stat-item" style={{ flex: 1, padding: '1.65rem 1.75rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #D8E4EA' }}>
+            <div className="ent-mono" style={{ fontSize: '2.5rem', fontWeight: 700, color: '#072534', letterSpacing: '-0.04em', lineHeight: 1 }}>08</div>
+            <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#475569', letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 8 }}>Indikator IKU</div>
           </div>
 
-          {/* Stat 2 */}
-          <div className="sf-stat-item" style={{ flex: 1, padding: '2rem 2.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: borderLight }}>
-            <div className="counter-95" style={{ fontSize: '3.2rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: -2, lineHeight: 1 }}>0%</div>
-            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 3, textTransform: 'uppercase', marginTop: 6 }}>Target Mutu</div>
+          <div className="sf-stat-item" style={{ flex: 1, padding: '1.65rem 1.75rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #D8E4EA' }}>
+            <div className="ent-mono" style={{ fontSize: '2.5rem', fontWeight: 700, color: '#094E68', letterSpacing: '-0.04em', lineHeight: 1 }}>04</div>
+            <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#475569', letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 8 }}>Perspektif KPI</div>
           </div>
 
-          {/* Stat 3 */}
-          <div className="sf-stat-item" style={{ flex: 1, padding: '2rem 2.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--secondary)', letterSpacing: -0.5, lineHeight: 1 }}>Otomatis</div>
-            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 3, textTransform: 'uppercase', marginTop: 6 }}>Validasi</div>
+          <div className="sf-stat-item" style={{ flex: 1, padding: '1.65rem 1.75rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="ent-mono" style={{ fontSize: '2.5rem', fontWeight: 700, color: '#0E7480', letterSpacing: '-0.04em', lineHeight: 1 }}>04</div>
+            <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#475569', letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 8 }}>Tahap Siklus PDCA</div>
           </div>
         </div>
-
       </section>
 
-      {/* ───────────── 2 · HORIZONTAL SCROLL PILLARS ───────────── */}
-      <section
-        className="sf-pillars"
-        style={{
-          height: '100vh',
-          display: 'flex',
-          overflow: 'hidden',
-          background: sectionBg
-        }}
-      >
-        {/* Sidebar */}
-        <div
-          className="sf-pillars-sidebar"
-          style={{
-            width: '32vw', minWidth: 340, maxWidth: 480,
-            flexShrink: 0, padding: '0 4vw',
-            background: sectionBg,
-            borderRight: borderLight,
-            display: 'flex', flexDirection: 'column', justifyContent: 'center',
-            zIndex: 5
-          }}
-        >
-          <div className="sf-pillars-sidebar-inner" style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{
-              fontSize: '0.7rem', fontWeight: 700, letterSpacing: 4,
-              color: 'var(--primary)', textTransform: 'uppercase',
-              display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem'
-            }}>
-              <span style={{ width: 28, height: 2, background: 'var(--primary)', display: 'inline-block', flexShrink: 0 }} />
-              Delapan Pilar
-            </span>
+      {/* ─── 2. DELAPAN PILAR KEMENTERIAN ─── */}
+      <section className="sf-pillars">
+        <div className="sf-pillars-sidebar">
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--ent-mono)',
+                fontSize: '0.68rem',
+                fontWeight: 600,
+                letterSpacing: '0.14em',
+                color: '#0E7480',
+                textTransform: 'uppercase',
+                marginBottom: '1rem',
+              }}
+            >
+              KEPMENDIKBUDRISTEK 210/M/2023
+            </div>
 
-            <h2 style={{
-              fontSize: 'clamp(1.8rem, 3vw, 3.2rem)',
-              fontWeight: 800, letterSpacing: -1.5,
-              margin: '0 0 1.25rem', lineHeight: 1.05, color: 'var(--secondary)'
-            }}>
-              Ketetapan<br />Kementerian.
+            <h2
+              style={{
+                fontSize: 'clamp(1.85rem, 2.8vw, 2.8rem)',
+                fontWeight: 800,
+                letterSpacing: '-0.035em',
+                margin: '0 0 1rem',
+                lineHeight: 1.08,
+                color: '#072534',
+              }}
+            >
+              Delapan Pilar
+              <br />
+              Indikator Utama.
             </h2>
 
-            <p style={{ fontSize: '0.95rem', lineHeight: 1.8, color: 'var(--text-muted)', maxWidth: 270, marginBottom: '2.5rem' }}>
-              Standar mutu absolut yang wajib dipenuhi seluruh entitas akademik di lingkungan institusi.
+            <p style={{ fontSize: '0.94rem', lineHeight: 1.72, color: '#334155', margin: '0 0 1.75rem' }}>
+              Parameter evaluasi kinerja perguruan tinggi yang diturunkan ke fakultas, program studi, dan lembaga pelaksana di lingkungan ITPLN.
             </p>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 24, height: 1, background: 'var(--text-muted)', opacity: 0.3 }} />
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                Scroll untuk menjelajahi
-              </span>
-              <ArrowRight size={12} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
-            </div>
+            <Link to="/iku-list" className="ent-btn ent-btn-primary" style={{ minHeight: '44px' }}>
+              Lihat Formula &amp; Target <ArrowRight size={14} />
+            </Link>
           </div>
         </div>
 
-        {/* Track */}
-        <div
-          className="sf-pillars-track"
-          style={{
-            display: 'flex', alignItems: 'center',
-            gap: '1.75rem', paddingLeft: '2.5rem', paddingRight: '15vw',
-            flexShrink: 0, willChange: 'transform'
-          }}
-        >
-          {ikuData.map((iku, idx) => (
-            <div
-              key={idx}
-              className="sf-pillar-card"
-              style={cardStyle(idx)}
-              onMouseEnter={e => {
-                e.currentTarget.style.transform = 'translateY(-6px)';
-                e.currentTarget.style.boxShadow = '0 24px 64px rgba(0,0,0,0.08)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.04)';
-              }}
-            >
-              {/* Top accent line */}
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, var(--primary) ${(idx + 1) * 12}%, transparent)`, opacity: 0.5 }} />
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.75rem' }}>
-                <div style={{ background: 'rgba(27,141,153,0.06)', color: 'var(--primary)', padding: '0.8rem', borderRadius: 14, border: '1px solid rgba(27,141,153,0.08)' }}>
+        <div className="sf-pillars-track">
+          {IKU_PILLARS.map((iku, idx) => (
+            <Link key={iku.code} to={`/iku-list#iku-${idx + 1}`} className="sf-pillar-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div
+                  style={{
+                    background: '#EDF5F7',
+                    color: '#094E68',
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '6px',
+                    border: '1px solid #B8D9E2',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
                   {iku.icon}
                 </div>
-                <span style={{ fontSize: '2.2rem', fontWeight: 800, color: 'rgba(0,0,0,0.03)', letterSpacing: -2, lineHeight: 1 }}>
-                  0{idx + 1}
+                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.74rem', fontWeight: 700, color: '#0E7480', letterSpacing: '0.06em' }}>
+                  {iku.code}
                 </span>
               </div>
 
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 800, letterSpacing: -0.5, margin: '0 0 0.75rem', color: 'var(--secondary)', lineHeight: 1.25 }}>
+              <h3 style={{ fontSize: '1.22rem', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 0.75rem', color: '#072534', lineHeight: 1.28 }}>
                 {iku.title}
               </h3>
 
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.75, flex: 1 }}>
+              <p style={{ fontSize: '0.88rem', color: '#334155', margin: 0, lineHeight: 1.68, flex: 1 }}>
                 {iku.desc}
               </p>
 
-              {/* Bottom link */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: '1.5rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: 600, letterSpacing: 0.5 }}>
-                <span>Lihat detail</span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginTop: '1.5rem',
+                  paddingTop: '0.85rem',
+                  borderTop: '1px solid #EDF3F6',
+                  color: '#094E68',
+                  fontFamily: 'var(--ent-mono)',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                <span>Buka Spesifikasi</span>
                 <ArrowRight size={14} />
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </section>
 
-      {/* ───────────── 3 · PDCA CYCLE ───────────── */}
-      <section className="sf-pdca" style={{ padding: '10rem 0', background: white, position: 'relative', zIndex: 10 }}>
-
-        {/* Subtle background separator */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: 'linear-gradient(90deg, transparent, rgba(0,0,0,0.05), transparent)' }} />
-
-        <div className="container" style={{ padding: '0 2.5rem', maxWidth: 1200, margin: '0 auto' }}>
-
-          <div className="sf-pdca-head" style={{ marginBottom: '6rem', textAlign: 'center' }}>
-            <div className="sf-pdca-badge" style={{
-              display: 'inline-flex', alignItems: 'center', gap: 12,
-              fontSize: '0.72rem', fontWeight: 700, letterSpacing: 4,
-              color: 'var(--primary)', textTransform: 'uppercase', marginBottom: '1.5rem'
-            }}>
-              <span style={{ width: 16, height: 2, background: 'var(--primary)', opacity: 0.5 }} />
-              Arsitektur PDCA
-              <span style={{ width: 16, height: 2, background: 'var(--primary)', opacity: 0.5 }} />
+      {/* ─── 3. SIKLUS PDCA OPERASIONAL ─── */}
+      <section className="sf-pdca" style={{ padding: 'clamp(4.5rem, 8vw, 7.5rem) 0', background: '#ffffff' }}>
+        <div className="container">
+          <div style={{ marginBottom: '3.5rem', maxWidth: '680px' }}>
+            <div className="ent-eyebrow" style={{ marginBottom: '1rem' }}>
+              03 // SIKLUS PENJAMINAN MUTU
             </div>
-            <h2 className="sf-pdca-title" style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)', fontWeight: 800, letterSpacing: -2, margin: 0, lineHeight: 1.05, color: 'var(--secondary)' }}>
-              Siklus Operasional.
+            <h2 style={{ fontSize: 'clamp(2rem, 4vw, 3.2rem)', fontWeight: 800, letterSpacing: '-0.035em', margin: '0 0 0.75rem', lineHeight: 1.08, color: '#072534' }}>
+              Alur Kerja PDCA Institusi.
             </h2>
+            <p style={{ margin: 0, fontSize: '0.96rem', color: '#334155', lineHeight: 1.7 }}>
+              Setiap tahapan evaluasi dijalankan oleh unit penanggung jawab yang jelas mulai dari penetapan target hingga tinjauan manajemen.
+            </p>
           </div>
 
           <div style={{ position: 'relative' }}>
-            {/* Background Track Line */}
-            <div style={{ position: 'absolute', top: 0, left: '2rem', right: '2rem', height: 2, background: 'rgba(0,0,0,0.04)', borderRadius: 2 }} />
-
-            {/* The Scrubbed Animated Line */}
-            <div className="sf-pdca-line" style={{ position: 'absolute', top: 0, left: '2rem', right: '2rem', height: 2, background: 'var(--primary)', transformOrigin: 'left center', borderRadius: 2 }} />
+            <div style={{ height: 2, background: '#D8E4EA', width: '100%', position: 'relative', marginBottom: '2rem' }}>
+              <div className="sf-pdca-line" style={{ position: 'absolute', inset: 0, background: '#0E7480', transformOrigin: 'left center' }} />
+            </div>
 
             <div
               className="sf-pdca-grid"
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: '2rem',
-                paddingTop: '3rem'
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 245px), 1fr))',
+                gap: '1.25rem',
               }}
             >
-              {pdcaData.map((step, idx) => (
-                <div
-                  key={idx}
-                  className="sf-pdca-card"
-                  style={{
-                    display: 'flex', flexDirection: 'column',
-                    position: 'relative',
-                    padding: '2.5rem 2rem',
-                    background: 'rgba(248, 250, 252, 0.4)',
-                    borderRadius: 24,
-                    border: '1px solid rgba(0,0,0,0.03)',
-                    transition: 'all 0.4s cubic-bezier(.25,.46,.45,.94)'
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.background = '#fff';
-                    e.currentTarget.style.boxShadow = '0 24px 48px rgba(0,0,0,0.06)';
-                    e.currentTarget.style.borderColor = 'rgba(27,141,153,0.15)';
-                    e.currentTarget.style.transform = 'translateY(-8px)';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = 'rgba(248, 250, 252, 0.4)';
-                    e.currentTarget.style.boxShadow = 'none';
-                    e.currentTarget.style.borderColor = 'rgba(0,0,0,0.03)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  {/* Connecting dot to the line above */}
-                  <div className="sf-pdca-dot" style={{
-                    position: 'absolute', top: '-3.35rem', left: '2rem',
-                    width: 12, height: 12, borderRadius: '50%',
-                    background: '#fff',
-                    border: '3px solid var(--primary)',
-                    boxShadow: '0 0 0 4px rgba(27,141,153,0.1)'
-                  }} />
+              {PDCA_STEPS.map((step, idx) => (
+                <article key={step.phase} className="sf-pdca-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.15rem' }}>
+                    <span
+                      style={{
+                        fontFamily: 'var(--ent-mono)',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.1em',
+                        padding: '0.22rem 0.55rem',
+                        borderRadius: '4px',
+                        background: '#094E68',
+                        color: '#ffffff',
+                      }}
+                    >
+                      0{idx + 1} · {step.phase}
+                    </span>
+                    <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#475569' }}>
+                      {step.actor}
+                    </span>
+                  </div>
 
-                  <div style={{ fontSize: '3.5rem', fontWeight: 900, color: 'rgba(27,141,153,0.08)', lineHeight: 0.8, letterSpacing: -2, marginBottom: '2rem', fontFamily: 'system-ui' }}>
-                    0{idx + 1}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--primary)', letterSpacing: 3, fontWeight: 700, marginBottom: '1rem', textTransform: 'uppercase' }}>
-                    Fase {step.phase}
-                  </div>
-                  <h3 style={{ fontSize: '1.4rem', color: 'var(--secondary)', fontWeight: 800, margin: '0 0 0.8rem', letterSpacing: -0.5 }}>
+                  <h3 style={{ fontSize: '1.2rem', color: '#072534', fontWeight: 800, margin: '0 0 0.65rem', letterSpacing: '-0.02em' }}>
                     {step.title}
                   </h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.7, margin: 0 }}>
+                  <p style={{ color: '#334155', fontSize: '0.9rem', lineHeight: 1.68, margin: 0 }}>
                     {step.text}
                   </p>
-                </div>
+                </article>
               ))}
             </div>
           </div>
         </div>
       </section>
-
     </div>
   );
 }

@@ -25,7 +25,7 @@ const IKU_CATALOG = [
     code: 'IKU.02',
     pillar: 'Kualitas Lulusan',
     title: 'Mahasiswa Mendapat Pengalaman di Luar Kampus',
-    desc: 'Mahasiswa S1 dan D4/D3 yang memperoleh minimal 10–20 SKS kegiatan pembelajaran di luar program studi (magang industri BUMN/PLN, riset terapan, pertukaran pelajar, atau prestasi kompetisi).',
+    desc: 'Mahasiswa S1 dan D4/D3 yang memperoleh minimal 10 sampai 20 SKS kegiatan pembelajaran di luar program studi (magang industri BUMN/PLN, riset terapan, pertukaran pelajar, atau prestasi kompetisi).',
     formula: 'Jumlah mahasiswa berkegiatan MBKM rekognisi SKS ÷ Total mahasiswa aktif × 100%',
     target: '75%',
     pic: 'Pusat MBKM & Akademik ITPLN',
@@ -108,13 +108,20 @@ export default function IKUList() {
   const filtered = useMemo(() => {
     return IKU_CATALOG.filter((item) => {
       const matchPillar = activePillar === 'Semua Pilar' || item.pillar === activePillar;
-      const matchQuery = !query.trim()
-        || `${item.code} ${item.title} ${item.desc} ${item.pic}`.toLowerCase().includes(query.toLowerCase());
+      const matchQuery =
+        !query.trim() ||
+        `${item.code} ${item.title} ${item.desc} ${item.pic}`
+          .toLowerCase()
+          .includes(query.toLowerCase());
       return matchPillar && matchQuery;
     });
   }, [activePillar, query]);
 
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+
     const tl = gsap.timeline({ defaults: { ease: 'expo.out' } });
     tl.fromTo(
       '.iku-cat-mask-line',
@@ -136,22 +143,26 @@ export default function IKUList() {
   }, { scope: pageRef });
 
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+
     const cards = gsap.utils.toArray('.iku-cat-card');
     cards.forEach((card, idx) => {
       gsap.fromTo(
         card,
-        { y: 26, opacity: 0 },
+        { y: 24, opacity: 0 },
         {
           y: 0,
           opacity: 1,
-          duration: 0.65,
+          duration: 0.6,
           delay: (idx % 2) * 0.05,
           ease: 'expo.out',
           clearProps: 'transform',
           scrollTrigger: {
             trigger: card,
             start: 'top 92%',
-            toggleActions: 'play none none none',
+            once: true,
           },
         }
       );
@@ -163,23 +174,23 @@ export default function IKUList() {
       ref={pageRef}
       style={{
         background: '#ffffff',
-        minHeight: '100vh',
-        paddingTop: '7.5rem',
-        paddingBottom: '6rem',
-        color: '#09090b',
+        minHeight: '100dvh',
+        paddingTop: 'clamp(6.75rem, 10vw, 8rem)',
+        paddingBottom: 'clamp(4.5rem, 8vw, 6.5rem)',
+        color: '#072534',
       }}
     >
       <style>{`
         .iku-ledger-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-          border-top: 1px solid #e4e4e7;
-          border-left: 1px solid #e4e4e7;
+          grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+          border-top: 1px solid #D8E4EA;
+          border-left: 1px solid #D8E4EA;
         }
         .iku-ledger-cell {
-          padding: 1.85rem 1.75rem;
-          border-right: 1px solid #e4e4e7;
-          border-bottom: 1px solid #e4e4e7;
+          padding: clamp(1.4rem, 3vw, 1.85rem);
+          border-right: 1px solid #D8E4EA;
+          border-bottom: 1px solid #D8E4EA;
           background: #ffffff;
           display: flex;
           flex-direction: column;
@@ -194,21 +205,42 @@ export default function IKUList() {
           left: 0;
           right: 0;
           top: -1px;
-          height: 2px;
-          background: #09090b;
+          height: 2.5px;
+          background: #094E68;
           transform: scaleX(0);
           transform-origin: left center;
           transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .iku-ledger-cell:hover {
-          background: #fafafa;
+        .iku-filter-btn {
+          min-height: 40px;
+          padding: 0.45rem 0.95rem;
+          border-radius: 6px;
+          border: none;
+          font-size: 0.78rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.2s ease, color 0.2s ease;
         }
-        .iku-ledger-cell:hover::before {
-          transform: scaleX(1);
+        @media (hover: hover) {
+          .iku-ledger-cell:hover {
+            background: #F7FAFB;
+          }
+          .iku-ledger-cell:hover::before {
+            transform: scaleX(1);
+          }
         }
-        @media (max-width: 500px) {
-          .iku-ledger-grid {
-            grid-template-columns: 1fr;
+        @media (max-width: 640px) {
+          .iku-filter-track {
+            width: 100%;
+          }
+          .iku-filter-btn {
+            flex: 1 1 calc(50% - 4px);
+            min-height: 44px;
+            text-align: center;
+          }
+          .iku-search-wrap {
+            flex: 1 1 100% !important;
+            max-width: 100% !important;
           }
         }
       `}</style>
@@ -216,48 +248,59 @@ export default function IKUList() {
       <div style={{ maxWidth: '1320px', margin: '0 auto', padding: '0 clamp(1.25rem, 4vw, 2.5rem)' }}>
         {/* HERO MASTHEAD */}
         <header style={{ marginBottom: '2.25rem' }}>
-          <div className="iku-cat-hero" style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#71717a', marginBottom: '1rem' }}>
+          <div className="iku-cat-hero ent-eyebrow" style={{ marginBottom: '1rem' }}>
             KEPMENDIKBUDRISTEK NO. 210/M/2023 // DIREKTORAT PRP ITPLN
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1.5rem', paddingBottom: '1.85rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+              gap: '1.5rem',
+              paddingBottom: '1.85rem',
+            }}
+          >
             <div style={{ maxWidth: '760px' }}>
               <h1
                 style={{
                   fontFamily: 'Outfit, sans-serif',
                   fontSize: 'clamp(2.2rem, 4.5vw, 3.6rem)',
                   fontWeight: 800,
-                  letterSpacing: '-0.045em',
-                  lineHeight: 1.03,
+                  letterSpacing: '-0.04em',
+                  lineHeight: 1.04,
                   margin: '0 0 0.9rem',
-                  color: '#09090b',
+                  color: '#072534',
                 }}
               >
                 <span style={{ display: 'block', overflow: 'hidden', paddingBottom: '0.05em' }}>
-                  <span className="iku-cat-mask-line" style={{ display: 'block' }}>Katalog Eksekutif</span>
+                  <span className="iku-cat-mask-line" style={{ display: 'block' }}>
+                    Katalog Resmi
+                  </span>
                 </span>
                 <span style={{ display: 'block', overflow: 'hidden', paddingBottom: '0.05em' }}>
-                  <span className="iku-cat-mask-line" style={{ display: 'block', fontWeight: 400, color: '#52525b' }}>
+                  <span className="iku-cat-mask-line" style={{ display: 'block', fontWeight: 700, color: '#094E68' }}>
                     8 Indikator Kinerja Utama.
                   </span>
                 </span>
               </h1>
-              <p className="iku-cat-hero" style={{ margin: 0, fontSize: '0.95rem', color: '#52525b', lineHeight: 1.65 }}>
-                Referensi resmi parameter pengukuran kinerja perguruan tinggi — mencakup definisi operasional, rumusan perhitungan, standar target institusi, dan unit penanggung jawab (PIC).
+              <p className="iku-cat-hero" style={{ margin: 0, fontSize: '0.96rem', color: '#334155', lineHeight: 1.68 }}>
+                Referensi resmi parameter pengukuran kinerja perguruan tinggi yang mencakup definisi operasional, rumusan perhitungan, standar target institusi, dan unit penanggung jawab (PIC).
               </p>
             </div>
 
-            <div className="iku-cat-hero" style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
-              <Link to="/documents" className="ent-btn">
-                Unduh Regulasi PDF <ArrowUpRight size={14} />
+            <div className="iku-cat-hero" style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <Link to="/documents" className="ent-btn" style={{ minHeight: 44 }}>
+                Unduh Regulasi PDF <ArrowUpRight size={15} />
               </Link>
-              <Link to="/login" className="ent-btn ent-btn-primary">
-                Portal Evaluasi Internal <ArrowRight size={14} />
+              <Link to="/login" className="ent-btn ent-btn-primary" style={{ minHeight: 44 }}>
+                Portal Evaluasi Internal <ArrowRight size={15} />
               </Link>
             </div>
           </div>
 
-          <div className="iku-cat-keyline" style={{ height: '2px', background: '#09090b', width: '100%' }} />
+          <div className="iku-cat-keyline" style={{ height: '2px', background: '#094E68', width: '100%' }} />
         </header>
 
         {/* FILTER & SEARCH TOOLBAR */}
@@ -272,24 +315,32 @@ export default function IKUList() {
             marginBottom: '2rem',
           }}
         >
-          <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', background: '#efeff1', padding: '3px', borderRadius: '6px', border: '1px solid #e4e4e7' }}>
+          <div
+            role="group"
+            aria-label="Filter pilar indikator kinerja utama"
+            className="iku-filter-track"
+            style={{
+              display: 'flex',
+              gap: '4px',
+              flexWrap: 'wrap',
+              background: '#EDF3F6',
+              padding: '4px',
+              borderRadius: '8px',
+              border: '1px solid #D8E4EA',
+            }}
+          >
             {PILLARS.map((pillar) => {
               const active = activePillar === pillar;
               return (
                 <button
                   key={pillar}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => setActivePillar(pillar)}
+                  className="iku-filter-btn"
                   style={{
-                    padding: '0.45rem 0.9rem',
-                    borderRadius: '4px',
-                    border: 'none',
-                    background: active ? '#09090b' : 'transparent',
-                    color: active ? '#ffffff' : '#52525b',
-                    fontSize: '0.76rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
+                    background: active ? '#094E68' : 'transparent',
+                    color: active ? '#ffffff' : '#334155',
                   }}
                 >
                   {pillar}
@@ -298,15 +349,30 @@ export default function IKUList() {
             })}
           </div>
 
-          <div style={{ position: 'relative', minWidth: '270px', flex: '0 1 340px' }}>
-            <Search size={14} color="#71717a" style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          <div
+            className="iku-search-wrap"
+            style={{ position: 'relative', minWidth: 'min(100%, 260px)', flex: '0 1 340px' }}
+          >
+            <Search
+              size={15}
+              color="#0E7480"
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                pointerEvents: 'none',
+              }}
+            />
             <input
               type="search"
+              aria-label="Cari kode IKU, formula, atau unit PIC"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Cari kode IKU, formula, atau unit PIC..."
               className="ent-input"
-              style={{ paddingLeft: '34px' }}
+              style={{ paddingLeft: '36px', minHeight: 44 }}
             />
           </div>
         </div>
@@ -314,43 +380,104 @@ export default function IKUList() {
         {/* CONNECTED ARCHITECTURAL CATALOG GRID */}
         <div className="iku-ledger-grid">
           {filtered.map((item) => (
-            <article
-              id={`iku-${item.id}`}
-              key={item.id}
-              className="iku-ledger-cell iku-cat-card"
-            >
+            <article id={`iku-${item.id}`} key={item.id} className="iku-ledger-cell iku-cat-card">
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.15rem' }}>
-                  <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.72rem', fontWeight: 700, color: '#09090b', letterSpacing: '0.06em' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    marginBottom: '1.15rem',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'var(--ent-mono)',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      color: '#0E7480',
+                      letterSpacing: '0.06em',
+                    }}
+                  >
                     {item.idx} // {item.code}
                   </span>
-                  <span className="ent-badge">{item.pillar}</span>
+                  <span className="ent-badge ent-badge-info">{item.pillar}</span>
                 </div>
 
-                <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.22rem', fontWeight: 800, color: '#09090b', margin: '0 0 0.55rem', letterSpacing: '-0.025em', lineHeight: 1.28 }}>
+                <h2
+                  style={{
+                    fontFamily: 'Outfit, sans-serif',
+                    fontSize: '1.24rem',
+                    fontWeight: 800,
+                    color: '#072534',
+                    margin: '0 0 0.55rem',
+                    letterSpacing: '-0.025em',
+                    lineHeight: 1.28,
+                  }}
+                >
                   {item.title}
                 </h2>
 
-                <p style={{ margin: 0, fontSize: '0.84rem', color: '#52525b', lineHeight: 1.62 }}>
+                <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.65 }}>
                   {item.desc}
                 </p>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                <div style={{ padding: '0.8rem 0.95rem', borderLeft: '2px solid #09090b', background: '#fafafa' }}>
-                  <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.09em', color: '#71717a', marginBottom: '0.25rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                <div
+                  style={{
+                    padding: '0.85rem 1rem',
+                    borderLeft: '2.5px solid #094E68',
+                    background: '#F7FAFB',
+                    borderRadius: '0 6px 6px 0',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: 'var(--ent-mono)',
+                      fontSize: '0.62rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.09em',
+                      color: '#475569',
+                      marginBottom: '0.3rem',
+                    }}
+                  >
                     FORMULA PERHITUNGAN STANDAR
                   </div>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#09090b', lineHeight: 1.45 }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#072534', lineHeight: 1.48 }}>
                     {item.formula}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.7rem', borderTop: '1px solid #f4f4f5', fontSize: '0.75rem' }}>
-                  <span style={{ color: '#71717a' }}>
-                    PIC: <strong style={{ color: '#09090b' }}>{item.pic}</strong>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                    paddingTop: '0.75rem',
+                    borderTop: '1px solid #EDF3F6',
+                    fontSize: '0.76rem',
+                  }}
+                >
+                  <span style={{ color: '#475569' }}>
+                    PIC: <strong style={{ color: '#072534' }}>{item.pic}</strong>
                   </span>
-                  <span style={{ fontFamily: 'var(--ent-mono)', fontWeight: 700, color: '#09090b', background: '#fafafa', border: '1px solid #e4e4e7', padding: '2px 8px', borderRadius: '4px', fontSize: '0.66rem' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--ent-mono)',
+                      fontWeight: 700,
+                      color: '#094E68',
+                      background: '#EDF3F6',
+                      border: '1px solid #D8E4EA',
+                      padding: '3px 9px',
+                      borderRadius: '4px',
+                      fontSize: '0.68rem',
+                    }}
+                  >
                     TARGET ≥ {item.target}
                   </span>
                 </div>
@@ -360,8 +487,30 @@ export default function IKUList() {
         </div>
 
         {!filtered.length && (
-          <div style={{ padding: '3rem', border: '1px solid #e4e4e7', textAlign: 'center', color: '#71717a' }}>
-            Tidak ada indikator yang cocok dengan kata kunci pencarian Anda.
+          <div
+            style={{
+              padding: '3rem 1.5rem',
+              border: '1px solid #D8E4EA',
+              borderRadius: '8px',
+              background: '#F7FAFB',
+              textAlign: 'center',
+              color: '#475569',
+            }}
+          >
+            <p style={{ margin: '0 0 1rem', fontSize: '0.95rem', fontWeight: 600, color: '#072534' }}>
+              Tidak ada indikator yang cocok dengan kata kunci atau filter pilar saat ini.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setActivePillar('Semua Pilar');
+                setQuery('');
+              }}
+              className="ent-btn ent-btn-primary"
+              style={{ minHeight: 44 }}
+            >
+              Reset Filter Katalog
+            </button>
           </div>
         )}
       </div>

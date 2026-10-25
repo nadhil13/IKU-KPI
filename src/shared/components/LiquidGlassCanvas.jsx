@@ -10,7 +10,7 @@ const vertexShader = `
 `;
 
 // Crystal-clear organic liquid caustic & fluid light shader
-// Never draws dirty grey solid pixels — only generates delicate iridescent fluid reflections
+// Generates delicate iridescent fluid reflections during navbar fold transitions
 const fragmentShader = `
   uniform float uTime;
   uniform float uFoldProgress; // 0 = flat top bar, 1 = compact folded capsule
@@ -89,32 +89,18 @@ const fragmentShader = `
   }
 `;
 
-export default function LiquidGlassCanvas({ navbarRef, isFolded }) {
+export default function LiquidGlassCanvas({ isFolded }) {
   const mountRef = useRef(null);
   const refsR = useRef({});
-  const frameR = useRef(null);
-  const clockR = useRef(new THREE.Clock());
   const foldProgressRef = useRef(0);
 
-  // Smoothly interpolate fold progress for shader
   useEffect(() => {
-    const target = isFolded ? 1.0 : 0.0;
-    let animId;
-    const step = () => {
-      foldProgressRef.current += (target - foldProgressRef.current) * 0.08;
-      if (Math.abs(target - foldProgressRef.current) > 0.001) {
-        animId = requestAnimationFrame(step);
-      } else {
-        foldProgressRef.current = target;
-      }
-    };
-    step();
-    return () => cancelAnimationFrame(animId);
-  }, [isFolded]);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
 
-  useEffect(() => {
     const container = mountRef.current;
-    if (!container) return;
+    if (!container) return undefined;
 
     const w = container.clientWidth || window.innerWidth;
     const h = container.clientHeight || 72;
@@ -137,7 +123,7 @@ export default function LiquidGlassCanvas({ navbarRef, isFolded }) {
       vertexShader,
       fragmentShader,
       uniforms: {
-        uTime: { value: 0 },
+        uTime: { value: 1.2 },
         uFoldProgress: { value: 0 },
         uResolution: { value: new THREE.Vector2(w, h) },
       },
@@ -149,6 +135,7 @@ export default function LiquidGlassCanvas({ navbarRef, isFolded }) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
     scene.add(mesh);
     refsR.current = { renderer, scene, camera, material, geo: mesh.geometry };
+    renderer.render(scene, camera);
 
     const onResize = () => {
       if (!container) return;
@@ -156,20 +143,12 @@ export default function LiquidGlassCanvas({ navbarRef, isFolded }) {
       const nh = container.clientHeight || 72;
       renderer.setSize(nw, nh);
       material.uniforms.uResolution.value.set(nw, nh);
+      renderer.render(scene, camera);
     };
 
     window.addEventListener('resize', onResize);
 
-    const animate = () => {
-      frameR.current = requestAnimationFrame(animate);
-      material.uniforms.uTime.value = clockR.current.getElapsedTime();
-      material.uniforms.uFoldProgress.value = foldProgressRef.current;
-      renderer.render(scene, camera);
-    };
-    animate();
-
     return () => {
-      cancelAnimationFrame(frameR.current);
       window.removeEventListener('resize', onResize);
       renderer.dispose();
       material.dispose();
@@ -177,8 +156,33 @@ export default function LiquidGlassCanvas({ navbarRef, isFolded }) {
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
+      refsR.current = {};
     };
   }, []);
+
+  // Render shader only while fold state transitions (zero idle GPU loop per R-19)
+  useEffect(() => {
+    const { renderer, scene, camera, material } = refsR.current;
+    if (!renderer || !material) return undefined;
+
+    const target = isFolded ? 1.0 : 0.0;
+    let animId;
+    const step = () => {
+      foldProgressRef.current += (target - foldProgressRef.current) * 0.12;
+      material.uniforms.uFoldProgress.value = foldProgressRef.current;
+      material.uniforms.uTime.value = 1.2 + foldProgressRef.current * 0.8;
+      renderer.render(scene, camera);
+      if (Math.abs(target - foldProgressRef.current) > 0.002) {
+        animId = requestAnimationFrame(step);
+      } else {
+        foldProgressRef.current = target;
+        material.uniforms.uFoldProgress.value = target;
+        renderer.render(scene, camera);
+      }
+    };
+    step();
+    return () => cancelAnimationFrame(animId);
+  }, [isFolded]);
 
   return (
     <div

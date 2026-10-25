@@ -278,7 +278,7 @@ export function validateKpiFormula(source, inputCount, allowedGlobalRefs = null)
       return `Variabel "${name}" tidak dikenal. Gunakan I1..I${inputCount}, T, B, atau klik sel di tabel.`;
     }
     const index = Number(match[1]);
-    if (index < 1 || index > inputCount) return `${name} tidak ada — baris ini hanya punya ${inputCount} isian.`;
+    if (index < 1 || index > inputCount) return `${name} tidak ada: baris ini hanya punya ${inputCount} isian.`;
   }
   return null;
 }

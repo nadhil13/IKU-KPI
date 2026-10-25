@@ -17,13 +17,16 @@ export default function SystemSettings() {
     event.preventDefault();
     const minimumPasswordLength = Number(config.minimumPasswordLength);
     if (
-      !config.institutionName.trim()
-      || !Number.isInteger(minimumPasswordLength)
-      || minimumPasswordLength < 8
-      || minimumPasswordLength > 64
-      || (config.submissionDeadline && !Number.isFinite(new Date(config.submissionDeadline).getTime()))
+      !config.institutionName.trim() ||
+      !Number.isInteger(minimumPasswordLength) ||
+      minimumPasswordLength < 8 ||
+      minimumPasswordLength > 64 ||
+      (config.submissionDeadline && !Number.isFinite(new Date(config.submissionDeadline).getTime()))
     ) {
-      setFeedback({ type: 'error', text: 'Periksa nama institusi, panjang password (bilangan bulat 8–64), dan format tenggat yang valid.' });
+      setFeedback({
+        type: 'error',
+        text: 'Periksa nama institusi, panjang kata sandi (bilangan bulat 8 sampai 64), dan format tenggat yang valid.',
+      });
       return;
     }
     const patch = {
@@ -43,7 +46,7 @@ export default function SystemSettings() {
       window.dispatchEvent(new CustomEvent('prp-admin-updated'));
       setFeedback({ type: 'ok', text: 'Konfigurasi kebijakan sistem berhasil disimpan dan dicatat dalam audit.' });
     } catch {
-      setFeedback({ type: 'error', text: 'Penyimpanan gagal. Periksa ketersediaan penyimpanan browser.' });
+      setFeedback({ type: 'error', text: 'Penyimpanan gagal. Periksa ketersediaan penyimpanan peramban.' });
     }
   };
 
@@ -51,20 +54,27 @@ export default function SystemSettings() {
     <form className="gov-table" onSubmit={save}>
       <div className="gov-table-head">
         <div>
-          <h2>Kebijakan & Parameter Sistem Global</h2>
+          <h2>Kebijakan &amp; Parameter Sistem Global</h2>
           <span>Pengaturan identitas institusi, standar keamanan autentikasi, kewajiban bukti, dan mode pemeliharaan</span>
         </div>
-        <span className="ent-badge">
-          <Sliders size={12} /> Policy Engine
+        <span className="ent-badge ent-badge-info">
+          <Sliders size={12} /> Parameter Global
         </span>
       </div>
 
-      <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.1rem' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+      <div style={{ padding: 'clamp(1.1rem, 2.5vw, 1.5rem)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
+            gap: '1.1rem',
+          }}
+        >
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#072534' }}>
             Nama Institusi Resmi
             <input
               className="ent-input"
+              style={{ minHeight: '42px' }}
               required
               maxLength={200}
               value={config.institutionName}
@@ -72,10 +82,11 @@ export default function SystemSettings() {
             />
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
-            Panjang Minimum Password (8–64 karakter)
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#072534' }}>
+            Panjang Minimum Kata Sandi (8 sampai 64 karakter)
             <input
               className="ent-input"
+              style={{ minHeight: '42px' }}
               type="number"
               min="8"
               max="64"
@@ -86,42 +97,51 @@ export default function SystemSettings() {
             />
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 700, color: '#072534' }}>
             Tenggat Pengisian Global (Opsional)
             <input
               className="ent-input"
+              style={{ minHeight: '42px' }}
               type="datetime-local"
               value={config.submissionDeadline || ''}
               onChange={(event) => change('submissionDeadline', event.target.value)}
             />
-            <small style={{ fontWeight: 500, color: '#64748b', fontSize: '0.68rem' }}>
-              Digunakan sebagai fallback apabila periode evaluasi aktif tidak memiliki tenggat khusus.
+            <small style={{ fontWeight: 500, color: '#475569', fontSize: '0.7rem', lineHeight: 1.45 }}>
+              Digunakan sebagai tenggat cadangan apabila periode evaluasi aktif tidak memiliki tenggat khusus.
             </small>
           </label>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.9rem' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
+            gap: '0.9rem',
+          }}
+        >
           <label
             style={{
               display: 'flex',
               alignItems: 'flex-start',
               gap: '0.75rem',
               padding: '1rem 1.15rem',
-              borderRadius: '6px',
-              background: '#fafafa',
-              border: '1px solid #e4e4e7',
+              borderRadius: '8px',
+              background: '#F7FAFB',
+              border: '1px solid #D8E4EA',
               cursor: 'pointer',
             }}
           >
             <input
               type="checkbox"
-              style={{ marginTop: '3px' }}
+              style={{ marginTop: '3px', width: '16px', height: '16px' }}
               checked={config.evidenceRequired}
               onChange={(event) => change('evidenceRequired', event.target.checked)}
             />
             <div>
-              <strong style={{ display: 'block', fontSize: '0.82rem', color: '#09090b' }}>Bukti pendukung wajib (HTTPS)</strong>
-              <span style={{ fontSize: '0.73rem', color: '#52525b', lineHeight: 1.5 }}>
+              <strong style={{ display: 'block', fontSize: '0.84rem', color: '#072534' }}>
+                Bukti pendukung wajib (HTTPS)
+              </strong>
+              <span style={{ fontSize: '0.76rem', color: '#334155', lineHeight: 1.55 }}>
                 Wajibkan setiap indikator yang dikirim oleh unit kerja menyertakan tautan dokumen bukti valid sebelum disetujui.
               </span>
             </div>
@@ -133,22 +153,24 @@ export default function SystemSettings() {
               alignItems: 'flex-start',
               gap: '0.75rem',
               padding: '1rem 1.15rem',
-              borderRadius: '6px',
-              background: config.maintenanceMode ? '#fffbeb' : '#fafafa',
-              border: config.maintenanceMode ? '1px solid #fcd34d' : '1px solid #e4e4e7',
+              borderRadius: '8px',
+              background: config.maintenanceMode ? '#FFFBEB' : '#F7FAFB',
+              border: config.maintenanceMode ? '1px solid #F59E0B' : '1px solid #D8E4EA',
               cursor: 'pointer',
             }}
           >
             <input
               type="checkbox"
-              style={{ marginTop: '3px' }}
+              style={{ marginTop: '3px', width: '16px', height: '16px' }}
               checked={config.maintenanceMode}
               onChange={(event) => change('maintenanceMode', event.target.checked)}
             />
             <div>
-              <strong style={{ display: 'block', fontSize: '0.82rem', color: '#09090b' }}>Mode pemeliharaan sistem</strong>
-              <span style={{ fontSize: '0.73rem', color: '#52525b', lineHeight: 1.5 }}>
-                Batasi login hanya untuk akun Superadmin PRP dan bekukan sementara perubahan submission unit.
+              <strong style={{ display: 'block', fontSize: '0.84rem', color: '#072534' }}>
+                Mode pemeliharaan sistem
+              </strong>
+              <span style={{ fontSize: '0.76rem', color: '#334155', lineHeight: 1.55 }}>
+                Batasi akses masuk hanya untuk akun Superadmin PRP dan bekukan sementara perubahan submission unit.
               </span>
             </div>
           </label>
@@ -160,32 +182,32 @@ export default function SystemSettings() {
             alignItems: 'flex-start',
             gap: '0.65rem',
             padding: '0.9rem 1.1rem',
-            borderRadius: '6px',
-            background: '#fafafa',
-            border: '1px solid #e4e4e7',
-            color: '#52525b',
-            fontSize: '0.74rem',
+            borderRadius: '8px',
+            background: '#F7FAFB',
+            border: '1px solid #D8E4EA',
+            color: '#334155',
+            fontSize: '0.76rem',
             lineHeight: 1.6,
           }}
         >
-          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#09090b' }} />
+          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#094E68' }} />
           <span>
-            Mode prototipe lokal: kebijakan disimpan pada penyimpanan browser ini dan ditegakkan langsung pada alur login, panjang kata sandi, tenggat pengisian, serta verifikasi bukti submission.
+            Penyimpanan lokal peramban: pengaturan disimpan di peramban ini dan diterapkan langsung pada alur masuk, panjang kata sandi, tenggat pengisian, serta verifikasi bukti submission.
           </span>
         </div>
 
         {feedback.text && (
           <div
-            role="status"
+            role={feedback.type === 'error' ? 'alert' : 'status'}
             aria-live="polite"
             style={{
-              padding: '0.75rem 1rem',
-              borderRadius: '6px',
-              fontSize: '0.78rem',
+              padding: '0.78rem 1rem',
+              borderRadius: '8px',
+              fontSize: '0.8rem',
               fontWeight: 600,
-              background: feedback.type === 'error' ? '#fef2f2' : '#fafafa',
-              border: feedback.type === 'error' ? '1px solid #fecaca' : '1px solid #09090b',
-              color: feedback.type === 'error' ? '#b91c1c' : '#09090b',
+              background: feedback.type === 'error' ? '#FEF2F2' : '#F7FAFB',
+              border: feedback.type === 'error' ? '1px solid #FECACA' : '1px solid #094E68',
+              color: feedback.type === 'error' ? '#B91C1C' : '#072534',
             }}
           >
             {feedback.text}
@@ -193,7 +215,7 @@ export default function SystemSettings() {
         )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="ent-btn ent-btn-teal" type="submit">
+          <button className="ent-btn ent-btn-primary" type="submit" style={{ minHeight: '44px' }}>
             <Check size={15} /> Simpan Kebijakan Sistem
           </button>
         </div>

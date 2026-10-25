@@ -11,8 +11,8 @@ import './Navbar.css';
 
 gsap.registerPlugin(ScrollTrigger);
 
-const FOLD_ENTER = 48; // px — fold into floating island
-const FOLD_LEAVE = 18; // px — unfold back to edge-to-edge bar
+const FOLD_ENTER = 48; // px: fold into floating island
+const FOLD_LEAVE = 18; // px: unfold back to edge-to-edge bar
 
 export default function Navbar() {
   const wrapRef = useRef(null);
@@ -303,7 +303,7 @@ export default function Navbar() {
           }}
         />
 
-        {/* ── Subtle Bottom Ambient Edge Line ── */}
+        {/* ── Subtle Bottom Campus Accent Line ── */}
         <div
           style={{
             position: 'absolute',
@@ -314,7 +314,7 @@ export default function Navbar() {
             zIndex: 1,
             pointerEvents: 'none',
             background:
-              'linear-gradient(90deg, transparent 5%, rgba(0, 155, 185, 0.25) 30%, rgba(0, 155, 185, 0.35) 50%, rgba(0, 155, 185, 0.25) 70%, transparent 95%)',
+              'linear-gradient(90deg, transparent 5%, rgba(9, 78, 104, 0.22) 30%, rgba(14, 116, 128, 0.38) 50%, rgba(9, 78, 104, 0.22) 70%, transparent 95%)',
           }}
         />
 
@@ -343,7 +343,7 @@ export default function Navbar() {
           >
             <img
               src={logoPln}
-              alt="ITPLN"
+              alt="Logo Institut Teknologi PLN"
               onError={(e) => {
                 e.currentTarget.src = '/logo_pln.png';
               }}
@@ -351,7 +351,6 @@ export default function Navbar() {
                 height: isFolded ? '32px' : '38px',
                 width: 'auto',
                 objectFit: 'contain',
-                filter: 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.12))',
                 transition: 'height 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
               }}
             />
@@ -361,7 +360,7 @@ export default function Navbar() {
             style={{
               width: '1px',
               height: isFolded ? '20px' : '24px',
-              background: 'rgba(15, 23, 42, 0.12)',
+              background: '#BFD2DC',
               transition: 'height 0.4s ease',
             }}
           />
@@ -372,7 +371,7 @@ export default function Navbar() {
                 style={{
                   fontSize: isFolded ? 'clamp(0.95rem, 3.5vw, 1.08rem)' : 'clamp(1rem, 4vw, 1.18rem)',
                   fontWeight: 800,
-                  color: '#0b172a',
+                  color: '#072534',
                   letterSpacing: '-0.025em',
                   lineHeight: 1.1,
                   fontFamily: 'Outfit, system-ui, sans-serif',
@@ -383,17 +382,19 @@ export default function Navbar() {
               </span>
               <span
                 style={{
+                  fontFamily: 'var(--ent-mono)',
                   fontSize: '0.58rem',
                   fontWeight: 700,
-                  padding: '1.5px 5.5px',
+                  padding: '2px 6px',
                   borderRadius: '4px',
-                  background: 'rgba(0, 155, 185, 0.12)',
-                  color: '#007a93',
-                  letterSpacing: '0.04em',
+                  background: '#EDF5F7',
+                  border: '1px solid #B8D9E2',
+                  color: '#094E68',
+                  letterSpacing: '0.05em',
                   textTransform: 'uppercase',
                 }}
               >
-                IKU • KPI
+                IKU · KPI
               </span>
             </div>
             <span
@@ -401,7 +402,7 @@ export default function Navbar() {
               className="navbar-brand-sub"
               style={{
                 fontSize: '0.64rem',
-                color: '#526581',
+                color: '#475569',
                 fontWeight: 600,
                 letterSpacing: '0.06em',
                 textTransform: 'uppercase',
@@ -412,24 +413,24 @@ export default function Navbar() {
                 transition: 'color 0.3s ease',
               }}
             >
-              Portal Kinerja Terpadu ITPLN
+              Institut Teknologi PLN
             </span>
           </div>
         </Link>
 
-        {/* ════ DESKTOP NAVIGATION (REFINED SEGMENTED PILL TRACK) ════ */}
+        {/* ════ DESKTOP NAVIGATION (ARCHITECTURAL SEGMENTED TRACK) ════ */}
         <nav
           ref={navTrackRef}
+          aria-label="Navigasi Utama"
           className="navbar-desktop-nav"
           style={{
             position: 'relative',
             zIndex: 2,
             alignItems: 'center',
             padding: '3px',
-            background: 'rgba(15, 23, 42, 0.04)',
-            borderRadius: '9999px',
-            border: '1px solid rgba(255, 255, 255, 0.65)',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03) inset',
+            background: 'rgba(9, 78, 104, 0.05)',
+            borderRadius: '8px',
+            border: '1px solid rgba(9, 78, 104, 0.12)',
           }}
         >
           {navLinks.map((item) => {
@@ -437,17 +438,18 @@ export default function Navbar() {
             return (
               <button
                 key={item.id}
+                type="button"
                 className="nav-btn-item"
+                aria-current={active ? 'page' : undefined}
                 onClick={(e) => handleNavClick(e, item)}
                 style={{
                   position: 'relative',
-                  background: active ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
-                  color: active ? '#0b172a' : '#475569',
-                  border: 'none',
-                  outline: 'none',
-                  padding: isFolded ? '0.40rem 0.95rem' : '0.48rem 1.15rem',
-                  borderRadius: '9999px',
-                  fontSize: '0.85rem',
+                  background: active ? '#ffffff' : 'transparent',
+                  color: active ? '#094E68' : '#334155',
+                  border: active ? '1px solid #D8E4EA' : '1px solid transparent',
+                  padding: isFolded ? '0.42rem 0.95rem' : '0.48rem 1.1rem',
+                  borderRadius: '6px',
+                  fontSize: '0.84rem',
                   fontWeight: active ? 700 : 500,
                   letterSpacing: '-0.01em',
                   cursor: 'pointer',
@@ -455,34 +457,30 @@ export default function Navbar() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.4rem',
-                  boxShadow: active
-                    ? '0 2px 10px rgba(11, 23, 44, 0.08), 0 1px 0 rgba(255, 255, 255, 1) inset'
-                    : 'none',
+                  boxShadow: active ? '0 1px 4px rgba(7, 37, 52, 0.08)' : 'none',
                   transition:
-                    'padding 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease',
+                    'padding 0.35s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, color 0.2s ease',
                 }}
                 onMouseEnter={(e) => {
                   if (!active) {
-                    e.currentTarget.style.color = '#0b172a';
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.50)';
+                    e.currentTarget.style.color = '#072534';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.65)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!active) {
-                    e.currentTarget.style.color = '#475569';
+                    e.currentTarget.style.color = '#334155';
                     e.currentTarget.style.background = 'transparent';
                   }
                 }}
               >
-                {/* Subtle active dot indicator */}
                 {active && (
                   <span
                     style={{
                       width: '5px',
                       height: '5px',
-                      borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #009bb9, #007a93)',
-                      boxShadow: '0 0 6px rgba(0, 155, 185, 0.6)',
+                      borderRadius: '1px',
+                      background: '#0E7480',
                       display: 'inline-block',
                     }}
                   />
@@ -498,94 +496,89 @@ export default function Navbar() {
           <Link
             to="/login"
             style={{
-              background: 'linear-gradient(135deg, #094e68 0%, #007a93 50%, #009bb9 100%)',
+              background: '#094E68',
               color: '#ffffff',
               textDecoration: 'none',
-              padding: isFolded ? '0.48rem 1.25rem' : '0.58rem 1.45rem',
-              fontSize: '0.84rem',
+              padding: isFolded ? '0.52rem 1.2rem' : '0.6rem 1.35rem',
+              fontSize: '0.83rem',
               fontWeight: 600,
               letterSpacing: '0.01em',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.5rem',
-              borderRadius: '9999px',
-              border: '1px solid rgba(255, 255, 255, 0.30)',
-              boxShadow:
-                '0 4px 16px -2px rgba(0, 122, 147, 0.35), 0 1px 0 rgba(255, 255, 255, 0.25) inset',
-              transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+              borderRadius: '6px',
+              border: '1px solid #094E68',
+              transition: 'background-color 0.22s ease, border-color 0.22s ease, transform 0.22s ease',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-1px) scale(1.02)';
-              e.currentTarget.style.boxShadow =
-                '0 8px 24px -2px rgba(0, 122, 147, 0.50), 0 1px 0 rgba(255, 255, 255, 0.35) inset';
-              const arrow = e.currentTarget.querySelector('.cta-arrow');
-              if (arrow) arrow.style.transform = 'translateX(4px)';
+              e.currentTarget.style.background = '#0E7480';
+              e.currentTarget.style.borderColor = '#0E7480';
+              e.currentTarget.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0) scale(1)';
-              e.currentTarget.style.boxShadow =
-                '0 4px 16px -2px rgba(0, 122, 147, 0.35), 0 1px 0 rgba(255, 255, 255, 0.25) inset';
-              const arrow = e.currentTarget.querySelector('.cta-arrow');
-              if (arrow) arrow.style.transform = 'translateX(0)';
+              e.currentTarget.style.background = '#094E68';
+              e.currentTarget.style.borderColor = '#094E68';
+              e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
             <span>Masuk Portal</span>
-            <ArrowRight
-              className="cta-arrow"
-              size={14}
-              strokeWidth={2.5}
-              style={{ transition: 'transform 0.25s ease' }}
-            />
+            <ArrowRight size={14} strokeWidth={2.2} />
           </Link>
         </div>
 
-        {/* ════ MOBILE HAMBURGER TOGGLE ════ */}
+        {/* ════ MOBILE HAMBURGER TOGGLE (44x44px TAP TARGET) ════ */}
         <div className="navbar-mobile-toggle" style={{ position: 'relative', zIndex: 2 }}>
           <button
+            type="button"
             onClick={() => setIsOpen(!isOpen)}
-            aria-label="Toggle Navigation"
+            aria-label={isOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
+            aria-expanded={isOpen}
             style={{
-              background: 'rgba(15, 23, 42, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.7)',
+              background: '#F7FAFB',
+              border: '1px solid #BFD2DC',
               cursor: 'pointer',
-              padding: '0.45rem',
-              color: '#0b172a',
+              minWidth: '44px',
+              minHeight: '44px',
+              padding: '0.5rem',
+              color: '#072534',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: '10px',
-              transition: 'background 0.2s ease',
+              borderRadius: '6px',
+              transition: 'background 0.2s ease, border-color 0.2s ease',
             }}
           >
-            {isOpen ? <X size={22} strokeWidth={2} /> : <Menu size={22} strokeWidth={2} />}
+            {isOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
           </button>
         </div>
       </header>
 
       {/* ════ MOBILE DRAWER ════ */}
       {isOpen && (
-        <div className="navbar-mobile-drawer">
+        <div className="navbar-mobile-drawer" role="navigation" aria-label="Menu Mobile">
           {navLinks.map((item) => {
             const isItemActive = item.to ? location.pathname === item.to : location.pathname === '/' && activeSection === item.id;
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={(e) => handleNavClick(e, item)}
                 style={{
-                  background: isItemActive ? 'rgba(0, 155, 185, 0.08)' : 'transparent',
-                  border: 'none',
+                  background: isItemActive ? '#EDF5F7' : 'transparent',
+                  border: isItemActive ? '1px solid #B8D9E2' : '1px solid transparent',
                   textAlign: 'left',
-                  fontSize: '0.96rem',
+                  fontSize: '0.94rem',
                   fontWeight: isItemActive ? 700 : 500,
-                  color: isItemActive ? '#007a93' : '#334155',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '12px',
+                  color: isItemActive ? '#094E68' : '#072534',
+                  minHeight: '44px',
+                  padding: '0.65rem 0.9rem',
+                  borderRadius: '6px',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  transition: 'all 0.2s ease',
+                  transition: 'background-color 0.2s ease',
                 }}
               >
                 <span>{item.label}</span>
@@ -594,8 +587,8 @@ export default function Navbar() {
                     style={{
                       width: '6px',
                       height: '6px',
-                      borderRadius: '50%',
-                      background: '#007a93',
+                      borderRadius: '1px',
+                      background: '#0E7480',
                     }}
                   />
                 )}
@@ -607,23 +600,23 @@ export default function Navbar() {
             to="/login"
             onClick={() => setIsOpen(false)}
             style={{
-              marginTop: '0.5rem',
-              background: 'linear-gradient(135deg, #094e68 0%, #007a93 100%)',
+              marginTop: '0.4rem',
+              background: '#094E68',
               color: '#ffffff',
               textDecoration: 'none',
-              padding: '0.85rem',
-              fontSize: '0.90rem',
+              minHeight: '44px',
+              padding: '0.75rem 1rem',
+              fontSize: '0.9rem',
               fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '0.5rem',
-              borderRadius: '14px',
-              boxShadow: '0 4px 14px rgba(0, 122, 147, 0.3)',
+              borderRadius: '6px',
             }}
           >
             <span>Masuk Portal</span>
-            <ArrowRight size={15} strokeWidth={2.5} />
+            <ArrowRight size={15} strokeWidth={2.2} />
           </Link>
         </div>
       )}

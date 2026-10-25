@@ -8,6 +8,7 @@ import './TeamPIC.css';
 
 const TYPES = { units: 'Unit Kerja', faculties: 'Fakultas', bureaus: 'Biro', teams: 'Tim Kerja' };
 const blank = (type = 'units') => ({ type, name: '', code: '', parentId: '', picEmail: '' });
+const createOrgId = () => `org-${crypto.randomUUID()}`;
 
 const loadOrganization = () => {
   const value = readOrganization() || {};
@@ -58,7 +59,17 @@ export default function TeamPIC() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!editor) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setEditor(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editor]);
+
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const tl = gsap.timeline({ defaults: { ease: 'expo.out' } });
     tl.fromTo('.tp-anim-head', { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.05, clearProps: 'transform' })
       .fromTo('.tp-stat', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, stagger: 0.06, clearProps: 'transform' }, '-=0.35')
@@ -131,7 +142,7 @@ export default function TeamPIC() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     const { type, ...record } = normalized;
-    record.id = editor.id || `org-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    record.id = editor.id || createOrgId();
     const next = {
       ...latest,
       [type]: editingKey
@@ -155,7 +166,7 @@ export default function TeamPIC() {
       setMessage('Pindahkan atau hapus organisasi anak sebelum menghapus induknya.');
       return;
     }
-    if (!window.confirm(`Hapus ${TYPES[item.type].toLowerCase()} “${item.name}”?`)) return;
+    if (!window.confirm(`Hapus ${TYPES[item.type].toLowerCase()} "${item.name}"?`)) return;
     const next = { ...latest, [item.type]: latest[item.type].filter((entry) => String(entry.id) !== String(item.id)) };
     try {
       saveOrganization(next, currentUser.email || currentUser.name);
@@ -182,11 +193,12 @@ export default function TeamPIC() {
         )}
       </header>
 
-      <div className="tp-stats">
+      <div className="tp-stats" role="group" aria-label="Filter kategori struktur organisasi">
         {Object.entries(TYPES).map(([type, label]) => (
           <button
             key={type}
             type="button"
+            aria-pressed={filter === type}
             className={`tp-stat ${filter === type ? 'is-selected' : ''}`}
             onClick={() => setFilter(filter === type ? 'all' : type)}
           >
@@ -266,22 +278,22 @@ export default function TeamPIC() {
       <div className="tp-directory">
         <div className="tp-toolbar">
           <label className="tp-search">
-            <Search size={16} color="#94a3b8" />
+            <Search size={16} color="#475569" />
             <input
               aria-label="Cari organisasi atau PIC"
-              placeholder="Cari nama organisasi, kode unit, atau PIC…"
+              placeholder="Cari nama organisasi, kode unit, atau PIC..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+          <select aria-label="Filter kategori organisasi" value={filter} onChange={(event) => setFilter(event.target.value)}>
             <option value="all">Semua kategori</option>
             {Object.entries(TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <span className="tp-toolbar-count">{visible.length} dari {rows.length} entitas</span>
         </div>
 
-        <div className="tp-table-scroll">
+        <div className="tp-table-scroll" data-lenis-prevent>
           <table>
             <thead>
               <tr>
@@ -310,7 +322,7 @@ export default function TeamPIC() {
                     <td>
                       <span className={`tp-badge tp-${item.type}`}>{TYPES[item.type]}</span>
                     </td>
-                    <td style={{ color: '#475569' }}>{parentOf(item)?.name || 'Tingkat Utama'}</td>
+                    <td style={{ color: '#334155' }}>{parentOf(item)?.name || 'Tingkat Utama'}</td>
                     <td>
                       {item.picEmail ? (
                         <div className="tp-pic">
@@ -324,10 +336,10 @@ export default function TeamPIC() {
                     {canEdit && (
                       <td>
                         <div style={{ display: 'flex', gap: '0.35rem' }}>
-                          <button type="button" className="tp-icon" title="Edit organisasi" onClick={() => openEditor(item)}>
+                          <button type="button" className="tp-icon" aria-label={`Edit organisasi ${item.name}`} title="Edit organisasi" onClick={() => openEditor(item)}>
                             <Pencil size={14} />
                           </button>
-                          <button type="button" className="tp-icon tp-danger" title="Hapus organisasi" disabled={children > 0} onClick={() => remove(item)}>
+                          <button type="button" className="tp-icon tp-danger" aria-label={`Hapus organisasi ${item.name}`} title="Hapus organisasi" disabled={children > 0} onClick={() => remove(item)}>
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -342,7 +354,7 @@ export default function TeamPIC() {
 
         {!visible.length && (
           <div className="tp-empty">
-            <GitBranch size={30} color="#94a3b8" style={{ margin: '0 auto' }} />
+            <GitBranch size={30} color="#475569" style={{ margin: '0 auto' }} />
             <h2>{rows.length ? 'Tidak ada entitas yang cocok' : 'Struktur organisasi belum didaftarkan'}</h2>
             <p>{rows.length ? 'Gunakan kata kunci berbeda atau atur ulang filter kategori.' : 'Tambahkan unit kerja, fakultas, biro, atau tim untuk memetakan PIC kinerja.'}</p>
           </div>

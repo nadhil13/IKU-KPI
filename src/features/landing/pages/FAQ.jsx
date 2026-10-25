@@ -1,301 +1,501 @@
 import { useRef, useState } from 'react';
-import { Plus, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, ArrowUpRight, Mail, MapPin, Phone } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 
 gsap.registerPlugin(ScrollTrigger);
 
+const FAQS = [
+  {
+    q: 'Bagaimana alur pengajuan dan verifikasi capaian IKU maupun KPI di ITPLN?',
+    a: 'Penanggung jawab indikator (PIC) pada fakultas, program studi, atau unit kerja mengisi realisasi capaian beserta tautan bukti dukung resmi, lalu mengirimkannya melalui portal internal. Tim Direktorat Perencanaan dan Pengembangan (PRP) kemudian meninjau kelengkapan bukti untuk memberikan persetujuan atau mengembalikan pengajuan disertai catatan revisi.',
+  },
+  {
+    q: 'Format bukti dukung apa yang diterima saat pengiriman data kinerja?',
+    a: 'Setiap pengajuan wajib menyertakan tautan dokumen berprotokol HTTPS (seperti repositori cloud resmi institusi atau surat keputusan terpublikasi) yang dapat diakses oleh verifikator PRP, dilengkapi ringkasan keterangan capaian pada kolom catatan.',
+  },
+  {
+    q: 'Apa perbedaan hak akses antara akun PIC IKU, PIC KPI, dan Superadmin PRP?',
+    a: 'Akun PIC IKU difokuskan pada pemantauan dan pelaporan 8 Indikator Kinerja Utama standar Kemendikbudristek. Akun PIC KPI mengelola lembar kerja Key Performance Indicator operasional unit dan fakultas. Sementara itu, Superadmin PRP mengelola periode aktif, skema tabel rumus KPI, akun pengguna, dan verifikasi lintas ruang kerja.',
+  },
+  {
+    q: 'Bagaimana penyimpanan dan pencadangan data kerja dilakukan pada portal ini?',
+    a: 'Pada lingkungan operasional peramban saat ini, perubahan lembar kerja, pengajuan bukti, dan log audit disimpan di penyimpanan lokal peramban (localStorage). Untuk pencadangan atau pemindahan data antarperangkat, Superadmin PRP dapat mengunduh dan mengimpor arsip konfigurasi berformat JSON pada menu Tata Kelola.',
+  },
+  {
+    q: 'Apa yang harus dilakukan jika batas waktu (deadline) periode pelaporan telah terkunci?',
+    a: 'Apabila tenggat pelaporan triwulan atau kebijakan penguncian periode telah aktif, tombol pengiriman dan penyuntingan nilai akan dinonaktifkan untuk menjaga konsistensi rekapitulasi. Unit kerja yang memerlukan koreksi data susulan dapat menghubungi tim PRP melalui kanal bantuan resmi di bawah ini.',
+  },
+  {
+    q: 'Kapan target dan skema perhitungan indikator tahunan diperbarui?',
+    a: 'Evaluasi bobot, rumus perhitungan, dan standar target tahunan dilakukan mengikuti penetapan Rencana Kerja dan Anggaran Tahunan (RKAT) ITPLN serta pembaruan buku panduan teknis IKU Diktisaintek.',
+  },
+];
+
 export default function FAQ() {
-  const mainRef = useRef();
+  const mainRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const faqs = [
-    {
-      q: 'Bagaimana IKU mengukur performa secara presisi?',
-      a: 'Sistem mengekstrak data operasional secara instan dari seluruh entitas, mengubahnya menjadi matriks performa komprehensif yang divalidasi langsung oleh arsitektur pusat.'
-    },
-    {
-      q: 'Bagaimana protokol keamanan data dijalankan?',
-      a: 'Seluruh input data dienkripsi dengan standar industri. Hak akses diatur secara ketat melalui kontrol otorisasi berbasis peran (RBAC) yang diawasi sistem komando.'
-    },
-    {
-      q: 'Apakah terjadi sinkronisasi otomatis antar unit kerja?',
-      a: 'Setiap modul secara otomatis tersinkronisasi. Jika terdapat diskrepansi atau anomali data, sistem akan mengeluarkan notifikasi peringatan kepada unit terkait.'
-    },
-    {
-      q: 'Kapan pembaruan parameter tahunan dilakukan?',
-      a: 'Parameter penilaian akan dievaluasi dan diperbarui setiap bulan Desember untuk memastikan keselarasan yang presisi dengan tujuan strategis tahun berikutnya.'
-    },
-  ];
-
   useGSAP(() => {
-    // 1. HERO KINETIC SCROLL (Sucked into the void on scroll down)
-    gsap.to('.hero-text-wrap', {
-      y: -250,
-      opacity: 0,
-      scale: 0.9,
-      scrollTrigger: {
-        trigger: '.hero-section',
-        start: 'top top',
-        end: 'bottom top',
-        scrub: 1, // Buttery smooth 1s lag
-      }
-    });
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
 
-    // 2. FAQ ROWS (Scrubbing cascade side-entry)
-    const faqRows = gsap.utils.toArray('.faq-row');
-    faqRows.forEach((row, i) => {
-      gsap.fromTo(row,
-        { x: -100, opacity: 0, rotateY: 15 },
+    const tl = gsap.timeline({ delay: 0.06, defaults: { ease: 'expo.out' } });
+    tl.fromTo('.faq-hero-eyebrow', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.65 })
+      .fromTo('.faq-hero-title', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.85 }, '-=0.45')
+      .fromTo('.faq-hero-desc', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.7 }, '-=0.5');
+
+    gsap.utils.toArray('.faq-row').forEach((row) => {
+      gsap.fromTo(
+        row,
+        { opacity: 0, y: 18 },
         {
-          x: 0, opacity: 1, rotateY: 0,
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: 'power3.out',
           scrollTrigger: {
             trigger: row,
-            start: 'top 95%',
-            end: 'top 65%',
-            scrub: 1
-          }
+            start: 'top 92%',
+            once: true,
+          },
         }
       );
     });
 
-    // 3. CONTACT GRID SCRUB
-    const contactItems = gsap.utils.toArray('.contact-item');
-    contactItems.forEach((item, i) => {
-      gsap.fromTo(item,
-        { y: 150, opacity: 0, scale: 0.95 },
+    gsap.utils.toArray('.contact-card').forEach((card) => {
+      gsap.fromTo(
+        card,
+        { opacity: 0, y: 20 },
         {
-          y: 0, opacity: 1, scale: 1,
+          opacity: 1,
+          y: 0,
+          duration: 0.65,
+          ease: 'power3.out',
           scrollTrigger: {
-            trigger: item,
-            start: 'top 95%',
-            end: 'top 60%',
-            scrub: 1
-          }
+            trigger: card,
+            start: 'top 92%',
+            once: true,
+          },
         }
       );
     });
-
-    // 4. MASSIVE EMAIL 3D SCRUB (The Absolute Climax)
-    gsap.fromTo('.massive-email',
-      { clipPath: 'polygon(0% 100%, 100% 100%, 100% 100%, 0% 100%)', y: 150, rotateX: -30, scale: 0.9 },
-      {
-        clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)', y: 0, rotateX: 0, scale: 1,
-        scrollTrigger: {
-          trigger: '.massive-email-container',
-          start: 'top 85%',
-          end: 'bottom 80%',
-          scrub: 1.5
-        }
-      }
-    );
-
-    // 5. EXTREME PARALLAX LABELS
-    gsap.to('.faq-label', {
-      y: 400, ease: 'none',
-      scrollTrigger: { trigger: '.faq-section', start: 'top bottom', end: 'bottom top', scrub: true }
-    });
-
-    gsap.to('.contact-label', {
-      y: 400, ease: 'none',
-      scrollTrigger: { trigger: '.contact-section', start: 'top bottom', end: 'bottom top', scrub: true }
-    });
-
-    // 6. KINETIC LINE DRAWS
-    gsap.fromTo('.l-draw',
-      { scaleX: 0 },
-      {
-        scaleX: 1, transformOrigin: 'left',
-        scrollTrigger: { trigger: '.faq-section', start: 'top 90%', end: 'top 60%', scrub: 1 }
-      }
-    );
-    gsap.fromTo('.l-draw-2',
-      { scaleX: 0 },
-      {
-        scaleX: 1, transformOrigin: 'left',
-        scrollTrigger: { trigger: '.contact-section', start: 'top 90%', end: 'top 60%', scrub: 1 }
-      }
-    );
-
   }, { scope: mainRef });
 
   return (
-    <div ref={mainRef} style={{ background: '#ffffff', minHeight: '100vh', color: '#000000' }}>
+    <div
+      ref={mainRef}
+      style={{
+        background: '#ffffff',
+        minHeight: '100dvh',
+        color: '#072534',
+      }}
+    >
+      <style>{`
+        .faq-hero-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+          gap: clamp(1.5rem, 4vw, 3.5rem);
+          align-items: end;
+        }
+        .faq-layout-grid {
+          display: grid;
+          grid-template-columns: minmax(190px, 260px) minmax(0, 1fr);
+          gap: clamp(1.5rem, 4vw, 3.5rem);
+          align-items: start;
+        }
+        .faq-trigger-btn {
+          width: 100%;
+          min-height: 56px;
+          padding: clamp(1.35rem, 2.5vw, 1.85rem) 0.5rem;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1.25rem;
+          text-align: left;
+          color: #072534;
+          font-family: inherit;
+          transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        .faq-trigger-btn:focus-visible {
+          outline: 2px solid #0E7480;
+          outline-offset: -2px;
+          border-radius: 6px;
+        }
+        .faq-plus-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          border: 1px solid #D8E4EA;
+          background: #F7FAFB;
+          color: #094E68;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+        .faq-trigger-btn[aria-expanded="true"] .faq-plus-icon {
+          transform: rotate(45deg);
+          background: #094E68;
+          border-color: #094E68;
+          color: #ffffff;
+        }
+        .contact-cards-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1.25rem;
+        }
+        .contact-card-link {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          gap: 1rem;
+          padding: clamp(1.35rem, 2.5vw, 1.85rem);
+          border-radius: 10px;
+          border: 1px solid #D8E4EA;
+          background: #F7FAFB;
+          color: #072534;
+          text-decoration: none;
+          transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+        @media (hover: hover) {
+          .faq-trigger-btn:hover {
+            background-color: #F7FAFB;
+          }
+          .faq-trigger-btn:hover .faq-q-text {
+            color: #094E68;
+          }
+          .contact-card-link:hover {
+            background-color: #ffffff;
+            border-color: #094E68;
+          }
+        }
+        @media (max-width: 860px) {
+          .faq-hero-grid,
+          .faq-layout-grid,
+          .contact-cards-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
 
-      {/* ─── PURE EDITORIAL HERO ─── */}
-      <section className="hero-section" style={{ paddingTop: '12rem', paddingBottom: '6rem', paddingLeft: '4rem', paddingRight: '4rem', maxWidth: 1400, margin: '0 auto' }}>
-        <div className="hero-text-wrap" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem', alignItems: 'flex-end' }}>
-          <div>
-            <div style={{ overflow: 'hidden', paddingBottom: '1rem' }}>
-              <h1 className="t-reveal" style={{ fontSize: 'clamp(4rem, 6vw, 6.5rem)', fontWeight: 400, letterSpacing: '-3px', lineHeight: 0.9, margin: 0 }}>
-                Resolusi.
+      {/* ─── HERO SECTION ─── */}
+      <section
+        style={{
+          padding: 'clamp(7.5rem, 11vw, 10rem) clamp(1.25rem, 4vw, 4rem) clamp(2.5rem, 5vw, 4rem)',
+        }}
+      >
+        <div style={{ maxWidth: 1320, margin: '0 auto' }}>
+          <div className="faq-hero-grid">
+            <div>
+              <div className="faq-hero-eyebrow ent-eyebrow" style={{ marginBottom: '1.25rem' }}>
+                06 // PUSAT BANTUAN &amp; KONTAK TEKNIS
+              </div>
+              <h1
+                className="faq-hero-title"
+                style={{
+                  fontSize: 'clamp(2.35rem, 5.5vw, 4.5rem)',
+                  fontWeight: 800,
+                  letterSpacing: '-0.04em',
+                  lineHeight: 1.04,
+                  margin: 0,
+                  color: '#072534',
+                }}
+              >
+                Pertanyaan Umum &amp; <span style={{ color: '#094E68' }}>Layanan PRP.</span>
               </h1>
             </div>
-            <div style={{ overflow: 'hidden' }}>
-              <h1 className="t-reveal" style={{ fontSize: 'clamp(4rem, 6vw, 6.5rem)', fontWeight: 400, letterSpacing: '-3px', lineHeight: 0.9, margin: 0, color: '#666666' }}>
-                Informasi.
-              </h1>
+
+            <div className="faq-hero-desc">
+              <p
+                style={{
+                  fontSize: 'clamp(0.96rem, 1.2vw, 1.08rem)',
+                  color: '#334155',
+                  margin: '0 0 1.25rem',
+                  lineHeight: 1.72,
+                }}
+              >
+                Penjelasan teknis mengenai prosedur pengiriman bukti dukung, pembagian hak akses peran, mekanisme penyimpanan data, serta saluran koordinasi resmi Direktorat PRP ITPLN.
+              </p>
+              <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+                <Link to="/guide" className="ent-btn" style={{ minHeight: 44 }}>
+                  Baca SOP Pelaporan
+                </Link>
+                <Link to="/documents" className="ent-btn ent-btn-primary" style={{ minHeight: 44 }}>
+                  Unduh Buku Panduan <ArrowUpRight size={15} />
+                </Link>
+              </div>
             </div>
           </div>
-          <div style={{ paddingBottom: '0.5rem' }}>
-            <div style={{ overflow: 'hidden' }}>
-              <p className="t-reveal" style={{ fontSize: '1.25rem', color: '#000000', margin: 0, lineHeight: 1.6, maxWidth: 450, fontWeight: 300 }}>
-                Basis data komprehensif untuk memandu operasional Anda. Eksplorasi direktori teknis murni tanpa perantara visual yang mendistraksi.
+        </div>
+      </section>
+
+      {/* ─── FAQ ACCORDION SECTION ─── */}
+      <section style={{ padding: '0 clamp(1.25rem, 4vw, 4rem) clamp(4rem, 7vw, 6rem)' }}>
+        <div style={{ maxWidth: 1320, margin: '0 auto' }}>
+          <div style={{ height: 2, background: '#094E68', width: '100%', marginBottom: 'clamp(2rem, 4vw, 3rem)' }} />
+
+          <div className="faq-layout-grid">
+            <div>
+              <div
+                style={{
+                  fontFamily: 'var(--ent-mono)',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: '#0E7480',
+                  marginBottom: '0.5rem',
+                }}
+              >
+                Direktori Tanya Jawab
+              </div>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569', lineHeight: 1.6 }}>
+                Pilih topik pertanyaan untuk membaca ketentuan operasional secara lengkap.
               </p>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* ─── PURE STRUCTURAL FAQ ─── */}
-      <section className="faq-section" style={{ maxWidth: 1400, margin: '0 auto', padding: '0 4rem 6rem' }}>
-        <div className="l-draw" style={{ height: 1, background: '#000000', width: '100%', marginBottom: '4rem' }} />
+            <div>
+              {FAQS.map((faq, idx) => {
+                const isActive = activeIndex === idx;
+                const buttonId = `faq-trigger-${idx}`;
+                const panelId = `faq-panel-${idx}`;
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '4rem' }}>
-          <div style={{ position: 'relative' }}>
-            <div className="faq-label" style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
-              [ Direktori Bantuan ]
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {faqs.map((faq, idx) => {
-              const isActive = activeIndex === idx;
-              return (
-                <div key={idx} className="faq-row" style={{ borderBottom: '1px solid #e5e5e5' }}>
+                return (
                   <div
-                    onClick={() => setActiveIndex(isActive ? -1 : idx)}
-                    style={{
-                      padding: '2.5rem 0', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.3s ease'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.paddingLeft = '1.5rem'}
-                    onMouseLeave={e => e.currentTarget.style.paddingLeft = '0'}
+                    key={faq.q}
+                    className="faq-row"
+                    style={{ borderBottom: '1px solid #D8E4EA' }}
                   >
-                    <h3 style={{ fontSize: '2rem', fontWeight: 400, color: '#000000', margin: 0, letterSpacing: '-1px' }}>
-                      {faq.q}
-                    </h3>
-                    <div style={{ transition: 'transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)', transform: isActive ? 'rotate(135deg)' : 'rotate(0deg)' }}>
-                      <Plus size={32} strokeWidth={1} color="#000000" />
-                    </div>
-                  </div>
+                    <h2 style={{ margin: 0, fontSize: 'inherit', fontWeight: 'inherit' }}>
+                      <button
+                        id={buttonId}
+                        type="button"
+                        aria-expanded={isActive}
+                        aria-controls={panelId}
+                        onClick={() => setActiveIndex(isActive ? -1 : idx)}
+                        className="faq-trigger-btn"
+                      >
+                        <span
+                          className="faq-q-text"
+                          style={{
+                            fontFamily: 'Outfit, sans-serif',
+                            fontSize: 'clamp(1.12rem, 1.8vw, 1.42rem)',
+                            fontWeight: 700,
+                            letterSpacing: '-0.02em',
+                            lineHeight: 1.32,
+                            transition: 'color 0.2s ease',
+                          }}
+                        >
+                          {faq.q}
+                        </span>
+                        <span className="faq-plus-icon" aria-hidden="true">
+                          <Plus size={18} strokeWidth={2.2} />
+                        </span>
+                      </button>
+                    </h2>
 
-                  <div style={{
-                    maxHeight: isActive ? 400 : 0,
-                    opacity: isActive ? 1 : 0,
-                    overflow: 'hidden',
-                    transition: 'all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
-                  }}>
-                    <div style={{ paddingBottom: '3.5rem', color: '#666666', fontSize: '1.25rem', lineHeight: 1.8, maxWidth: '85%', fontWeight: 300 }}>
-                      {faq.a}
+                    <div
+                      id={panelId}
+                      role="region"
+                      aria-labelledby={buttonId}
+                      hidden={!isActive}
+                      style={{
+                        padding: '0 0.5rem 1.75rem',
+                      }}
+                    >
+                      <p
+                        style={{
+                          margin: 0,
+                          color: '#334155',
+                          fontSize: '0.96rem',
+                          lineHeight: 1.75,
+                          maxWidth: 780,
+                        }}
+                      >
+                        {faq.a}
+                      </p>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ─── PURE STRUCTURAL CONTACT ─── */}
-      <section className="contact-section" style={{ maxWidth: 1400, margin: '0 auto', padding: '4rem 4rem 12rem' }}>
-        <div className="l-draw-2" style={{ height: 1, background: '#000000', width: '100%', marginBottom: '4rem' }} />
+      {/* ─── ESCALATION & CONTACT SECTION ─── */}
+      <section style={{ padding: '0 clamp(1.25rem, 4vw, 4rem) clamp(5rem, 9vw, 8rem)' }}>
+        <div style={{ maxWidth: 1320, margin: '0 auto' }}>
+          <div style={{ height: 1, background: '#D8E4EA', width: '100%', marginBottom: 'clamp(2.5rem, 5vw, 3.5rem)' }} />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '4rem' }}>
-          <div style={{ position: 'relative' }}>
-            <div className="contact-label" style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>
-              [ Titik Eskalasi ]
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem' }}>
-
-            {/* Email - No Boxes, Pure Text */}
-            <div className="contact-item massive-email-container" style={{ gridColumn: '1 / -1', paddingBottom: '5rem', borderBottom: '1px solid #e5e5e5' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: '2rem', color: '#666666' }}>
-                Koneksi Prioritas
-              </div>
-              <div style={{ overflow: 'hidden', paddingBottom: '2rem', paddingTop: '1rem' }}>
-                <a href="mailto:iku-support@itpln.ac.id" className="massive-email" style={{
-                  fontSize: 'clamp(3rem, 6vw, 5rem)', fontWeight: 400, letterSpacing: '-2px', color: '#000000', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '2rem', transition: 'all 0.4s ease'
+          <div className="faq-layout-grid">
+            <div>
+              <div
+                style={{
+                  fontFamily: 'var(--ent-mono)',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  color: '#0E7480',
+                  marginBottom: '0.5rem',
                 }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.color = '#999999';
-                    e.currentTarget.style.transform = 'translateX(30px)';
-                    const arrow = e.currentTarget.querySelector('.arrow');
-                    if (arrow) arrow.style.transform = 'translateX(20px)';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.color = '#000000';
-                    e.currentTarget.style.transform = 'translateX(0)';
-                    const arrow = e.currentTarget.querySelector('.arrow');
-                    if (arrow) arrow.style.transform = 'translateX(0)';
+              >
+                Kanal Koordinasi Resmi
+              </div>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569', lineHeight: 1.6 }}>
+                Hubungi tim administrasi kinerja ITPLN pada jam kerja operasional untuk kendala akun, koreksi bukti, atau konsultasi perhitungan indikator.
+              </p>
+            </div>
+
+            <div className="contact-cards-grid">
+              {/* Primary Email Full Span */}
+              <a
+                href="mailto:iku-support@itpln.ac.id"
+                className="contact-card contact-card-link"
+                style={{
+                  gridColumn: '1 / -1',
+                  background: '#062C3D',
+                  borderColor: '#094E68',
+                  color: '#ffffff',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontFamily: 'var(--ent-mono)',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      color: '#C5DEE8',
+                    }}
+                  >
+                    <Mail size={15} /> Surat Elektronik Bantuan Teknis
+                  </span>
+                  <ArrowUpRight size={20} color="#C5DEE8" style={{ flexShrink: 0 }} />
+                </div>
+
+                <div
+                  style={{
+                    fontFamily: 'Outfit, sans-serif',
+                    fontSize: 'clamp(1.25rem, 3.6vw, 2.35rem)',
+                    fontWeight: 800,
+                    letterSpacing: '-0.03em',
+                    lineHeight: 1.15,
+                    color: '#ffffff',
+                    overflowWrap: 'anywhere',
                   }}
                 >
                   iku-support@itpln.ac.id
-                  <ArrowRight className="arrow" size={48} strokeWidth={1} style={{ transition: 'transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)' }} />
-                </a>
-              </div>
-            </div>
-
-            {/* Address */}
-            <div className="contact-item" style={{ paddingTop: '1rem' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: '1.5rem', color: '#666666' }}>
-                Koordinat Darat
-              </div>
-              <a href="https://maps.google.com/?q=Menara+PLN,+Jl.+Lingkar+Luar+Barat,+Cengkareng,+Jakarta+Barat+11750" target="_blank" rel="noreferrer" style={{ display: 'inline-block', textDecoration: 'none' }}
-                onMouseEnter={e => {
-                  const title = e.currentTarget.querySelector('.t-title');
-                  const icon = e.currentTarget.querySelector('.icon');
-                  if (title) title.style.color = '#666666';
-                  if (icon) icon.style.transform = 'translate(6px, -6px)';
-                }}
-                onMouseLeave={e => {
-                  const title = e.currentTarget.querySelector('.t-title');
-                  const icon = e.currentTarget.querySelector('.icon');
-                  if (title) title.style.color = '#000000';
-                  if (icon) icon.style.transform = 'translate(0, 0)';
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                  <div className="t-title" style={{ fontSize: '1.5rem', fontWeight: 400, color: '#000000', letterSpacing: '-0.5px', transition: 'color 0.4s ease' }}>Menara PLN</div>
-                  <ArrowUpRight className="icon" size={24} strokeWidth={1} color="#000000" style={{ transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)' }} />
                 </div>
-                <div style={{ fontSize: '1.2rem', color: '#666666', lineHeight: 1.6, fontWeight: 300 }}>Jl. Lingkar Luar Barat, Cengkareng,<br />Jakarta Barat 11750</div>
+
+                <div style={{ fontSize: '0.86rem', color: '#94B8C7', lineHeight: 1.5 }}>
+                  Sertakan kode indikator (mis. IKU.03 atau kode KPI) dan nama unit kerja pada subjek pesan untuk mempercepat penanganan.
+                </div>
+              </a>
+
+              {/* Campus Address */}
+              <a
+                href="https://maps.google.com/?q=Menara+PLN,+Jl.+Lingkar+Luar+Barat,+Duri+Kosambi,+Cengkareng,+Jakarta+Barat+11750"
+                target="_blank"
+                rel="noreferrer"
+                className="contact-card contact-card-link"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      fontFamily: 'var(--ent-mono)',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      color: '#0E7480',
+                    }}
+                  >
+                    <MapPin size={15} /> Kampus Pusat ITPLN
+                  </span>
+                  <ArrowUpRight size={18} color="#094E68" style={{ flexShrink: 0 }} />
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'Outfit, sans-serif',
+                      fontSize: '1.25rem',
+                      fontWeight: 800,
+                      color: '#072534',
+                      marginBottom: '0.35rem',
+                      letterSpacing: '-0.02em',
+                    }}
+                  >
+                    Menara PLN
+                  </div>
+                  <div style={{ fontSize: '0.92rem', color: '#334155', lineHeight: 1.6 }}>
+                    Jl. Lingkar Luar Barat, Duri Kosambi, Cengkareng, Jakarta Barat 11750
+                  </div>
+                </div>
+              </a>
+
+              {/* Phone */}
+              <a href="tel:+62215440342" className="contact-card contact-card-link">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      fontFamily: 'var(--ent-mono)',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      color: '#0E7480',
+                    }}
+                  >
+                    <Phone size={15} /> Telepon Sekretariat
+                  </span>
+                  <ArrowUpRight size={18} color="#094E68" style={{ flexShrink: 0 }} />
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'Outfit, sans-serif',
+                      fontSize: '1.25rem',
+                      fontWeight: 800,
+                      color: '#072534',
+                      marginBottom: '0.35rem',
+                      letterSpacing: '-0.02em',
+                    }}
+                  >
+                    (021) 5440342
+                  </div>
+                  <div style={{ fontSize: '0.92rem', color: '#334155', lineHeight: 1.6 }}>
+                    Ekstensi Layanan Kinerja: 123
+                    <br />
+                    Senin s.d. Jumat, 08.00 - 16.00 WIB
+                  </div>
+                </div>
               </a>
             </div>
-
-            {/* Phone */}
-            <div className="contact-item" style={{ paddingTop: '1rem' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: '1.5rem', color: '#666666' }}>
-                Koneksi Audio
-              </div>
-              <a href="tel:+62215440342" style={{ display: 'inline-block', textDecoration: 'none' }}
-                onMouseEnter={e => {
-                  const title = e.currentTarget.querySelector('.t-title');
-                  const icon = e.currentTarget.querySelector('.icon');
-                  if (title) title.style.color = '#666666';
-                  if (icon) icon.style.transform = 'translate(6px, -6px)';
-                }}
-                onMouseLeave={e => {
-                  const title = e.currentTarget.querySelector('.t-title');
-                  const icon = e.currentTarget.querySelector('.icon');
-                  if (title) title.style.color = '#000000';
-                  if (icon) icon.style.transform = 'translate(0, 0)';
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                  <div className="t-title" style={{ fontSize: '1.5rem', fontWeight: 400, color: '#000000', letterSpacing: '-0.5px', transition: 'color 0.4s ease' }}>(021) 5440342</div>
-                  <ArrowUpRight className="icon" size={24} strokeWidth={1} color="#000000" style={{ transition: 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)' }} />
-                </div>
-                <div style={{ fontSize: '1.2rem', color: '#666666', lineHeight: 1.6, fontWeight: 300 }}>Ekstensi Khusus: 123<br />Senin - Jumat (08.00 - 16.00 WIB)</div>
-              </a>
-            </div>
-
           </div>
         </div>
       </section>
-
     </div>
   );
 }

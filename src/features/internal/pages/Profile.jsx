@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import {
   Activity,
-  ArrowUpRight,
   Check,
   Clock3,
   KeyRound,
@@ -33,6 +32,7 @@ export default function Profile() {
   const canAccess = (key) => (key === 'admin' ? isAdmin : currentUser?.allowedPortals?.includes(key));
 
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const scroller = document.querySelector('.internal-main-scroll');
     const revealItems = gsap.utils.toArray('.profile-reveal', pageRef.current);
 
@@ -103,7 +103,6 @@ export default function Profile() {
           <span>Otoritas</span><strong>{currentUser?.roleTitle}</strong>
           <span>ID Sesi</span><strong>{currentUser?.id}</strong>
         </div>
-        <ArrowUpRight className="profile-corner-icon" size={18} />
       </div>
 
       <div className="profile-grid">
@@ -174,20 +173,20 @@ export default function Profile() {
           <div className="profile-panel-heading">
             <span className="profile-index">03</span>
             <div>
-              <span className="profile-overline">Telemetri Sesi</span>
-              <h3>Status Koneksi</h3>
+              <span className="profile-overline">Status Sesi Lokal</span>
+              <h3>Parameter Sesi</h3>
             </div>
           </div>
           <div className="profile-metrics">
             <div>
               <Activity size={17} />
-              <strong>ONLINE</strong>
-              <span>Kanal Sesi</span>
+              <strong>LOKAL AKTIF</strong>
+              <span>Penyimpanan Sesi</span>
             </div>
             <div>
               <Clock3 size={17} />
-              <strong>AKTIF</strong>
-              <span>Validitas Sesi</span>
+              <strong>TERVERIFIKASI</strong>
+              <span>Status Kredensial</span>
             </div>
             <div>
               <UserRound size={17} />
@@ -203,7 +202,7 @@ export default function Profile() {
             “Otorisasi kinerja yang unggul bukan yang paling luas, melainkan yang paling presisi, terukur, dan dapat dipertanggungjawabkan.”
           </p>
           <span className="profile-signature">
-            PERFORMA ITPLN • ENTERPRISE GOVERNANCE
+            PERFORMA ITPLN · ENTERPRISE GOVERNANCE
           </span>
         </article>
       </div>

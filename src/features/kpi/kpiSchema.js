@@ -95,7 +95,7 @@ export function parseFlexibleDate(input) {
 }
 
 export function formatIndonesianNumber(num, maxDecimals = 2) {
-  if (num === null || num === undefined || !Number.isFinite(num)) return '—';
+  if (num === null || num === undefined || !Number.isFinite(num)) return '-';
   return num.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: maxDecimals });
 }
 

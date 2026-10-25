@@ -341,7 +341,7 @@ export function AuthProvider({ children }) {
             position: 'fixed',
             inset: 0,
             zIndex: 9999,
-            background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+            background: '#F7FAFB',
             display: 'grid',
             placeItems: 'center',
             padding: '1.5rem',
@@ -353,24 +353,24 @@ export function AuthProvider({ children }) {
             }}
             aria-label="Ganti password wajib"
             style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '20px',
-              boxShadow: '0 24px 56px rgba(15, 23, 42, 0.14)',
-              padding: '2.25rem',
+              background: '#FFFFFF',
+              border: '1px solid #D8E4EA',
+              borderRadius: '8px',
+              boxShadow: '0 20px 48px rgba(7, 37, 52, 0.12)',
+              padding: '2rem',
               width: 'min(460px, 100%)',
               display: 'grid',
               gap: '1rem',
             }}
           >
             <span className="ent-eyebrow" style={{ justifySelf: 'start' }}>KEAMANAN KREDENSIAL WAJIB</span>
-            <h1 style={{ margin: 0, fontSize: '1.45rem', fontFamily: 'Outfit, sans-serif', color: '#0f172a' }}>
+            <h1 style={{ margin: 0, fontSize: '1.4rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
               Perbarui Kata Sandi Sementara
             </h1>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '0.84rem', lineHeight: 1.6 }}>
-              Demi keamanan otoritas sesi, Anda diwajibkan mengganti kata sandi sementara sebelum mengakses ruang kerja PERFORMA ITPLN.
+            <p style={{ margin: 0, color: '#334155', fontSize: '0.84rem', lineHeight: 1.6 }}>
+              Demi keamanan otoritas sesi, Anda wajib mengganti kata sandi sementara sebelum mengakses ruang kerja PERFORMA ITPLN.
             </p>
-            <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>
+            <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.76rem', fontWeight: 700, color: '#072534' }}>
               Password baru
               <input
                 className="ent-input"
@@ -382,7 +382,7 @@ export function AuthProvider({ children }) {
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </label>
-            <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>
+            <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.76rem', fontWeight: 700, color: '#072534' }}>
               Konfirmasi password
               <input
                 className="ent-input"
@@ -394,11 +394,11 @@ export function AuthProvider({ children }) {
               />
             </label>
             {passwordError && (
-              <p role="alert" style={{ margin: 0, padding: '0.65rem 0.85rem', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.78rem', fontWeight: 600 }}>
+              <p role="alert" style={{ margin: 0, padding: '0.65rem 0.85rem', borderRadius: '6px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#7F1D1D', fontSize: '0.78rem', fontWeight: 600 }}>
                 {passwordError}
               </p>
             )}
-            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end', marginTop: '0.35rem' }}>
+            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '0.35rem' }}>
               <button type="button" className="ent-btn" onClick={logout}>
                 Keluar
               </button>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useAuth } from '../../auth/context/AuthContext';
 import { readKpiWorkflow, readUnitEvidence, readUnitSubmission, subscribeKpiWorkflow } from '../../kpi/kpiWorkflowStore';
 import { getIkuPeriods, listIkuSubmissions, subscribeIku } from '../../iku/ikuWorkflowStore';
@@ -41,7 +41,7 @@ function collectRows(user) {
       period: `${form.period} · v${form.version}`,
       status: record?.status || 'EMPTY',
       updatedAt: record?.history?.at(-1)?.at || record?.submittedAt || '',
-      filled: record ? `Skor ${record.totalScore ?? '—'}` : '—',
+      filled: record ? `Skor ${record.totalScore ?? '-'}` : '-',
       evidence: evidence.length ? `${evidence.filter((e) => e.status === 'VERIFIED').length}/${evidence.length} terverifikasi` : 'Belum ada',
       formId: form.id,
     };
@@ -110,21 +110,21 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
           gap: '0.65rem',
           padding: '0.9rem 1.3rem',
-          background: '#f8fafc',
-          borderBottom: '1px solid #f1f5f9',
+          background: '#F7FAFB',
+          borderBottom: '1px solid #D8E4EA',
         }}
       >
         <div style={{ position: 'relative' }}>
-          <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          <Search size={14} color="#475569" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           <input
             className="gov-field"
             style={{ paddingLeft: '2.2rem' }}
             type="search"
             aria-label="Cari submission"
-            placeholder="Cari unit, email, periode…"
+            placeholder="Cari unit, email, periode..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -140,10 +140,10 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
         </select>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto' }} data-lenis-prevent>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
           <thead>
-            <tr style={{ textAlign: 'left', color: '#64748b', background: '#fcfdfe', borderBottom: '1px solid #f1f5f9' }}>
+            <tr style={{ textAlign: 'left', color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
               {['Modul', 'Unit Kerja / Pengusul', 'Periode', 'Status', 'Kelengkapan', 'Bukti Pendukung', 'Diperbarui', 'Aksi'].map((h) => (
                 <th key={h} style={{ padding: '0.75rem 1.15rem', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>
                   {h}
@@ -155,8 +155,8 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
             {visible.map((row) => (
               <tr
                 key={row.key}
-                style={{ borderTop: '1px solid #f1f5f9', transition: 'background 0.18s ease' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
+                style={{ borderTop: '1px solid #D8E4EA', transition: 'background 0.18s ease' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F7FAFB'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
                 <td style={{ padding: '0.8rem 1.15rem' }}>
@@ -169,17 +169,17 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                       fontSize: '0.64rem',
                       fontWeight: 700,
                       letterSpacing: '0.06em',
-                      background: row.module === 'IKU' ? '#09090b' : '#fafafa',
-                      color: row.module === 'IKU' ? '#ffffff' : '#09090b',
-                      border: '1px solid #09090b',
+                      background: row.module === 'IKU' ? '#094E68' : '#EDF3F6',
+                      color: row.module === 'IKU' ? '#FFFFFF' : '#072534',
+                      border: row.module === 'IKU' ? '1px solid #094E68' : '1px solid #B8CAD4',
                     }}
                   >
                     {row.module}
                   </span>
                 </td>
                 <td style={{ padding: '0.8rem 1.15rem' }}>
-                  <strong style={{ color: '#0f172a', display: 'block', fontSize: '0.78rem' }}>{row.unit}</strong>
-                  <small style={{ color: '#64748b', fontSize: '0.69rem' }}>{row.email}</small>
+                  <strong style={{ color: '#072534', display: 'block', fontSize: '0.78rem' }}>{row.unit}</strong>
+                  <small style={{ color: '#475569', fontSize: '0.69rem' }}>{row.email}</small>
                 </td>
                 <td style={{ padding: '0.8rem 1.15rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
                 <td style={{ padding: '0.8rem 1.15rem' }}>
@@ -190,18 +190,18 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                 </td>
                 <td style={{ padding: '0.8rem 1.15rem', fontWeight: 600, color: '#334155' }}>{row.filled}</td>
                 <td style={{ padding: '0.8rem 1.15rem', color: '#475569' }}>{row.evidence}</td>
-                <td style={{ padding: '0.8rem 1.15rem', color: '#64748b', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                  {row.updatedAt ? new Date(row.updatedAt).toLocaleString('id-ID') : '—'}
+                <td style={{ padding: '0.8rem 1.15rem', color: '#475569', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                  {row.updatedAt ? new Date(row.updatedAt).toLocaleString('id-ID') : '-'}
                 </td>
                 <td style={{ padding: '0.8rem 1.15rem', whiteSpace: 'nowrap' }}>
                   {row.module === 'IKU' ? (
                     <Link className="gov-button" to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
-                      Tinjau <ArrowUpRight size={13} />
+                      Tinjau Detail
                     </Link>
                   ) : (
                     row.status !== 'EMPTY' && (
                       <button type="button" className="gov-button" onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
-                        Tinjau <ArrowUpRight size={13} />
+                        Tinjau Detail
                       </button>
                     )
                   )}
