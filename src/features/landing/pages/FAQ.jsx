@@ -186,7 +186,6 @@ export default function FAQ() {
         }
       `}</style>
 
-      {/* ─── HERO SECTION ─── */}
       <section
         style={{
           padding: 'clamp(7.5rem, 11vw, 10rem) clamp(1.25rem, 4vw, 4rem) clamp(2.5rem, 5vw, 4rem)',
@@ -237,7 +236,6 @@ export default function FAQ() {
         </div>
       </section>
 
-      {/* ─── FAQ ACCORDION SECTION ─── */}
       <section style={{ padding: '0 clamp(1.25rem, 4vw, 4rem) clamp(4rem, 7vw, 6rem)' }}>
         <div style={{ maxWidth: 1320, margin: '0 auto' }}>
           <div style={{ height: 2, background: '#094E68', width: '100%', marginBottom: 'clamp(2rem, 4vw, 3rem)' }} />
@@ -331,7 +329,6 @@ export default function FAQ() {
         </div>
       </section>
 
-      {/* ─── ESCALATION & CONTACT SECTION ─── */}
       <section style={{ padding: '0 clamp(1.25rem, 4vw, 4rem) clamp(5rem, 9vw, 8rem)' }}>
         <div style={{ maxWidth: 1320, margin: '0 auto' }}>
           <div style={{ height: 1, background: '#D8E4EA', width: '100%', marginBottom: 'clamp(2.5rem, 5vw, 3.5rem)' }} />
@@ -357,7 +354,6 @@ export default function FAQ() {
             </div>
 
             <div className="contact-cards-grid">
-              {/* Primary Email Full Span */}
               <a
                 href="mailto:iku-support@itpln.ac.id"
                 className="contact-card contact-card-link"
@@ -406,7 +402,6 @@ export default function FAQ() {
                 </div>
               </a>
 
-              {/* Campus Address */}
               <a
                 href="https://maps.google.com/?q=Menara+PLN,+Jl.+Lingkar+Luar+Barat,+Duri+Kosambi,+Cengkareng,+Jakarta+Barat+11750"
                 target="_blank"
@@ -451,7 +446,6 @@ export default function FAQ() {
                 </div>
               </a>
 
-              {/* Phone */}
               <a href="tel:+62215440342" className="contact-card contact-card-link">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                   <span

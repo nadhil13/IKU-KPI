@@ -1,47 +1,52 @@
 /**
- * Desainer Tabel KPI ala spreadsheet (Superadmin PRP).
- *
- * Konsep:
- *  - Grid ringkas: setiap sel bisa langsung diketik (seperti Excel), tanpa label form.
- *  - Formula bar (fx) di atas grid untuk baris terpilih.
- *  - Mode pilih sel: saat kursor berada di formula bar, klik sel Isian/Bobot/Target
- *    di baris mana pun → referensinya disisipkan di posisi kursor (A1A_I1, A1A_T, A1A_B).
- *  - Tombol operator (+ − × ÷ ( ) SUM …) untuk membangun rumus tanpa menghafal sintaks.
- *  - Sel yang dipakai rumus diberi highlight warna, seperti Excel.
+ * Desainer Tabel & Formula KPI (Superadmin PRP).
+ * Menyediakan pengeditan langsung sel ala spreadsheet, kolom PIC per indikator yang tersinkronisasi
+ * dengan master data organisasi, serta konfigurasi aturan validasi struktur oleh Admin PRP.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDown, ArrowUp, CircleCheck, Copy, Ellipsis, Eye, History, MousePointerClick,
-  PanelRightClose, PanelRightOpen, Plus, RotateCcw, Send, Sigma, Table2, Trash2, TriangleAlert,
+  ArrowDown, ArrowUp, Check, CircleCheck, Copy, Ellipsis, Eye, History, MousePointerClick,
+  PanelRightClose, Plus, RotateCcw, Send, Settings2, Sigma, Table2, Trash2, TriangleAlert, Users, X,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { useAuth } from '../../auth/context/AuthContext';
 import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG } from '../../kpi/components/KPIDataEntrySheet';
 import {
-  CALC_TYPES, PRESET_FORMULA_EXPR, KPI_DRAFT_KEY, KPI_LIVE_SYNC_KEY,
+  CALC_TYPES, PRESET_FORMULA_EXPR, KPI_DRAFT_KEY, KPI_LIVE_SYNC_KEY, DEFAULT_KPI_VALIDATION_RULES,
   createId, normalizeKpiSections, publishKpiSections, readKpiHistory, readPublishedKpiConfig,
   validateKpiSections, computeKpiItem, formatIndonesianNumber, buildKpiCellDirectory, itemRefPrefix,
+  readMasterPicCatalog, normalizePicCodes, formatPicDisplay, readKpiValidationRules, saveKpiValidationRules,
 } from '../../kpi/kpiSchema';
 import { compileFormula, describeKpiFormula, validateKpiFormula } from '../../kpi/formulaEngine';
 import { distributeKpiForm } from '../../kpi/kpiWorkflowStore';
 import './KPITableDesigner.css';
 
-/* ───────────── Helper struktur ───────────── */
-
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const newSub = (index = 1) => ({ key: createId('input'), label: `Isian ${index}`, placeholder: '0' });
 const blankItem = (code, no) => ({
-  id: createId(code), no: String(no), excelNo: String(no), indikator: 'Indikator baru',
-  formula: 'Realisasi ÷ Target × 100%', formulaExpr: PRESET_FORMULA_EXPR.single_target,
-  bobot: 0, targetNum: 100, targetDisplay: '100', satuan: '%',
-  calcType: 'single_target', hideExcelNo: false, subrows: [newSub()],
+  id: createId(code),
+  no: String(no),
+  excelNo: String(no),
+  indikator: 'Indikator baru',
+  pics: [],
+  picDisplay: '',
+  formula: 'Realisasi / Target x 100%',
+  formulaExpr: PRESET_FORMULA_EXPR.single_target,
+  bobot: 0,
+  targetNum: 100,
+  targetDisplay: '100',
+  satuan: '%',
+  calcType: 'single_target',
+  hideExcelNo: false,
+  subrows: [newSub()],
 });
 const groupNumber = (item) => Number(String(item.no).match(/^\d+/)?.[0]) || 0;
 const nextNumber = (items) => Math.max(0, ...items.map(groupNumber)) + 1;
 const letters = (index) => {
   let result = '';
   for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
-    result = String.fromCharCode(97 + (n - 1) % 26) + result;
+    result = String.fromCharCode(97 + ((n - 1) % 26)) + result;
   }
   return result;
 };
@@ -54,16 +59,35 @@ const move = (rows, index, direction) => {
 };
 const stripEq = (expr) => String(expr ?? '').trim().replace(/^=\s*/, '');
 const isDateType = (calcType) => Boolean(CALC_TYPES[calcType]?.needsDeadline);
-/** Rumus yang ditampilkan di formula bar: preset non-tanggal punya ekuivalen ekspresi. */
 const visibleExpr = (item) => (item.calcType === 'custom' ? item.formulaExpr ?? '' : PRESET_FORMULA_EXPR[item.calcType] ?? '');
 
-function migrate(sections) {
-  return normalizeKpiSections(sections.map((section) => ({
+function hydrateDefaultPics(sections) {
+  const defaultMap = new Map();
+  (KPI_SECTIONS_CONFIG || []).forEach((sec) => {
+    (sec.items || []).forEach((item) => {
+      if (item.id && (item.pics?.length || item.picDisplay)) {
+        defaultMap.set(item.id, { pics: item.pics || [], picDisplay: item.picDisplay || '' });
+      }
+    });
+  });
+
+  return (sections || []).map((section) => ({
     ...section,
-    items: section.items.map((item) => ({
-      ...item, formulaExpr: item.formulaExpr ?? PRESET_FORMULA_EXPR[item.calcType] ?? '',
-    })),
-  })));
+    items: (section.items || []).map((item) => {
+      const hasPic = (Array.isArray(item.pics) && item.pics.length > 0) || Boolean(String(item.picDisplay || '').trim());
+      const fallback = !hasPic && !item.picClearedByAdmin ? defaultMap.get(item.id) : null;
+      return {
+        ...item,
+        pics: fallback ? fallback.pics : (item.pics || []),
+        picDisplay: fallback ? fallback.picDisplay : (item.picDisplay || ''),
+        formulaExpr: item.formulaExpr ?? PRESET_FORMULA_EXPR[item.calcType] ?? '',
+      };
+    }),
+  }));
+}
+
+function migrate(sections) {
+  return normalizeKpiSections(hydrateDefaultPics(sections));
 }
 
 function initialSections() {
@@ -74,8 +98,6 @@ function initialSections() {
     return migrate(KPI_SECTIONS_CONFIG);
   }
 }
-
-/* ───────────── Sel input ringkas ───────────── */
 
 function Cell({ value, onChange, multiline = false, className = '', ...props }) {
   const Tag = multiline ? 'textarea' : 'input';
@@ -92,28 +114,45 @@ function Cell({ value, onChange, multiline = false, className = '', ...props }) 
 
 const OPERATORS = [
   { label: '+', token: '+', title: 'Tambah' },
-  { label: '−', token: '-', title: 'Kurang' },
-  { label: '×', token: '*', title: 'Kali' },
-  { label: '÷', token: '/', title: 'Bagi' },
+  { label: '-', token: '-', title: 'Kurang' },
+  { label: 'x', token: '*', title: 'Kali' },
+  { label: '/', token: '/', title: 'Bagi' },
   { label: '(', token: '(', title: 'Kurung buka' },
   { label: ')', token: ')', title: 'Kurung tutup' },
-  { label: '×100', token: '*100', title: 'Kali 100 (jadikan persen)' },
+  { label: 'x100', token: '*100', title: 'Kali 100 (jadikan persen)' },
   { label: ';', token: ';', title: 'Pemisah argumen fungsi' },
 ];
 const FUNCTIONS = ['SUM', 'AVG', 'MIN', 'MAX', 'ROUND', 'IF', 'ABS'];
-const COLUMNS = ['No', 'Indikator kinerja', 'Rumusan isian', 'Isian (simulasi)', 'Bobot', 'Target', 'Satuan', 'Rumus', 'Capaian', 'Skor'];
+const COLUMNS = [
+  'No',
+  'Indikator kinerja',
+  'PIC',
+  'Rumusan isian',
+  'Isian (simulasi)',
+  'Bobot',
+  'Target',
+  'Satuan',
+  'Rumus',
+  'Capaian',
+  'Skor',
+];
 
 export default function KPITableDesigner() {
+  const { currentUser } = useAuth();
   const rootRef = useRef(null);
   const formulaRef = useRef(null);
   const noticeTimer = useRef(null);
   const sendingRef = useRef(false);
   const pickingRef = useRef(false);
   const [sections, setSections] = useState(initialSections);
+  const [picCatalog, setPicCatalog] = useState(readMasterPicCatalog);
+  const [validationRules, setValidationRules] = useState(readKpiValidationRules);
   const [liveSync, setLiveSync] = useState(() => localStorage.getItem(KPI_LIVE_SYNC_KEY) === 'true');
   const [selectedId, setSelectedId] = useState(null);
   const [pickMode, setPickMode] = useState(false);
   const [menuFor, setMenuFor] = useState(null);
+  const [picPickerFor, setPicPickerFor] = useState(null);
+  const [picSearch, setPicSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [history, setHistory] = useState(readKpiHistory);
   const [showPreview, setShowPreview] = useState(false);
@@ -123,7 +162,7 @@ export default function KPITableDesigner() {
   const [sending, setSending] = useState(false);
 
   const normalized = useMemo(() => normalizeKpiSections(sections), [sections]);
-  const validation = useMemo(() => validateKpiSections(normalized), [normalized]);
+  const validation = useMemo(() => validateKpiSections(normalized, validationRules), [normalized, validationRules]);
   const directory = useMemo(() => buildKpiCellDirectory(normalized, simValues), [normalized, simValues]);
   const errorCount = validation.issues.filter((issue) => issue.level === 'error').length;
   const warnCount = validation.issues.length - errorCount;
@@ -143,7 +182,6 @@ export default function KPITableDesigner() {
     ? validateKpiFormula(selectedExpr, selected.subrows.length, directory.allowedRefs)
     : null;
 
-  // Kumpulan referensi global yang dipakai rumus terpilih → untuk highlight sel.
   const referencedCells = useMemo(() => {
     if (!selected || !formulaEditable) return new Set();
     const { vars } = compileFormula(stripEq(selectedExpr));
@@ -157,7 +195,7 @@ export default function KPITableDesigner() {
     }));
     return map;
   }, [normalized, simValues]);
-  // Nomor baris ala Excel (1, 2, 3, …) per isian, dihitung murni di luar render JSX.
+
   const gutterStart = useMemo(() => {
     const map = new Map();
     let counter = 1;
@@ -176,7 +214,19 @@ export default function KPITableDesigner() {
     noticeTimer.current = window.setTimeout(() => setNotice(''), 6000);
   }, []);
 
-  /* ───────────── Persistensi draft & live sync ───────────── */
+  useEffect(() => {
+    const syncMaster = () => {
+      setPicCatalog(readMasterPicCatalog());
+      setValidationRules(readKpiValidationRules());
+    };
+    window.addEventListener('prp-admin-updated', syncMaster);
+    window.addEventListener('storage', syncMaster);
+    return () => {
+      window.removeEventListener('prp-admin-updated', syncMaster);
+      window.removeEventListener('storage', syncMaster);
+    };
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(KPI_DRAFT_KEY, JSON.stringify({ savedAt: new Date().toISOString(), sections: normalized }));
@@ -189,36 +239,42 @@ export default function KPITableDesigner() {
     if (!liveSync || hasBlockingError) return undefined;
     const timer = window.setTimeout(() => {
       try {
-        publishKpiSections(normalized, { actor: 'Superadmin PRP', note: 'Live sync', snapshot: false });
+        publishKpiSections(normalized, { actor: currentUser?.email || 'Superadmin PRP', note: 'Live sync', snapshot: false });
       } catch {
         notify('Live sync gagal menyimpan konfigurasi.');
       }
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [normalized, liveSync, hasBlockingError, notify]);
+  }, [normalized, liveSync, hasBlockingError, notify, currentUser?.email]);
 
   useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
 
-  // Tutup menu aksi baris saat klik di luar atau tekan Escape.
   useEffect(() => {
-    if (!menuFor) return undefined;
+    if (!menuFor && !picPickerFor) return undefined;
     const close = (event) => {
-      if (event.type === 'keydown' ? event.key === 'Escape' : !event.target.closest('.sheet-menu')) setMenuFor(null);
+      if (event.type === 'keydown') {
+        if (event.key === 'Escape' || event.keyCode === 27) {
+          setMenuFor(null);
+          setPicPickerFor(null);
+        }
+        return;
+      }
+      if (menuFor && !event.target.closest('.sheet-menu')) setMenuFor(null);
+      if (picPickerFor && !event.target.closest('.pic-cell')) setPicPickerFor(null);
     };
     document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
+    window.addEventListener('keydown', close);
     return () => {
       document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', close);
+      window.removeEventListener('keydown', close);
     };
-  }, [menuFor]);
+  }, [menuFor, picPickerFor]);
 
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     gsap.fromTo('.sheet-shell', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: 'expo.out', clearProps: 'all' });
   }, { scope: rootRef, dependencies: [showPreview] });
 
-  /** Gulir ke header bagian dan sorot sebentar (dipakai catatan validasi tingkat bagian). */
   const focusSection = (si) => {
     const el = rootRef.current?.querySelector(`#kpi-section-${si}`);
     if (!el) return;
@@ -227,7 +283,6 @@ export default function KPITableDesigner() {
     window.setTimeout(() => el.classList.remove('flash'), 1200);
   };
 
-  /* ───────────── Mutasi struktur ───────────── */
   const updateSection = (si, patch) => setSections((current) => current.map((section, index) => (
     index === si ? { ...section, ...patch } : section
   )));
@@ -244,10 +299,37 @@ export default function KPITableDesigner() {
   const editSubs = (si, ii, transform) => editItems(si, (items) => items.map((item, index) => (
     index === ii ? { ...item, subrows: transform(item.subrows) } : item
   )));
+
+  const toggleItemPic = (item, code) => {
+    const current = normalizePicCodes(item.pics || []);
+    const exists = current.some((c) => c.toLowerCase() === code.toLowerCase());
+    const nextPics = exists
+      ? current.filter((c) => c.toLowerCase() !== code.toLowerCase())
+      : [...current, code];
+    patchItemById(item.id, {
+      pics: nextPics,
+      picDisplay: nextPics.join(', '),
+      picClearedByAdmin: nextPics.length === 0,
+    });
+  };
+
+  const updateItemPicText = (item, rawText) => {
+    const nextPics = normalizePicCodes(rawText);
+    patchItemById(item.id, {
+      pics: nextPics,
+      picDisplay: formatPicDisplay(nextPics, rawText),
+      picClearedByAdmin: nextPics.length === 0,
+    });
+  };
+
   const insertRow = (si, ii, duplicate = false) => editItems(si, (items, section) => {
     const no = String(nextNumber(items));
     const item = duplicate ? {
-      ...clone(items[ii]), id: createId(section.code), no, excelNo: no, hideExcelNo: false,
+      ...clone(items[ii]),
+      id: createId(section.code),
+      no,
+      excelNo: no,
+      hideExcelNo: false,
       subrows: items[ii].subrows.map((sub) => ({ ...sub, key: createId('input') })),
     } : blankItem(section.code, no);
     delete item.hideIndikatorCell;
@@ -255,6 +337,7 @@ export default function KPITableDesigner() {
     result.splice(ii + 1, 0, item);
     return result;
   });
+
   const addSubIndicator = (si, ii) => editItems(si, (items, section) => {
     const group = groupNumber(items[ii]) || nextNumber(items);
     const indexes = items.flatMap((item, index) => (groupNumber(item) === group ? [index] : []));
@@ -269,11 +352,12 @@ export default function KPITableDesigner() {
     result.splice(Math.max(...indexes) + 1, 0, blankItem(section.code, `${group}${letters(indexes.length)}`));
     return result;
   });
+
   const changeCalcType = (item, calcType) => patchItemById(item.id, {
     calcType,
-    // Beralih ke rumus bebas: mulai dari ekuivalen preset sebelumnya agar tidak kosong.
     formulaExpr: calcType === 'custom' ? visibleExpr(item) : PRESET_FORMULA_EXPR[calcType] ?? '',
   });
+
   const addSection = () => setSections((current) => {
     let number = current.length;
     let code;
@@ -281,10 +365,8 @@ export default function KPITableDesigner() {
     return [...current, { code, title: 'Bagian baru', totalWeight: 0, isPenaltySection: false, items: [blankItem(code, 1)] }];
   });
 
-  /* ───────────── Formula bar ───────────── */
   const setFormula = (expr) => selected && patchItemById(selected.id, { calcType: 'custom', formulaExpr: expr });
 
-  /** Sisipkan token di posisi kursor formula bar, lalu kembalikan fokus. */
   const insertToken = (token) => {
     if (!selected || !formulaEditable) return;
     const input = formulaRef.current;
@@ -300,10 +382,6 @@ export default function KPITableDesigner() {
     });
   };
 
-  /**
-   * Klik sel saat mode pilih aktif. preventDefault di mousedown menjaga fokus
-   * tetap di formula bar (perilaku sama seperti Excel).
-   */
   const pickHandlers = (ownerId, localRef, globalRef) => (pickMode && formulaEditable ? {
     onMouseDown: (event) => {
       event.preventDefault();
@@ -316,20 +394,39 @@ export default function KPITableDesigner() {
     referencedCells.has(ref) ? 'is-ref' : '',
   ].join(' ');
 
-  /* ───────────── Kirim ke unit ───────────── */
+  const handleSaveValidationRules = () => {
+    const saved = saveKpiValidationRules(validationRules, currentUser?.email || 'Superadmin PRP');
+    setValidationRules(saved);
+    notify('Pengaturan aturan validasi struktur berhasil disimpan oleh Admin PRP.');
+  };
+
+  const handleResetValidationRules = () => {
+    const reset = saveKpiValidationRules(DEFAULT_KPI_VALIDATION_RULES, currentUser?.email || 'Superadmin PRP');
+    setValidationRules(reset);
+    notify('Aturan validasi struktur dikembalikan ke standar default.');
+  };
+
+  const syncAllSectionWeightsToRows = () => {
+    setSections((current) => current.map((sec, idx) => {
+      const sum = validation.sectionSummaries[idx]?.itemSum ?? Math.abs(Number(sec.totalWeight) || 0);
+      return { ...sec, totalWeight: sec.isPenaltySection ? -sum : sum };
+    }));
+    notify('Seluruh bobot bagian disamakan dengan total bobot baris di bagian masing-masing.');
+  };
+
   const distribute = async () => {
     if (sendingRef.current) return;
     if (hasBlockingError || !periodString.trim()) {
-      notify('Perbaiki error validasi dan isi periode sebelum mengirim.');
+      notify('Perbaiki error validasi wajib dan isi periode sebelum mendistribusikan ke unit kerja.');
       setShowPanel(true);
       return;
     }
     sendingRef.current = true;
     setSending(true);
     try {
-      const result = await distributeKpiForm(normalized, { period: periodString });
+      const result = await distributeKpiForm(normalized, { period: periodString, actor: currentUser });
       setHistory(readKpiHistory());
-      notify(`Form v${result.version} dikirim ke Unit Kerja. ID: ${result.id}`);
+      notify(`Formulir KPI v${result.version} terdistribusi ke seluruh akun Unit/PIC. ID: ${result.id}`);
     } catch (error) {
       notify(`Pengiriman gagal: ${error?.message || 'Silakan coba kembali.'}`);
     } finally {
@@ -338,28 +435,44 @@ export default function KPITableDesigner() {
     }
   };
 
+  const filteredPicCatalog = useMemo(() => {
+    const q = picSearch.trim().toLowerCase();
+    if (!q) return picCatalog;
+    return picCatalog.filter((entry) => entry.code.toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
+  }, [picCatalog, picSearch]);
+
+  const targetTotal = Number(validationRules.targetPositiveWeight) || 100;
+
   return (
     <div ref={rootRef} className="kpi-designer-page" aria-busy={sending}>
       <header className="designer-hero">
         <div>
-          <div className="designer-kicker"><Table2 size={14} /> PRP / KPI GOVERNANCE</div>
-          <h1>Desainer Tabel KPI</h1>
-          <p>Edit langsung di sel seperti Excel. Klik formula bar <strong>fx</strong>, lalu klik sel Isian/Bobot/Target untuk membangun rumus. Draft tersimpan otomatis.</p>
+          <div className="designer-kicker"><Table2 size={14} /> PRP / DESAINER TABEL, PIC & VALIDASI STRUKTUR KPI</div>
+          <h1>Desainer Tabel & Formula KPI</h1>
+          <p>
+            Kelola indikator kinerja, tetapkan <strong>PIC Penanggung Jawab</strong> per baris (mengunci hak input unit), rancang rumus <strong>fx</strong>, dan atur kebijakan validasi struktur.
+          </p>
         </div>
         <div className="designer-actions">
           <label className="designer-period">
             <span>Periode</span>
             <input value={periodString} onChange={(event) => setPeriodString(event.target.value)} />
           </label>
-          <button type="button" onClick={() => {
-            if (!window.confirm('Kembalikan draft ke struktur default? Perubahan draft akan hilang.')) return;
-            setSections(migrate(KPI_SECTIONS_CONFIG));
-            setSimValues({});
-            setSelectedId(null);
-            notify('Draft dikembalikan ke struktur default.');
-          }}><RotateCcw size={15} /> Reset</button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!window.confirm('Kembalikan draft ke struktur resmi ITPLN beserta 29 pemetaan PIC default?')) return;
+              localStorage.removeItem(KPI_DRAFT_KEY);
+              setSections(migrate(KPI_SECTIONS_CONFIG));
+              setSimValues({});
+              setSelectedId(null);
+              notify('Draft dikembalikan ke struktur resmi ITPLN beserta pemetaan PIC.');
+            }}
+          >
+            <RotateCcw size={15} /> Reset Default
+          </button>
           <button type="button" className="primary" disabled={sending || hasBlockingError || !periodString.trim()} onClick={distribute}>
-            <Send size={15} /> {sending ? 'Mengirim…' : 'Kirim ke Unit Kerja'}
+            <Send size={15} /> {sending ? 'Mengirim...' : 'Kirim ke Unit Kerja'}
           </button>
         </div>
       </header>
@@ -369,26 +482,29 @@ export default function KPITableDesigner() {
           <Table2 size={14} /> <strong>{totalRows}</strong> indikator · <strong>{normalized.length}</strong> bagian ·
           {' '}Total skor simulasi <strong>{formatIndonesianNumber(totalScore)}</strong>
         </span>
-        {/* Rekap bobot realtime: dihitung ulang setiap sel bobot berubah. */}
-        <span className={`designer-weight ${Math.abs(validation.totalDiff) > 0.0001 ? 'warn' : 'ok'}`} title="Σ bobot baris seluruh bagian non-penalti">
-          Bobot capaian <strong>{formatIndonesianNumber(validation.positiveTotal, 4)}</strong> / 100
+        <span className={`designer-weight ${Math.abs(validation.totalDiff) > 0.0001 ? 'warn' : 'ok'}`} title="Total bobot baris seluruh bagian non-penalti">
+          Bobot capaian <strong>{formatIndonesianNumber(validation.positiveTotal, 4)}</strong> / {formatIndonesianNumber(targetTotal, 2)}
           {Math.abs(validation.totalDiff) > 0.0001 && <> ({validation.totalDiff > 0 ? '+' : ''}{formatIndonesianNumber(validation.totalDiff, 4)})</>}
-          {validation.penaltyTotal > 0 && <> · Penalti maks −{formatIndonesianNumber(validation.penaltyTotal, 4)}</>}
+          {validation.penaltyTotal > 0 && <> · Penalti maks -{formatIndonesianNumber(validation.penaltyTotal, 4)}</>}
         </span>
         <div className="designer-actions">
           <label className="designer-check">
-            <input type="checkbox" checked={liveSync} onChange={(event) => {
-              setLiveSync(event.target.checked);
-              localStorage.setItem(KPI_LIVE_SYNC_KEY, String(event.target.checked));
-            }} /> Live sync
+            <input
+              type="checkbox"
+              checked={liveSync}
+              onChange={(event) => {
+                setLiveSync(event.target.checked);
+                localStorage.setItem(KPI_LIVE_SYNC_KEY, String(event.target.checked));
+              }}
+            /> Live sync
           </label>
           <button type="button" onClick={() => setSimValues({})}><RotateCcw size={14} /> Kosongkan simulasi</button>
           <button type="button" aria-pressed={showPreview} onClick={() => setShowPreview((value) => !value)}>
             <Eye size={14} /> {showPreview ? 'Kembali ke editor' : 'Preview user'}
           </button>
           <button type="button" aria-pressed={showPanel} onClick={() => setShowPanel((value) => !value)} className={errorCount ? 'has-error' : ''}>
-            {showPanel ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
-            Validasi & riwayat
+            {showPanel ? <PanelRightClose size={14} /> : <Settings2 size={14} />}
+            Validasi & Aturan PRP
             {errorCount > 0 && <span className="badge" title={`${errorCount} error (memblokir kirim)`}>{errorCount}</span>}
             {warnCount > 0 && <span className="badge warn" title={`${warnCount} peringatan`}>{warnCount}</span>}
           </button>
@@ -398,13 +514,12 @@ export default function KPITableDesigner() {
 
       {showPreview ? (
         <div className="designer-preview sheet-shell">
-          <p className="designer-sim-banner">PREVIEW SAJA: tidak membaca atau menyimpan nilai aktual Unit Kerja.</p>
+          <p className="designer-sim-banner">PRATINJAU SAJA: menampilkan struktur tabel beserta kolom PIC dan bukti per baris tanpa mengubah data unit kerja.</p>
           <KPIDataEntrySheet sectionsOverride={normalized} persist={false} readOnly />
         </div>
       ) : (
         <div className={`designer-layout ${showPanel ? 'with-panel' : ''}`}>
           <div className="sheet-shell">
-            {/* ───────────── Formula bar ───────────── */}
             <div className={`formula-bar ${pickMode && formulaEditable ? 'picking' : ''}`}>
               <div className="formula-row">
                 <span className="name-box" title="Baris terpilih">{selected ? `${selectedSection.code}.${selected.no}` : '-'}</span>
@@ -414,7 +529,7 @@ export default function KPITableDesigner() {
                   value={selected?.calcType || ''}
                   onChange={(event) => changeCalcType(selected, event.target.value)}
                 >
-                  {!selected && <option value="">Pilih baris…</option>}
+                  {!selected && <option value="">Pilih baris...</option>}
                   {Object.entries(CALC_TYPES).map(([key, type]) => <option key={key} value={key}>{type.label}</option>)}
                 </select>
                 <span className="fx"><Sigma size={14} /> fx</span>
@@ -424,7 +539,7 @@ export default function KPITableDesigner() {
                   aria-label="Rumus baris terpilih"
                   aria-invalid={Boolean(formulaError)}
                   disabled={!formulaEditable}
-                  placeholder={!selected ? 'Klik salah satu baris di tabel untuk mengedit rumusnya' : isDateType(selected.calcType) ? 'Tipe tanggal memakai batas waktu, bukan rumus' : '=I1/T*100'}
+                  placeholder={!selected ? 'Klik salah satu baris di tabel untuk mengedit rumus dan PIC' : isDateType(selected.calcType) ? 'Tipe tanggal memakai batas waktu, bukan rumus' : '=I1/T*100'}
                   value={formulaEditable ? `=${stripEq(selectedExpr)}` : ''}
                   onChange={(event) => setFormula(stripEq(event.target.value))}
                   onFocus={() => { pickingRef.current = true; setPickMode(true); }}
@@ -436,28 +551,67 @@ export default function KPITableDesigner() {
                 <div className="formula-tools">
                   <div className="op-group" role="group" aria-label="Operator">
                     {OPERATORS.map((op) => (
-                      <button key={op.label} type="button" title={op.title} disabled={!formulaEditable}
-                        onMouseDown={(event) => { event.preventDefault(); insertToken(op.token); }}>{op.label}</button>
+                      <button
+                        key={op.label}
+                        type="button"
+                        title={op.title}
+                        disabled={!formulaEditable}
+                        onMouseDown={(event) => { event.preventDefault(); insertToken(op.token); }}
+                      >
+                        {op.label}
+                      </button>
                     ))}
                   </div>
                   <div className="op-group" role="group" aria-label="Fungsi">
                     {FUNCTIONS.map((name) => (
-                      <button key={name} type="button" disabled={!formulaEditable}
-                        onMouseDown={(event) => { event.preventDefault(); insertToken(`${name}(`); }}>{name}</button>
+                      <button
+                        key={name}
+                        type="button"
+                        disabled={!formulaEditable}
+                        onMouseDown={(event) => { event.preventDefault(); insertToken(`${name}(`); }}
+                      >
+                        {name}
+                      </button>
                     ))}
                   </div>
                   <div className="op-group" role="group" aria-label="Sel baris ini">
                     {selected.subrows.map((sub, index) => (
-                      <button key={sub.key} type="button" className="ref-chip" disabled={!formulaEditable} title={sub.label}
-                        onMouseDown={(event) => { event.preventDefault(); insertToken(`I${index + 1}`); }}>I{index + 1}</button>
+                      <button
+                        key={sub.key}
+                        type="button"
+                        className="ref-chip"
+                        disabled={!formulaEditable}
+                        title={sub.label}
+                        onMouseDown={(event) => { event.preventDefault(); insertToken(`I${index + 1}`); }}
+                      >
+                        I{index + 1}
+                      </button>
                     ))}
-                    <button type="button" className="ref-chip" disabled={!formulaEditable} title="Target baris ini"
-                      onMouseDown={(event) => { event.preventDefault(); insertToken('T'); }}>T</button>
-                    <button type="button" className="ref-chip" disabled={!formulaEditable} title="Bobot baris ini"
-                      onMouseDown={(event) => { event.preventDefault(); insertToken('B'); }}>B</button>
+                    <button
+                      type="button"
+                      className="ref-chip"
+                      disabled={!formulaEditable}
+                      title="Target baris ini"
+                      onMouseDown={(event) => { event.preventDefault(); insertToken('T'); }}
+                    >
+                      T
+                    </button>
+                    <button
+                      type="button"
+                      className="ref-chip"
+                      disabled={!formulaEditable}
+                      title="Bobot baris ini"
+                      onMouseDown={(event) => { event.preventDefault(); insertToken('B'); }}
+                    >
+                      B
+                    </button>
                   </div>
                   {formulaEditable && (
-                    <button type="button" className="ghost" onMouseDown={(event) => { event.preventDefault(); setFormula(''); formulaRef.current?.focus(); }}>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onMouseDown={(event) => { event.preventDefault(); setFormula(''); formulaRef.current?.focus(); }}
+                    >
                       <Trash2 size={13} /> Kosongkan
                     </button>
                   )}
@@ -488,8 +642,16 @@ export default function KPITableDesigner() {
               {selected && (
                 <div className="formula-detail">
                   <label>
-                    <span>Keterangan rumus (tampil ke user)</span>
+                    <span>Keterangan rumus (tampil ke unit kerja)</span>
                     <input value={selected.formula ?? ''} onChange={(event) => patchItemById(selected.id, { formula: event.target.value })} />
+                  </label>
+                  <label>
+                    <span>PIC Penanggung Jawab (pisahkan koma, mis. BAKT, BAG)</span>
+                    <input
+                      value={selected.picDisplay || (selected.pics || []).join(', ')}
+                      placeholder="Contoh: BAKT, BAG"
+                      onChange={(event) => updateItemPicText(selected, event.target.value)}
+                    />
                   </label>
                   {selected.calcType === 'compliance_date_single' && (
                     <label>
@@ -500,24 +662,37 @@ export default function KPITableDesigner() {
                   {selected.calcType === 'compliance_date_dual' && [0, 1].map((index) => (
                     <label key={index}>
                       <span>Batas semester {index + 1}</span>
-                      <input type="date" value={selected.deadlinesISO?.[index] ?? ''} onChange={(event) => {
-                        const deadlinesISO = [...(selected.deadlinesISO || ['', ''])];
-                        deadlinesISO[index] = event.target.value;
-                        patchItemById(selected.id, { deadlinesISO });
-                      }} />
+                      <input
+                        type="date"
+                        value={selected.deadlinesISO?.[index] ?? ''}
+                        onChange={(event) => {
+                          const deadlinesISO = [...(selected.deadlinesISO || ['', ''])];
+                          deadlinesISO[index] = event.target.value;
+                          patchItemById(selected.id, { deadlinesISO });
+                        }}
+                      />
                     </label>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* ───────────── Grid ───────────── */}
-            <div className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`} role="region" aria-label="Lembar KPI" tabIndex={0} data-lenis-prevent>
+            <div className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`} role="region" aria-label="Lembar Desainer KPI" tabIndex={0} data-lenis-prevent>
               <table className="sheet">
                 <colgroup>
-                  <col className="c-gutter" /><col className="c-no" /><col className="c-ind" /><col className="c-sub" />
-                  <col className="c-sim" /><col className="c-num" /><col className="c-num" /><col className="c-unit" />
-                  <col className="c-formula" /><col className="c-res" /><col className="c-res" /><col className="c-act" />
+                  <col className="c-gutter" />
+                  <col className="c-no" />
+                  <col className="c-ind" />
+                  <col className="c-pic" />
+                  <col className="c-sub" />
+                  <col className="c-sim" />
+                  <col className="c-num" />
+                  <col className="c-num" />
+                  <col className="c-unit" />
+                  <col className="c-formula" />
+                  <col className="c-res" />
+                  <col className="c-res" />
+                  <col className="c-act" />
                 </colgroup>
                 <thead>
                   <tr className="letters">
@@ -532,7 +707,6 @@ export default function KPITableDesigner() {
                   </tr>
                 </thead>
                 {normalized.map((section, si) => {
-                  // Satu sumber kebenaran: angka di header bagian = angka di panel validasi.
                   const summary = validation.sectionSummaries[si];
                   const itemSum = summary?.itemSum ?? 0;
                   const weightMismatch = summary ? !summary.matches : false;
@@ -548,13 +722,17 @@ export default function KPITableDesigner() {
                               Bobot bagian
                               <input type="number" step="any" value={Math.abs(Number(section.totalWeight) || 0)} onChange={(event) => updateSection(si, { totalWeight: event.target.value })} />
                             </label>
-                            <span className={`sum ${weightMismatch ? 'warn' : ''}`} title="Jumlah bobot semua baris di bagian ini (dihitung realtime)">
-                              Σ baris {formatIndonesianNumber(itemSum, 4)}
+                            <span className={`sum ${weightMismatch ? 'warn' : ''}`} title="Jumlah bobot seluruh baris di bagian ini">
+                              Total baris {formatIndonesianNumber(itemSum, 4)}
                               {weightMismatch && <> · selisih {summary.diff > 0 ? '+' : ''}{formatIndonesianNumber(summary.diff, 4)}</>}
                             </span>
                             {weightMismatch && (
-                              <button type="button" className="ghost fix" title="Samakan bobot bagian dengan jumlah bobot baris"
-                                onClick={() => updateSection(si, { totalWeight: itemSum })}>
+                              <button
+                                type="button"
+                                className="ghost fix"
+                                title="Samakan bobot bagian dengan total bobot baris"
+                                onClick={() => updateSection(si, { totalWeight: itemSum })}
+                              >
                                 Samakan = {formatIndonesianNumber(itemSum, 4)}
                               </button>
                             )}
@@ -562,8 +740,13 @@ export default function KPITableDesigner() {
                               <input type="checkbox" checked={section.isPenaltySection} onChange={(event) => updateSection(si, { isPenaltySection: event.target.checked })} /> Penalti
                             </label>
                             <button type="button" className="ghost" onClick={() => insertRow(si, section.items.length - 1)}><Plus size={13} /> Indikator</button>
-                            <button type="button" className="ghost danger" disabled={normalized.length <= 1} title={`Hapus bagian ${section.code}`}
-                              onClick={() => window.confirm(`Hapus bagian ${section.code} beserta seluruh indikatornya?`) && setSections((current) => current.filter((_, index) => index !== si))}>
+                            <button
+                              type="button"
+                              className="ghost danger"
+                              disabled={normalized.length <= 1}
+                              title={`Hapus bagian ${section.code}`}
+                              onClick={() => window.confirm(`Hapus bagian ${section.code} beserta seluruh indikatornya?`) && setSections((current) => current.filter((_, index) => index !== si))}
+                            >
                               <Trash2 size={13} />
                             </button>
                           </div>
@@ -578,7 +761,6 @@ export default function KPITableDesigner() {
                         const span = item.subrows.length;
                         const isSelected = item.id === selectedId;
                         const rowClass = `${isSelected ? 'selected' : ''} ${hasError ? 'row-error' : ''}`;
-                        // Ref (bukan state) agar klik pertama setelah formula bar blur langsung memilih baris.
                         const select = () => { if (!pickingRef.current) setSelectedId(item.id); };
 
                         return item.subrows.map((sub, subi) => {
@@ -591,12 +773,109 @@ export default function KPITableDesigner() {
                               {subi === 0 && (
                                 <>
                                   <td rowSpan={span}>
-                                    <Cell aria-label={`Nomor ${section.code}.${item.no}`} className="center" value={item.no}
-                                      onChange={(value) => updateItem(si, ii, { no: value, excelNo: value, hideExcelNo: false })} />
+                                    <Cell
+                                      aria-label={`Nomor ${section.code}.${item.no}`}
+                                      className="center"
+                                      value={item.no}
+                                      onChange={(value) => updateItem(si, ii, { no: value, excelNo: value, hideExcelNo: false })}
+                                    />
                                   </td>
                                   <td rowSpan={span}>
-                                    <Cell multiline aria-label={`Indikator ${section.code}.${item.no}`} value={item.indikator}
-                                      onChange={(value) => updateItem(si, ii, { indikator: value })} />
+                                    <Cell
+                                      multiline
+                                      aria-label={`Indikator ${section.code}.${item.no}`}
+                                      value={item.indikator}
+                                      onChange={(value) => updateItem(si, ii, { indikator: value })}
+                                    />
+                                  </td>
+                                  <td rowSpan={span} className="pic-cell">
+                                    <button
+                                      type="button"
+                                      className="pic-cell-trigger"
+                                      aria-label={`Pilih PIC untuk indikator ${section.code}.${item.no}`}
+                                      aria-haspopup="dialog"
+                                      aria-expanded={picPickerFor === item.id}
+                                      onClick={() => {
+                                        setPicCatalog(readMasterPicCatalog());
+                                        setPicSearch('');
+                                        setPicPickerFor((cur) => (cur === item.id ? null : item.id));
+                                      }}
+                                    >
+                                      {item.pics?.length ? (
+                                        item.pics.map((code) => (
+                                          <span key={code} className="pic-chip">{code}</span>
+                                        ))
+                                      ) : (
+                                        <span className="pic-empty"><Users size={12} /> Atur PIC</span>
+                                      )}
+                                    </button>
+                                    {item.picDisplay && item.picDisplay !== item.pics?.join(', ') && (
+                                      <div style={{ fontSize: '0.64rem', color: '#475569', marginTop: '0.2rem', lineHeight: 1.25 }}>
+                                        {item.picDisplay}
+                                      </div>
+                                    )}
+                                    {picPickerFor === item.id && (
+                                      <div
+                                        className="pic-popover"
+                                        role="dialog"
+                                        aria-label={`Pemilih PIC ${section.code}.${item.no}`}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Escape') {
+                                            event.stopPropagation();
+                                            setPicPickerFor(null);
+                                          }
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
+                                          <strong style={{ fontSize: '0.73rem', color: '#072534' }}>
+                                            PIC Baris {section.code}.{item.no}
+                                          </strong>
+                                          <button
+                                            type="button"
+                                            className="ghost"
+                                            aria-label="Tutup pemilih PIC"
+                                            onClick={() => setPicPickerFor(null)}
+                                            style={{ minHeight: '28px', padding: '0.2rem' }}
+                                          >
+                                            <X size={13} />
+                                          </button>
+                                        </div>
+                                        <input
+                                          autoFocus
+                                          className="pic-popover-search"
+                                          placeholder="Cari master PIC (mis. BAKT, LPPM)..."
+                                          aria-label="Cari kode PIC"
+                                          value={picSearch}
+                                          onChange={(event) => setPicSearch(event.target.value)}
+                                        />
+                                        <div className="pic-popover-list">
+                                          {filteredPicCatalog.map((entry) => {
+                                            const active = (item.pics || []).some((c) => c.toLowerCase() === entry.code.toLowerCase());
+                                            return (
+                                              <button
+                                                key={entry.code}
+                                                type="button"
+                                                aria-pressed={active}
+                                                title={entry.name}
+                                                className={`pic-option ${active ? 'active' : ''}`}
+                                                onClick={() => toggleItemPic(item, entry.code)}
+                                              >
+                                                {entry.code}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                        <label style={{ display: 'grid', gap: '0.2rem', fontSize: '0.68rem', fontWeight: 700, color: '#334155' }}>
+                                          Label Tampilan / Kode Kustom
+                                          <input
+                                            className="pic-popover-display"
+                                            value={item.picDisplay || (item.pics || []).join(', ')}
+                                            placeholder="Contoh: PJM dan PRP"
+                                            onChange={(event) => updateItemPicText(item, event.target.value)}
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
                                   </td>
                                 </>
                               )}
@@ -604,41 +883,80 @@ export default function KPITableDesigner() {
                                 <div className="sub-wrap">
                                   <Cell multiline aria-label={`Rumusan isian ${subi + 1} ${section.code}.${item.no}`} value={sub.label} onChange={(value) => patchSub({ label: value })} />
                                   <div className="sub-actions">
-                                    <button type="button" title="Isian teks/tanggal" aria-pressed={Boolean(sub.isTextInput)} className={sub.isTextInput ? 'on' : ''}
-                                      onClick={() => patchSub({ isTextInput: !sub.isTextInput })}>Aa</button>
+                                    <button
+                                      type="button"
+                                      title="Isian teks atau tanggal"
+                                      aria-pressed={Boolean(sub.isTextInput)}
+                                      className={sub.isTextInput ? 'on' : ''}
+                                      onClick={() => patchSub({ isTextInput: !sub.isTextInput })}
+                                    >
+                                      Aa
+                                    </button>
                                     <button type="button" title="Naikkan" disabled={subi === 0} onClick={() => editSubs(si, ii, (subs) => move(subs, subi, -1))}><ArrowUp size={12} /></button>
                                     <button type="button" title="Turunkan" disabled={subi === span - 1} onClick={() => editSubs(si, ii, (subs) => move(subs, subi, 1))}><ArrowDown size={12} /></button>
-                                    <button type="button" title="Sisipkan isian di bawah"
-                                      onClick={() => editSubs(si, ii, (subs) => [...subs.slice(0, subi + 1), newSub(subi + 2), ...subs.slice(subi + 1)])}><Plus size={12} /></button>
-                                    <button type="button" title="Hapus isian" disabled={span <= 1}
-                                      onClick={() => editSubs(si, ii, (subs) => subs.filter((_, index) => index !== subi))}><Trash2 size={12} /></button>
+                                    <button
+                                      type="button"
+                                      title="Sisipkan isian di bawah"
+                                      onClick={() => editSubs(si, ii, (subs) => [...subs.slice(0, subi + 1), newSub(subi + 2), ...subs.slice(subi + 1)])}
+                                    >
+                                      <Plus size={12} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Hapus isian"
+                                      disabled={span <= 1}
+                                      onClick={() => editSubs(si, ii, (subs) => subs.filter((_, index) => index !== subi))}
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
                                   </div>
                                 </div>
                               </td>
                               <td className={`ref-cell sim ${refClass(iRef)}`} {...pickHandlers(item.id, `I${subi + 1}`, iRef)}>
                                 <span className="ref-tag">{iRef}</span>
-                                <Cell aria-label={`Simulasi ${iRef}`} className="right" value={simValues[sub.key]} placeholder={sub.placeholder || '0'}
-                                  onChange={(value) => setSimValues((current) => ({ ...current, [sub.key]: value }))} />
+                                <Cell
+                                  aria-label={`Simulasi ${iRef}`}
+                                  className="right"
+                                  value={simValues[sub.key]}
+                                  placeholder={sub.placeholder || '0'}
+                                  onChange={(value) => setSimValues((current) => ({ ...current, [sub.key]: value }))}
+                                />
                               </td>
                               {subi === 0 && (
                                 <>
                                   <td rowSpan={span} className={`ref-cell ${refClass(`${prefix}_B`)}`} {...pickHandlers(item.id, 'B', `${prefix}_B`)}>
                                     <span className="ref-tag">{prefix}_B</span>
-                                    <Cell type="number" step="any" className="right" aria-label={`Bobot ${section.code}.${item.no}`}
-                                      value={Math.abs(Number(item.bobot) || 0)} onChange={(value) => updateItem(si, ii, { bobot: value })} />
+                                    <Cell
+                                      type="number"
+                                      step="any"
+                                      className="right"
+                                      aria-label={`Bobot ${section.code}.${item.no}`}
+                                      value={Math.abs(Number(item.bobot) || 0)}
+                                      onChange={(value) => updateItem(si, ii, { bobot: value })}
+                                    />
                                   </td>
                                   <td rowSpan={span} className={`ref-cell ${refClass(`${prefix}_T`)}`} {...pickHandlers(item.id, 'T', `${prefix}_T`)}>
                                     <span className="ref-tag">{prefix}_T</span>
-                                    <Cell type="number" step="any" className="right" aria-label={`Target ${section.code}.${item.no}`} value={item.targetNum}
-                                      onChange={(value) => updateItem(si, ii, { targetNum: value, targetDisplay: value === '' ? '' : formatIndonesianNumber(Number(value)) })} />
+                                    <Cell
+                                      type="number"
+                                      step="any"
+                                      className="right"
+                                      aria-label={`Target ${section.code}.${item.no}`}
+                                      value={item.targetNum}
+                                      onChange={(value) => updateItem(si, ii, { targetNum: value, targetDisplay: value === '' ? '' : formatIndonesianNumber(Number(value)) })}
+                                    />
                                   </td>
                                   <td rowSpan={span}>
                                     <Cell aria-label={`Satuan ${section.code}.${item.no}`} className="center" value={item.satuan} onChange={(value) => updateItem(si, ii, { satuan: value })} />
                                   </td>
                                   <td rowSpan={span} className="formula-cell">
-                                    <button type="button" className={`formula-preview ${hasError ? 'error' : ''}`} title="Edit rumus di formula bar"
-                                      onClick={() => { setSelectedId(item.id); window.requestAnimationFrame(() => formulaRef.current?.focus()); }}>
-                                      {isDateType(item.calcType) ? CALC_TYPES[item.calcType].label : `=${stripEq(visibleExpr(item)) || '…'}`}
+                                    <button
+                                      type="button"
+                                      className={`formula-preview ${hasError ? 'error' : ''}`}
+                                      title="Edit rumus di formula bar"
+                                      onClick={() => { setSelectedId(item.id); window.requestAnimationFrame(() => formulaRef.current?.focus()); }}
+                                    >
+                                      {isDateType(item.calcType) ? CALC_TYPES[item.calcType].label : `=${stripEq(visibleExpr(item)) || '...'}`}
                                       {item.calcType !== 'custom' && <small>preset</small>}
                                     </button>
                                   </td>
@@ -651,23 +969,35 @@ export default function KPITableDesigner() {
                                   </td>
                                   <td rowSpan={span} className="act-cell">
                                     <div className="sheet-menu">
-                                      <button type="button" className="ghost" aria-haspopup="menu" aria-expanded={menuFor === item.id}
-                                        aria-label={`Aksi baris ${section.code}.${item.no}`} onClick={() => setMenuFor((value) => (value === item.id ? null : item.id))}>
+                                      <button
+                                        type="button"
+                                        className="ghost"
+                                        aria-haspopup="menu"
+                                        aria-expanded={menuFor === item.id}
+                                        aria-label={`Aksi baris ${section.code}.${item.no}`}
+                                        onClick={() => setMenuFor((value) => (value === item.id ? null : item.id))}
+                                      >
                                         <Ellipsis size={15} />
                                       </button>
                                       {menuFor === item.id && (
                                         <div className="menu" role="menu">
                                           {[
                                             { icon: Plus, label: 'Sisipkan indikator di bawah', run: () => insertRow(si, ii) },
-                                            { icon: Plus, label: 'Tambah sub-indikator (1a, 1b…)', run: () => addSubIndicator(si, ii) },
+                                            { icon: Plus, label: 'Tambah sub-indikator (1a, 1b...)', run: () => addSubIndicator(si, ii) },
                                             { icon: Plus, label: 'Tambah isian', run: () => editSubs(si, ii, (subs) => [...subs, newSub(subs.length + 1)]) },
                                             { icon: Copy, label: 'Duplikat baris', run: () => insertRow(si, ii, true) },
                                             { icon: ArrowUp, label: 'Pindah ke atas', run: () => editItems(si, (items) => move(items, ii, -1)), disabled: ii === 0 },
                                             { icon: ArrowDown, label: 'Pindah ke bawah', run: () => editItems(si, (items) => move(items, ii, 1)), disabled: ii === section.items.length - 1 },
                                             { icon: Trash2, label: 'Hapus baris', danger: true, run: () => editItems(si, (items) => items.filter((_, index) => index !== ii)) },
                                           ].map(({ icon: Icon, label, run, disabled, danger }) => (
-                                            <button key={label} type="button" role="menuitem" disabled={disabled} className={danger ? 'danger' : ''}
-                                              onClick={() => { run(); setMenuFor(null); }}>
+                                            <button
+                                              key={label}
+                                              type="button"
+                                              role="menuitem"
+                                              disabled={disabled}
+                                              className={danger ? 'danger' : ''}
+                                              onClick={() => { run(); setMenuFor(null); }}
+                                            >
                                               <Icon size={13} /> {label}
                                             </button>
                                           ))}
@@ -698,12 +1028,12 @@ export default function KPITableDesigner() {
           </div>
 
           {showPanel && (
-            <aside className="designer-aside" aria-label="Validasi dan riwayat" data-lenis-prevent>
+            <aside className="designer-aside" aria-label="Validasi, aturan PRP, dan riwayat" data-lenis-prevent>
               <section className="designer-panel">
-                <h2><TriangleAlert size={15} /> Validasi struktur</h2>
+                <h2><TriangleAlert size={15} /> Hasil Validasi Struktur</h2>
                 <p>
-                  <strong className="count-error">{errorCount} error</strong> (memblokir kirim) ·{' '}
-                  <strong className="count-warn">{warnCount} peringatan</strong> (tidak memblokir). Diperbarui otomatis setiap sel berubah.
+                  <strong className="count-error">{errorCount} error wajib</strong> (memblokir kirim) ·{' '}
+                  <strong className="count-warn">{warnCount} peringatan</strong> (tetap bisa dikirim).
                 </p>
                 {validation.issues.length ? (
                   <ul>
@@ -718,7 +1048,6 @@ export default function KPITableDesigner() {
                           ) : sectionIndex >= 0 ? (
                             <button type="button" className="link" onClick={() => focusSection(sectionIndex)}>{issue.message}</button>
                           ) : issue.message}
-                          {/* Quick-fix hanya untuk selisih bobot bagian. */}
                           {summary && !summary.matches && (
                             <button type="button" className="ghost fix" onClick={() => updateSection(sectionIndex, { totalWeight: summary.itemSum })}>
                               Set bobot {issue.sectionCode} = {formatIndonesianNumber(summary.itemSum, 4)}
@@ -728,20 +1057,131 @@ export default function KPITableDesigner() {
                       );
                     })}
                   </ul>
-                ) : <p className="valid"><CircleCheck size={13} /> Struktur siap dikirim.</p>}
+                ) : <p className="valid"><CircleCheck size={13} /> Seluruh aturan struktur terpenuhi.</p>}
               </section>
+
               <section className="designer-panel">
-                <h2><History size={15} /> Riwayat konfigurasi</h2>
+                <h2><Settings2 size={15} /> Pengaturan Validasi Struktur (Admin PRP)</h2>
+                <div className="rule-guide">
+                  <strong>Cara kerja validasi:</strong> sistem memeriksa sintaks rumus <code>fx</code>, jumlah minimum isian, duplikasi kode, kesesuaian bobot bagian dan total, serta kelengkapan PIC. Admin PRP dapat mengatur apakah setiap aturan bersifat <strong>Peringatan</strong>, <strong>Wajib (Blokir Distribusi)</strong>, atau <strong>Nonaktif</strong>.
+                </div>
+                <div className="rule-grid">
+                  <label className="rule-field">
+                    <span>Target Total Bobot Capaian Positif</span>
+                    <input
+                      type="number"
+                      step="any"
+                      min="1"
+                      value={validationRules.targetPositiveWeight}
+                      onChange={(e) => setValidationRules((prev) => ({ ...prev, targetPositiveWeight: e.target.value }))}
+                    />
+                  </label>
+                  <label className="rule-field">
+                    <span>Kebijakan Selisih Total Bobot</span>
+                    <select
+                      value={validationRules.totalWeightPolicy}
+                      onChange={(e) => setValidationRules((prev) => ({ ...prev, totalWeightPolicy: e.target.value }))}
+                    >
+                      <option value="warn">Peringatan (Tetap Bisa Kirim)</option>
+                      <option value="error">Wajib Tepat (Blokir Kirim)</option>
+                      <option value="off">Nonaktif</option>
+                    </select>
+                  </label>
+                  <label className="rule-field">
+                    <span>Kebijakan Bobot Bagian vs Total Baris</span>
+                    <select
+                      value={validationRules.sectionWeightPolicy}
+                      onChange={(e) => setValidationRules((prev) => ({ ...prev, sectionWeightPolicy: e.target.value }))}
+                    >
+                      <option value="warn">Peringatan (Tetap Bisa Kirim)</option>
+                      <option value="error">Wajib Sama (Blokir Kirim)</option>
+                      <option value="off">Nonaktif</option>
+                    </select>
+                  </label>
+                  <button type="button" onClick={syncAllSectionWeightsToRows} style={{ width: '100%' }}>
+                    Samakan Semua Bobot Bagian ke Total Baris
+                  </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
+                    <label className="rule-field">
+                      <span>Maks. Bobot Penalti</span>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={validationRules.maxPenaltyWeight}
+                        onChange={(e) => setValidationRules((prev) => ({ ...prev, maxPenaltyWeight: e.target.value }))}
+                      />
+                    </label>
+                    <label className="rule-field">
+                      <span>Kebijakan Penalti</span>
+                      <select
+                        value={validationRules.penaltyWeightPolicy}
+                        onChange={(e) => setValidationRules((prev) => ({ ...prev, penaltyWeightPolicy: e.target.value }))}
+                      >
+                        <option value="off">Nonaktif</option>
+                        <option value="warn">Peringatan</option>
+                        <option value="error">Wajib (Blokir)</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="rule-field">
+                    <span>Kebijakan Kelengkapan PIC per Baris</span>
+                    <select
+                      value={validationRules.requirePicPolicy}
+                      onChange={(e) => setValidationRules((prev) => ({ ...prev, requirePicPolicy: e.target.value }))}
+                    >
+                      <option value="off">Opsional (Tanpa Peringatan)</option>
+                      <option value="warn">Peringatan bila PIC Kosong</option>
+                      <option value="error">Wajib Ada PIC (Blokir Kirim)</option>
+                    </select>
+                  </label>
+                  <label className="designer-check" style={{ marginTop: '0.15rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(validationRules.requireEvidenceOnSubmit)}
+                      onChange={(e) => setValidationRules((prev) => ({ ...prev, requireEvidenceOnSubmit: e.target.checked }))}
+                    />
+                    Wajib bukti capaian per baris saat unit submit
+                  </label>
+                  <label className="designer-check">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(validationRules.requireFormulaText)}
+                      onChange={(e) => setValidationRules((prev) => ({ ...prev, requireFormulaText: e.target.checked }))}
+                    />
+                    Peringatkan jika narasi rumusan kosong
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                    <button type="button" className="primary" onClick={handleSaveValidationRules} style={{ flex: '1 1 150px' }}>
+                      <Check size={14} /> Simpan Aturan PRP
+                    </button>
+                    <button type="button" onClick={handleResetValidationRules}>
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="designer-panel">
+                <h2><History size={15} /> Riwayat Snapshot Konfigurasi</h2>
                 {history.length ? history.map((snapshot, index) => (
                   <div className="designer-history" key={`${snapshot.version}-${index}`}>
                     <span>v{snapshot.version}<small>{new Date(snapshot.publishedAt).toLocaleString('id-ID')}</small></span>
-                    <button type="button" className="ghost" title={`Pulihkan v${snapshot.version} ke draft`} disabled={!snapshot.sections} onClick={() => {
-                      setSections(migrate(clone(snapshot.sections)));
-                      setSimValues({});
-                      notify(`v${snapshot.version} dipulihkan ke draft, belum dikirim.`);
-                    }}><RotateCcw size={14} /></button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      title={`Pulihkan v${snapshot.version} ke draft`}
+                      disabled={!snapshot.sections}
+                      onClick={() => {
+                        setSections(migrate(clone(snapshot.sections)));
+                        setSimValues({});
+                        notify(`v${snapshot.version} dipulihkan ke draft, belum dikirim.`);
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
                   </div>
-                )) : <p>Belum ada snapshot.</p>}
+                )) : <p>Belum ada snapshot terpublikasi.</p>}
               </section>
             </aside>
           )}

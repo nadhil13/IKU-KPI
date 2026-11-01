@@ -61,7 +61,7 @@ export default function StrategicFramework() {
       .from('.sf-subtitle', { y: 16, opacity: 0, duration: 0.65 }, '-=0.5')
       .from('.sf-stat-item', { y: 20, opacity: 0, duration: 0.6, stagger: 0.06 }, '-=0.45');
 
-    // Horizontal pinned scroll ONLY on desktop >= 1024px (clean vertical grid on mobile/tablet)
+    // Pinned horizontal scroll only at 1024px and up; mobile and tablet get a vertical grid
     const mm = gsap.matchMedia();
     mm.add('(min-width: 1024px)', () => {
       const hSection = mainRef.current?.querySelector('.sf-pillars');
@@ -218,7 +218,6 @@ export default function StrategicFramework() {
         }
       `}</style>
 
-      {/* ─── 1. HERO ─── */}
       <section
         className="sf-hero"
         style={{
@@ -274,7 +273,6 @@ export default function StrategicFramework() {
           </p>
         </div>
 
-        {/* Factual Institutional Architecture Ledger */}
         <div
           className="sf-hero-stats"
           style={{
@@ -309,7 +307,6 @@ export default function StrategicFramework() {
         </div>
       </section>
 
-      {/* ─── 2. DELAPAN PILAR KEMENTERIAN ─── */}
       <section className="sf-pillars">
         <div className="sf-pillars-sidebar">
           <div>
@@ -408,7 +405,6 @@ export default function StrategicFramework() {
         </div>
       </section>
 
-      {/* ─── 3. SIKLUS PDCA OPERASIONAL ─── */}
       <section className="sf-pdca" style={{ padding: 'clamp(4.5rem, 8vw, 7.5rem) 0', background: '#ffffff' }}>
         <div className="container">
           <div style={{ marginBottom: '3.5rem', maxWidth: '680px' }}>

@@ -68,21 +68,17 @@ const fragmentShader = `
     vec3 colIce   = vec3(0.70, 0.88, 0.98);
     vec3 colPearl = vec3(1.00, 1.00, 1.00);
 
-    // Flowing color gradient
     vec3 fluidColor = mix(colIce, colCyan, clamp(n2 * 0.6 + 0.3, 0.0, 1.0));
     fluidColor = mix(fluidColor, colPearl, caustic * 1.2);
 
-    // Bevel & Top specular reflection catching ambient overhead light
     float topGleam = smoothstep(0.68, 1.0, uv.y) * 0.55;
     topGleam += smoothstep(0.92, 1.0, uv.y) * 0.65;
 
-    // Subtle edge highlight
     float edgeGlow = (pow(1.0 - uv.y, 4.0) + pow(uv.y, 4.0)) * 0.15;
 
-    // Resulting color
     vec3 finalRgb = fluidColor * (caustic * 0.85 + 0.05) + colPearl * topGleam;
 
-    // Soft, crystal-clear alpha (never opaque sludge, always ethereal luxury glass)
+    // Cap alpha at 0.55 so underlying navbar surface stays legible.
     float alpha = clamp(caustic * 0.25 + topGleam * 0.35 + edgeGlow * 0.20, 0.0, 0.55);
 
     gl_FragColor = vec4(finalRgb, alpha);

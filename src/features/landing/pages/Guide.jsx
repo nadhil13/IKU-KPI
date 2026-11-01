@@ -120,7 +120,6 @@ export default function Guide() {
         }
       `}</style>
 
-      {/* ─── HERO SECTION ─── */}
       <section
         className="hero-section"
         style={{
@@ -169,7 +168,6 @@ export default function Guide() {
         </div>
       </section>
 
-      {/* ─── SPLIT-SCREEN EDITORIAL GUIDE ─── */}
       <section style={{ maxWidth: 1400, margin: '0 auto', padding: '0 clamp(1.25rem, 4vw, 4rem)' }}>
         <div className="guide-body-layout">
           <aside className="guide-sticky-aside">
@@ -269,7 +267,7 @@ export default function Guide() {
         </div>
       </section>
 
-      {/* ─── ACTION FOOTER SECTION (VALID ROUTES, NO DEAD HREF="#") ─── */}
+      {/* Valid routes only, no href="#" */}
       <section
         className="cta-section"
         style={{

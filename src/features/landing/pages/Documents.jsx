@@ -137,7 +137,6 @@ export default function Documents({ embedded = false }) {
         }
       `}</style>
 
-      {/* ─── HERO SECTION ─── */}
       <section
         className="doc-hero"
         style={{
@@ -173,7 +172,6 @@ export default function Documents({ embedded = false }) {
         </div>
       </section>
 
-      {/* ─── DOCUMENT LEDGER ─── */}
       <section
         style={{
           padding: isEmbedded

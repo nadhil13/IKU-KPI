@@ -2,10 +2,10 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { minimumPasswordLength, notifyAdminUpdated, readSystemConfig, writeAudit } from '../../internal/adminStore';
 
 /**
- * Akun Resmi Pengujian Lokal:
- * 1. iku@itpln.ac.id   -> Hanya bisa akses Menu IKU
- * 2. kpi@itpln.ac.id   -> Hanya bisa akses Menu KPI
- * 3. admin@itpln.ac.id -> Superadmin PRP untuk seluruh platform, IKU, dan KPI
+ * Akun resmi pengujian operasional:
+ * - iku@itpln.ac.id   : Otoritas khusus IKU Kementerian
+ * - kpi@itpln.ac.id   : Otoritas unit KPI (default PIC BAKT & BAG) beserta akun per unit/PIC resmi ITPLN
+ * - admin@itpln.ac.id : Superadmin PRP untuk tata kelola penuh, validasi bukti, dan audit terpusat
  */
 export const MOCK_ACCOUNTS = [
   {
@@ -19,24 +19,26 @@ export const MOCK_ACCOUNTS = [
     roleTitle: 'Otoritas Khusus IKU',
     badge: 'IKU ONLY',
     allowedPortals: ['iku'],
+    picCodes: [],
     unit: 'Biro Akademik & Kemahasiswaan ITPLN',
     avatar: 'IKU',
-    description: 'Akses terkunci khusus untuk pengelolaan dan pemantauan 8 IKU Kementerian.'
+    description: 'Akses khusus untuk pengelolaan dan pemantauan 8 IKU Kementerian.'
   },
   {
     id: 'user-kpi',
     code: '02',
     email: 'kpi@itpln.ac.id',
     password: 'password',
-    name: 'Tim Kinerja Unit & Fakultas',
-    shortName: 'PIC KPI',
+    name: 'Biro Akuntansi & Biro Anggaran (BAKT / BAG)',
+    shortName: 'PIC BAKT/BAG',
     role: 'kpi_only',
-    roleTitle: 'Otoritas Khusus KPI',
-    badge: 'KPI ONLY',
+    roleTitle: 'Otoritas Unit KPI (BAKT & BAG)',
+    badge: 'PIC: BAKT, BAG',
     allowedPortals: ['kpi'],
-    unit: 'Fakultas & Unit Operasional ITPLN',
-    avatar: 'KPI',
-    description: 'Akses terkunci khusus untuk pengelolaan Key Performance Indicator internal unit & fakultas.'
+    picCodes: ['BAKT', 'BAG'],
+    unit: 'Biro Akuntansi & Anggaran (BAKT, BAG)',
+    avatar: 'BKG',
+    description: 'Mengisi indikator KPI yang ditugaskan ke BAKT/BAG dan memantau capaian unit lain secara transparan.'
   },
   {
     id: 'user-dual',
@@ -49,9 +51,266 @@ export const MOCK_ACCOUNTS = [
     roleTitle: 'Superadmin PRP',
     badge: 'SUPERADMIN PRP',
     allowedPortals: ['iku', 'kpi'],
-    unit: 'Satuan Penjaminan Mutu Internal (SPMI)',
+    picCodes: ['PRP'],
+    unit: 'Direktorat Perencanaan & Pengembangan (PRP)',
     avatar: 'ADM',
-    description: 'Mengelola platform, submission, konfigurasi tabel, rumus, periode, dan akses IKU serta KPI.'
+    description: 'Mengelola platform, submission, konfigurasi tabel, rumus, validasi bukti, periode, dan audit trail terpusat.'
+  },
+  {
+    id: 'user-kpi-bakt',
+    code: '04',
+    email: 'bakt@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Akuntansi ITPLN',
+    shortName: 'PIC BAKT',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BAKT',
+    badge: 'PIC: BAKT',
+    allowedPortals: ['kpi'],
+    picCodes: ['BAKT'],
+    unit: 'Biro Akuntansi (BAKT)',
+    avatar: 'BAK',
+    description: 'Hak pengisian khusus indikator KPI dengan PIC BAKT (1b, 2, 3, 4 Bagian A & 2 Bagian D).'
+  },
+  {
+    id: 'user-kpi-bag',
+    code: '05',
+    email: 'bag@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Anggaran ITPLN',
+    shortName: 'PIC BAG',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BAG',
+    badge: 'PIC: BAG',
+    allowedPortals: ['kpi'],
+    picCodes: ['BAG'],
+    unit: 'Biro Anggaran (BAG)',
+    avatar: 'BAG',
+    description: 'Hak pengisian khusus indikator KPI dengan PIC BAG (1b, 2, 3, 4 Bagian A & 1 Bagian D).'
+  },
+  {
+    id: 'user-kpi-ppa',
+    code: '06',
+    email: 'ppa@itpln.ac.id',
+    password: 'password',
+    name: 'Pusat Pelayanan Akademik ITPLN',
+    shortName: 'PIC PPA',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit PPA',
+    badge: 'PIC: PPA',
+    allowedPortals: ['kpi'],
+    picCodes: ['PPA'],
+    unit: 'Pusat Pelayanan Akademik (PPA)',
+    avatar: 'PPA',
+    description: 'Hak pengisian khusus indikator KPI dengan PIC PPA (1a Bagian A).'
+  },
+  {
+    id: 'user-kpi-bku',
+    code: '07',
+    email: 'bku@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Keuangan ITPLN',
+    shortName: 'PIC BKU',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BKU',
+    badge: 'PIC: BKU',
+    allowedPortals: ['kpi'],
+    picCodes: ['BKU'],
+    unit: 'Biro Keuangan (BKU)',
+    avatar: 'BKU',
+    description: 'Hak pengisian khusus indikator KPI dengan PIC BKU (5 Bagian A).'
+  },
+  {
+    id: 'user-kpi-pjm',
+    code: '08',
+    email: 'pjm@itpln.ac.id',
+    password: 'password',
+    name: 'Pusat Jaminan Mutu ITPLN',
+    shortName: 'PIC PJM',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit PJM',
+    badge: 'PIC: PJM',
+    allowedPortals: ['kpi'],
+    picCodes: ['PJM'],
+    unit: 'Pusat Jaminan Mutu (PJM)',
+    avatar: 'PJM',
+    description: 'Hak pengisian khusus indikator KPI dengan PIC PJM (tata kelola, EDOM, layanan kampus, OBE, akreditasi, tindak lanjut audit).'
+  },
+  {
+    id: 'user-kpi-prp',
+    code: '09',
+    email: 'prp.unit@itpln.ac.id',
+    password: 'password',
+    name: 'Unit Pelaksana Pelaporan PRP',
+    shortName: 'PIC PRP',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit PRP',
+    badge: 'PIC: PRP',
+    allowedPortals: ['kpi'],
+    picCodes: ['PRP'],
+    unit: 'Direktorat Perencanaan & Pengembangan (PRP)',
+    avatar: 'PRP',
+    description: 'Hak pengisian khusus indikator KPI dengan PIC PRP (tata kelola, EDOM, layanan kampus, pelaporan manajemen).'
+  },
+  {
+    id: 'user-kpi-bpka',
+    code: '10',
+    email: 'bpka@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Pengembangan Karir & Alumni',
+    shortName: 'PIC BPKA',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BPKA',
+    badge: 'PIC: BPKA',
+    allowedPortals: ['kpi'],
+    picCodes: ['BPKA'],
+    unit: 'Biro Pengembangan Karir & Alumni (BPKA)',
+    avatar: 'BPK',
+    description: 'Hak pengisian khusus indikator KPI Tracer Study dan Penerimaan Lulusan Offtaker.'
+  },
+  {
+    id: 'user-kpi-bkk',
+    code: '11',
+    email: 'bkk@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Kemahasiswaan & Konseling',
+    shortName: 'PIC BKK',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BKK',
+    badge: 'PIC: BKK',
+    allowedPortals: ['kpi'],
+    picCodes: ['BKK'],
+    unit: 'Biro Kemahasiswaan & Konseling (BKK)',
+    avatar: 'BKK',
+    description: 'Hak pengisian khusus indikator KPI Mahasiswa Berprestasi.'
+  },
+  {
+    id: 'user-kpi-bkai',
+    code: '12',
+    email: 'bkai@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Kerja Sama Akademik Internasional',
+    shortName: 'PIC BKAI',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BKAI',
+    badge: 'PIC: BKAI',
+    allowedPortals: ['kpi'],
+    picCodes: ['BKAI'],
+    unit: 'Biro Kerja Sama Akademik Internasional (BKAI)',
+    avatar: 'BKI',
+    description: 'Hak pengisian khusus indikator KPI Kerja Sama Internasional.'
+  },
+  {
+    id: 'user-kpi-bpik',
+    code: '13',
+    email: 'bpik@itpln.ac.id',
+    password: 'password',
+    name: 'Tim Penjaringan Mahasiswa Baru (BPIK, BKM, BSAR, BPAD)',
+    shortName: 'PIC Admisi',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BPIK/BKM/BSAR/BPAD',
+    badge: 'PIC: BPIK, BKM, BSAR, BPAD',
+    allowedPortals: ['kpi'],
+    picCodes: ['BPIK', 'BKM', 'BSAR', 'BPAD'],
+    unit: 'Biro Pemasaran, Kemahasiswaan, Sarpras & Aset (BPIK, BKM, BSAR, BPAD)',
+    avatar: 'PMB',
+    description: 'Hak pengisian khusus indikator KPI Efektivitas Penjaringan Calon Mahasiswa Baru.'
+  },
+  {
+    id: 'user-kpi-fak',
+    code: '14',
+    email: 'fak@itpln.ac.id',
+    password: 'password',
+    name: 'Fakultas & Program Studi ITPLN',
+    shortName: 'PIC FAK',
+    role: 'kpi_only',
+    roleTitle: 'PIC Fakultas (FAK)',
+    badge: 'PIC: FAK',
+    allowedPortals: ['kpi'],
+    picCodes: ['FAK'],
+    unit: 'Fakultas & Program Studi (FAK)',
+    avatar: 'FAK',
+    description: 'Hak pengisian khusus indikator KPI Kurikulum OBE, Klasterisasi Mandiri, dan Akreditasi Program.'
+  },
+  {
+    id: 'user-kpi-lppm',
+    code: '15',
+    email: 'lppm@itpln.ac.id',
+    password: 'password',
+    name: 'Lembaga Penelitian & Pengabdian kepada Masyarakat',
+    shortName: 'PIC LPPM',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit LPPM',
+    badge: 'PIC: LPPM',
+    allowedPortals: ['kpi'],
+    picCodes: ['LPPM'],
+    unit: 'Lembaga Penelitian & Pengabdian kepada Masyarakat (LPPM)',
+    avatar: 'LPM',
+    description: 'Hak pengisian khusus indikator KPI Penelitian, Publikasi Ilmiah, Sitasi, PKM, HKI, dan Kapasitas Dosen.'
+  },
+  {
+    id: 'user-kpi-sdm',
+    code: '16',
+    email: 'sdm@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Sumber Daya Manusia (SDM & BSDM)',
+    shortName: 'PIC SDM/BSDM',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit SDM & BSDM',
+    badge: 'PIC: SDM, BSDM',
+    allowedPortals: ['kpi'],
+    picCodes: ['SDM', 'BSDM'],
+    unit: 'Biro Sumber Daya Manusia (SDM, BSDM)',
+    avatar: 'SDM',
+    description: 'Hak pengisian khusus indikator KPI Peningkatan Kualitas Dosen dan Integrasi Siakad & SimKug.'
+  },
+  {
+    id: 'user-kpi-bkan',
+    code: '17',
+    email: 'bkan@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Kerja Sama Akademik Nasional',
+    shortName: 'PIC BKAN',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BKAN',
+    badge: 'PIC: BKAN',
+    allowedPortals: ['kpi'],
+    picCodes: ['BKAN'],
+    unit: 'Biro Kerja Sama Akademik Nasional (BKAN)',
+    avatar: 'BKN',
+    description: 'Hak pengisian khusus indikator KPI Kerja Sama Akademik dengan Industri dan Perguruan Tinggi.'
+  },
+  {
+    id: 'user-kpi-bpti',
+    code: '18',
+    email: 'bpti@itpln.ac.id',
+    password: 'password',
+    name: 'Biro Pengembangan Teknologi Informasi',
+    shortName: 'PIC BPTI',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit BPTI',
+    badge: 'PIC: BPTI',
+    allowedPortals: ['kpi'],
+    picCodes: ['BPTI'],
+    unit: 'Biro Pengembangan Teknologi Informasi (BPTI)',
+    avatar: 'BTI',
+    description: 'Hak pengisian khusus indikator KPI Integrasi Siakad & SimKug.'
+  },
+  {
+    id: 'user-kpi-spi',
+    code: '19',
+    email: 'spi@itpln.ac.id',
+    password: 'password',
+    name: 'Satuan Pengawasan Intern, Akuntansi & WBS',
+    shortName: 'PIC SPI/Audit',
+    role: 'kpi_only',
+    roleTitle: 'PIC Unit SPI, Akuntansi & WBS',
+    badge: 'PIC: SPI, Akuntansi, WBS',
+    allowedPortals: ['kpi'],
+    picCodes: ['SPI', 'Akuntansi', 'WBS'],
+    unit: 'Satuan Pengawasan Intern (SPI, Akuntansi, WBS)',
+    avatar: 'SPI',
+    description: 'Hak pengisian khusus indikator KPI Tindaklanjut Rekomendasi Audit & Temuan.'
   }
 ];
 
@@ -71,9 +330,17 @@ export const readMergedUsers = () => {
   getStoredUsers().forEach((user) => {
     if (typeof user.email !== 'string') return;
     const email = user.email.toLowerCase();
-    merged.set(email, { ...merged.get(email), ...user, email });
+    const base = merged.get(email);
+    const picCodes = Array.isArray(user.picCodes)
+      ? user.picCodes
+      : (Array.isArray(base?.picCodes) ? base.picCodes : []);
+    merged.set(email, { ...base, ...user, email, picCodes });
   });
-  return [...merged.values()].map((user) => ({ ...user, allowedPortals: portalsForRole(user.role) }));
+  return [...merged.values()].map((user) => ({
+    ...user,
+    picCodes: Array.isArray(user.picCodes) ? user.picCodes : [],
+    allowedPortals: portalsForRole(user.role),
+  }));
 };
 
 export function AuthProvider({ children }) {
@@ -141,7 +408,6 @@ export function AuthProvider({ children }) {
     if ((activeContext === 'prp' && currentUser.role !== 'superadmin_prp') || (activeContext !== 'prp' && !portals.includes(activeContext))) setActiveContext(portals[0] || 'iku');
   }, [currentUser, activeWorkspace, activeContext]);
 
-  // Sinkronisasi ketat antara Role dan Workspace di localStorage
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('performa_user', JSON.stringify(currentUser));
@@ -165,12 +431,6 @@ export function AuthProvider({ children }) {
     localStorage.setItem('performa_context', activeContext);
   }, [activeContext]);
 
-  /**
-   * Fungsi Login Utama untuk 3 Kondisi:
-   * - Kondisi 1 (iku_only): Langsung set user & arahkan ke 'iku'
-   * - Kondisi 2 (kpi_only): Langsung set user & arahkan ke 'kpi'
-  * - Superadmin PRP      : Langsung masuk pusat kendali admin
-   */
   const login = (email, password) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = password || '';
@@ -189,7 +449,6 @@ export function AuthProvider({ children }) {
     setCurrentUser(matchedUser);
     writeAudit('LOGIN_BERHASIL', 'Login berhasil', cleanEmail);
 
-    // KONDISI 1: Hanya IKU
     if (matchedUser.role === 'iku_only') {
       setCurrentUser(matchedUser);
       setActiveWorkspace('iku');
@@ -202,7 +461,6 @@ export function AuthProvider({ children }) {
       };
     }
 
-    // KONDISI 2: Hanya KPI
     if (matchedUser.role === 'kpi_only') {
       setCurrentUser(matchedUser);
       setActiveWorkspace('kpi');
@@ -227,7 +485,6 @@ export function AuthProvider({ children }) {
       };
     }
 
-    // Akun dengan dua ruang kerja lama tetap diarahkan ke gerbang pilihan.
     return {
       success: true,
       user: matchedUser,
@@ -236,9 +493,6 @@ export function AuthProvider({ children }) {
     };
   };
 
-  /**
-   * Menyelesaikan login Kondisi 3 setelah user memilih Menu IKU atau Menu KPI
-   */
   const completeDualLogin = (user, chosenWorkspace) => {
     const validChoice = chosenWorkspace === 'kpi' ? 'kpi' : 'iku';
     if (!currentUser || user.email !== currentUser.email || !portalsForRole(currentUser.role).includes(validChoice)) return;
@@ -246,9 +500,6 @@ export function AuthProvider({ children }) {
     setActiveContext(validChoice);
   };
 
-  /**
-   * Pindah menu di dalam dashboard (Hanya diizinkan untuk akun Kondisi 3 / Dual)
-   */
   const switchWorkspace = (workspace) => {
     if (['dual', 'superadmin_prp'].includes(currentUser?.role) && (workspace === 'iku' || workspace === 'kpi')) {
       setActiveWorkspace(workspace);
@@ -317,7 +568,6 @@ export function AuthProvider({ children }) {
     const next = { ...account, password: newPassword, mustChangePassword: false };
     localStorage.setItem('prp_users', JSON.stringify([...getStoredUsers().filter((user) => user.email !== next.email), next]));
     setCurrentUser(next);
-    // Notify after React commits the new credentials so this tab keeps its session.
     changedPasswordActor.current = next.email;
     setNewPassword(''); setConfirmation(''); setPasswordError('');
   };

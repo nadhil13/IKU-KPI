@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useAuth } from '../../auth/context/AuthContext';
-import { readKpiWorkflow, readUnitEvidence, readUnitSubmission, subscribeKpiWorkflow } from '../../kpi/kpiWorkflowStore';
+import { readKpiWorkflow, readUnitDraft, readUnitEvidence, readUnitSubmission, subscribeKpiWorkflow } from '../../kpi/kpiWorkflowStore';
 import { getIkuPeriods, listIkuSubmissions, subscribeIku } from '../../iku/ikuWorkflowStore';
 import { readSystemConfig } from '../adminStore';
 
@@ -27,22 +27,32 @@ const BADGE_CLASS = {
   EMPTY: 'ent-badge',
 };
 
-/** Gabungkan submission KPI (per form × unit) dan IKU menjadi satu daftar baris seragam. */
+/** Gabungkan submission KPI (per form x unit) dan IKU menjadi satu daftar baris seragam. */
 function collectRows(user) {
   const kpi = readKpiWorkflow();
   const kpiRows = kpi.forms.flatMap((form) => form.units.map((unit) => {
     const record = readUnitSubmission(form.id, unit.email, kpi);
+    const draft = readUnitDraft(form.id, unit.email, kpi);
     const evidence = readUnitEvidence(form.id, unit.email, kpi);
+    const fileCount = evidence.filter((e) => e.kind === 'file').length;
+    const linkCount = evidence.length - fileCount;
+    const verifiedCount = evidence.filter((e) => e.status === 'VERIFIED').length;
+    const effectiveStatus = record?.status || (draft || evidence.length > 0 ? 'DRAFT' : 'EMPTY');
+    const picBadge = (record?.picCodes || unit.picCodes || []).join(', ');
     return {
       key: `kpi:${form.id}:${unit.email}`,
       module: 'KPI',
       unit: record?.unit || unit.name,
+      picBadge,
       email: unit.email,
       period: `${form.period} · v${form.version}`,
-      status: record?.status || 'EMPTY',
-      updatedAt: record?.history?.at(-1)?.at || record?.submittedAt || '',
-      filled: record ? `Skor ${record.totalScore ?? '-'}` : '-',
-      evidence: evidence.length ? `${evidence.filter((e) => e.status === 'VERIFIED').length}/${evidence.length} terverifikasi` : 'Belum ada',
+      status: effectiveStatus,
+      canReviewKpi: Boolean(record),
+      updatedAt: record?.history?.at(-1)?.at || record?.submittedAt || draft?.updatedAt || '',
+      filled: record ? `Skor ${record.totalScore ?? '-'}` : (draft ? `${Object.keys(draft.values || {}).length} isian draft` : '-'),
+      evidence: evidence.length
+        ? `${verifiedCount}/${evidence.length} terverifikasi (${fileCount ? `${fileCount} berkas` : ''}${fileCount && linkCount ? ', ' : ''}${linkCount ? `${linkCount} tautan` : ''})`
+        : 'Belum ada',
       formId: form.id,
     };
   }));
@@ -91,7 +101,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
   }, [currentUser, tick]);
 
   const visible = rows.filter((row) => (!module || row.module === module) && (!status || row.status === status)
-    && `${row.unit} ${row.email} ${row.period}`.toLowerCase().includes(search.trim().toLowerCase()));
+    && `${row.unit} ${row.picBadge || ''} ${row.email} ${row.period}`.toLowerCase().includes(search.trim().toLowerCase()));
   const count = (value) => rows.filter((row) => row.status === value).length;
   const deadline = readSystemConfig().submissionDeadline;
 
@@ -99,7 +109,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
     <div className="gov-table">
       <div className="gov-table-head">
         <div>
-          <h2>Daftar Submission Lintas Modul (IKU & KPI)</h2>
+          <h2>Daftar Submission Lintas Modul (IKU &amp; KPI)</h2>
           <span>
             {rows.length} rekaman · <strong>{count('SUBMITTED')}</strong> menunggu review · {count('NEEDS_REVISION')} perlu revisi · {count('LOCKED')} dikunci
             {deadline ? ` · Tenggat global ${new Date(deadline).toLocaleString('id-ID')}` : ''}
@@ -124,13 +134,13 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
             style={{ paddingLeft: '2.2rem' }}
             type="search"
             aria-label="Cari submission"
-            placeholder="Cari unit, email, periode..."
+            placeholder="Cari unit, PIC, email, periode..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <select className="gov-field" aria-label="Filter modul" value={module} onChange={(e) => setModule(e.target.value)}>
-          <option value="">Semua modul (IKU & KPI)</option>
+          <option value="">Semua modul (IKU &amp; KPI)</option>
           <option>IKU</option>
           <option>KPI</option>
         </select>
@@ -155,7 +165,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
             {visible.map((row) => (
               <tr
                 key={row.key}
-                style={{ borderTop: '1px solid #D8E4EA', transition: 'background 0.18s ease' }}
+                style={{ borderTop: '1px solid #D8E4EA', transition: 'background-color 0.18s ease' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#F7FAFB'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
@@ -178,7 +188,25 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                   </span>
                 </td>
                 <td style={{ padding: '0.8rem 1.15rem' }}>
-                  <strong style={{ color: '#072534', display: 'block', fontSize: '0.78rem' }}>{row.unit}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <strong style={{ color: '#072534', fontSize: '0.78rem' }}>{row.unit}</strong>
+                    {row.picBadge && (
+                      <span
+                        style={{
+                          fontSize: '0.63rem',
+                          fontWeight: 700,
+                          fontFamily: 'JetBrains Mono, monospace',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          background: '#EDF3F6',
+                          border: '1px solid #B8CAD4',
+                          color: '#094E68',
+                        }}
+                      >
+                        PIC: {row.picBadge}
+                      </span>
+                    )}
+                  </div>
                   <small style={{ color: '#475569', fontSize: '0.69rem' }}>{row.email}</small>
                 </td>
                 <td style={{ padding: '0.8rem 1.15rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
@@ -199,7 +227,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                       Tinjau Detail
                     </Link>
                   ) : (
-                    row.status !== 'EMPTY' && (
+                    row.canReviewKpi && (
                       <button type="button" className="gov-button" onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
                         Tinjau Detail
                       </button>

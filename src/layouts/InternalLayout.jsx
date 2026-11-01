@@ -668,7 +668,7 @@ export default function InternalLayout() {
         />
       )}
 
-      {/* ─── 1. SIDEBAR NAVIGASI INTERNAL ITPLN ─── */}
+      {/* Bilah sisi navigasi ruang kerja internal. */}
       <aside
         aria-label="Navigasi ruang kerja internal"
         className={`corp-sidebar ${sidebarOpen ? 'open' : ''}`}
@@ -987,7 +987,7 @@ export default function InternalLayout() {
           />
 
           <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', gap: '1.35rem' }}>
-            {/* ═══ KONTEKS 1: SUPERADMIN PRP CONTROL CENTER ═══ */}
+            {/* Konteks Superadmin PRP Control Center. */}
             {showPRP && (
               <>
                 <div className="sidebar-stagger nav-context-item">
@@ -1111,7 +1111,7 @@ export default function InternalLayout() {
               </>
             )}
 
-            {/* ═══ KONTEKS 2: RUANG KERJA IKU KEMENTERIAN ═══ */}
+            {/* Konteks ruang kerja IKU Kementerian. */}
             {showIKU && (
               <div className="sidebar-stagger nav-context-item">
                 <div className="corp-nav-section-label">
@@ -1199,7 +1199,7 @@ export default function InternalLayout() {
               </div>
             )}
 
-            {/* ═══ KONTEKS 3: RUANG KERJA KPI OPERASIONAL ═══ */}
+            {/* Konteks ruang kerja KPI operasional unit. */}
             {showKPI && (
               <div className="sidebar-stagger nav-context-item">
                 <div className="corp-nav-section-label">
@@ -1269,7 +1269,7 @@ export default function InternalLayout() {
               </div>
             )}
 
-            {/* ═══ IDENTITAS & SESI (SELALU TERSEDIA) ═══ */}
+            {/* Menu profil sesi yang selalu tersedia bagi semua peran. */}
             <div className="sidebar-stagger">
               <div className="corp-nav-section-label">
                 <span>AKUN &amp; SESI</span>
@@ -1323,7 +1323,7 @@ export default function InternalLayout() {
         </div>
       </aside>
 
-      {/* ─── 2. MAIN WORKSPACE AREA ─── */}
+      {/* Area konten utama ruang kerja. */}
       <main
         style={{
           flex: 1,
@@ -1665,7 +1665,7 @@ export default function InternalLayout() {
         </div>
       </main>
 
-      {/* ─── 3. COMMAND PALETTE MODAL (Ctrl+K) ─── */}
+      {/* Dialog navigasi cepat (Ctrl+K). */}
       {cmdOpen && (
         <div
           onClick={() => setCmdOpen(false)}
@@ -1831,7 +1831,7 @@ export default function InternalLayout() {
         </div>
       )}
 
-      {/* ─── 4. MODAL ISOLASI AKSES ─── */}
+      {/* Dialog pemberitahuan isolasi akses peran. */}
       {blockedModalInfo && (
         <div
           onClick={() => setBlockedModalInfo(null)}

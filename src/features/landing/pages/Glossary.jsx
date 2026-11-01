@@ -162,7 +162,8 @@ export default function Glossary() {
         }
         .glos-search-shell:focus-within {
           border-color: #0E7480;
-          box-shadow: 0 0 0 3px rgba(14, 116, 128, 0.14);
+          outline: 2px solid #0E7480;
+          outline-offset: 2px;
         }
         .glos-search-input {
           width: 100%;
@@ -243,7 +244,6 @@ export default function Glossary() {
         }
       `}</style>
 
-      {/* ─── HERO & SEARCH ─── */}
       <section
         style={{
           padding: 'clamp(7.5rem, 11vw, 10rem) clamp(1.25rem, 4vw, 4rem) clamp(2rem, 4vw, 3rem)',
@@ -284,7 +284,6 @@ export default function Glossary() {
             </div>
           </div>
 
-          {/* SEARCH BAR */}
           <div className="glos-search-bar glos-search-shell">
             <label
               htmlFor="glossary-search"
@@ -352,7 +351,6 @@ export default function Glossary() {
         </div>
       </section>
 
-      {/* ─── DIRECTORY LIST ─── */}
       <section style={{ padding: '0 clamp(1.25rem, 4vw, 4rem) clamp(5rem, 8vw, 8rem)' }}>
         <div style={{ maxWidth: 1320, margin: '0 auto' }}>
           <div className="glos-table-head">

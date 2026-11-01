@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,28 +12,29 @@ import {
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../context/AuthContext';
+import { readMergedUsers, useAuth } from '../context/AuthContext';
 
-// Posisi fokus kamera foto gedung ITPLN untuk setiap skenario
 const CAMERA_PRESETS = [
-  { scale: 1.05, xPercent: -1.5, yPercent: -1.0 }, // 01: Fokus IKU
-  { scale: 1.08, xPercent: 0.0, yPercent: 0.5 }, // 02: Fokus KPI
-  { scale: 1.11, xPercent: 1.5, yPercent: -0.5 }, // 03: Fokus Superadmin PRP
+  { scale: 1.05, xPercent: -1.5, yPercent: -1.0 },
+  { scale: 1.08, xPercent: 0.0, yPercent: 0.5 },
+  { scale: 1.11, xPercent: 1.5, yPercent: -0.5 },
 ];
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, completeDualLogin, mockAccounts } = useAuth();
 
-  const [selectedIdx, setSelectedIdx] = useState(2); // Default: 03 Superadmin PRP
+  const allAccounts = useMemo(() => readMergedUsers().filter((acc) => acc.status !== 'Nonaktif'), []);
+  const kpiAccounts = useMemo(() => allAccounts.filter((acc) => acc.role === 'kpi_only'), [allAccounts]);
+
+  const [selectedIdx, setSelectedIdx] = useState(2);
   const [email, setEmail] = useState(mockAccounts[2].email);
   const [password, setPassword] = useState(mockAccounts[2].password);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [focusedField, setFocusedField] = useState(null);
 
-  // State Pemilihan Ruang Kerja (khusus akun peran ganda 'dual')
-  const [step, setStep] = useState('credentials'); // 'credentials' | 'workspace_gate'
+  const [step, setStep] = useState('credentials');
   const [pendingDualUser, setPendingDualUser] = useState(null);
   const [hoveredGate, setHoveredGate] = useState(null);
 
@@ -48,9 +49,15 @@ export default function Login() {
   const svgLineKpiRef = useRef(null);
   const wheelLockRef = useRef(false);
 
-  const activeAccount = mockAccounts[selectedIdx] || mockAccounts[2];
+  const matchedByEmail = allAccounts.find((acc) => acc.email.toLowerCase() === email.trim().toLowerCase());
+  const activeAccount = matchedByEmail || mockAccounts[selectedIdx] || mockAccounts[2];
 
-  // Logika highlight modul di panel kiri (mendukung preview saat hover di Step 2)
+  const primaryTabIndex = activeAccount.role === 'iku_only'
+    ? 0
+    : activeAccount.role === 'kpi_only'
+      ? 1
+      : 2;
+
   const isIkuActive =
     step === 'workspace_gate' && hoveredGate
       ? hoveredGate === 'iku'
@@ -61,27 +68,35 @@ export default function Login() {
       ? hoveredGate === 'kpi'
       : activeAccount.role === 'kpi_only' || ['dual', 'superadmin_prp'].includes(activeAccount.role);
 
-  // Pilih Skenario Akun
   const handleSelectScenario = useCallback(
-    (idx) => {
-      if (idx < 0 || idx >= mockAccounts.length) return;
-      const targetAcc = mockAccounts[idx];
-      setSelectedIdx(idx);
+    (tabIdx) => {
+      if (tabIdx < 0 || tabIdx > 2) return;
+      const targetAcc = mockAccounts[tabIdx];
+      if (!targetAcc) return;
+      setSelectedIdx(tabIdx);
       setEmail(targetAcc.email);
       setPassword(targetAcc.password);
       setErrorMessage('');
     },
-    [mockAccounts]
+    [mockAccounts],
   );
 
-  // 1. Desktop Wheel Scenario Switcher (dinonaktifkan di mobile/input/reduced-motion)
+  const handleSelectKpiUnitAccount = (targetEmail) => {
+    const found = allAccounts.find((acc) => acc.email.toLowerCase() === targetEmail.toLowerCase());
+    if (!found) return;
+    setSelectedIdx(1);
+    setEmail(found.email);
+    setPassword(found.password || 'password');
+    setErrorMessage('');
+  };
+
   useEffect(() => {
     const handleWheel = (e) => {
       if (step !== 'credentials' || loading) return;
       if (window.innerWidth <= 1024) return;
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (Math.abs(e.deltaY) < 22) return;
       if (wheelLockRef.current) return;
 
@@ -90,24 +105,13 @@ export default function Login() {
         wheelLockRef.current = false;
       }, 520);
 
-      if (e.deltaY > 0) {
-        setSelectedIdx((prev) => {
-          const next = (prev + 1) % mockAccounts.length;
-          const acc = mockAccounts[next];
-          setEmail(acc.email);
-          setPassword(acc.password);
-          setErrorMessage('');
-          return next;
-        });
-      } else {
-        setSelectedIdx((prev) => {
-          const next = (prev - 1 + mockAccounts.length) % mockAccounts.length;
-          const acc = mockAccounts[next];
-          setEmail(acc.email);
-          setPassword(acc.password);
-          setErrorMessage('');
-          return next;
-        });
+      const nextTab = e.deltaY > 0 ? (primaryTabIndex + 1) % 3 : (primaryTabIndex + 2) % 3;
+      const acc = mockAccounts[nextTab];
+      if (acc) {
+        setSelectedIdx(nextTab);
+        setEmail(acc.email);
+        setPassword(acc.password);
+        setErrorMessage('');
       }
     };
 
@@ -118,9 +122,8 @@ export default function Login() {
     return () => {
       if (el) el.removeEventListener('wheel', handleWheel);
     };
-  }, [step, loading, mockAccounts]);
+  }, [step, loading, mockAccounts, primaryTabIndex]);
 
-  // 2. Master Entrance & Mouse Parallax Rig (tanpa infinite loop)
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return undefined;
@@ -131,25 +134,25 @@ export default function Login() {
     tl.fromTo(
       '.login-left-pane',
       { clipPath: 'inset(0 100% 0 0)' },
-      { clipPath: 'inset(0 0% 0 0)', duration: 1.15, ease: 'expo.inOut' }
+      { clipPath: 'inset(0 0% 0 0)', duration: 1.15, ease: 'expo.inOut' },
     )
       .fromTo(
         bgPhotoRef.current,
         { scale: 1.18, filter: 'blur(6px) brightness(0.88)' },
         { scale: 1.11, filter: 'blur(0px) brightness(1.02)', duration: 1.45, ease: 'expo.out' },
-        '-=0.8'
+        '-=0.8',
       )
       .fromTo(
         '.stagger-left',
         { y: 24, opacity: 0 },
         { y: 0, opacity: 1, duration: 0.85, stagger: 0.07, ease: 'expo.out' },
-        '-=1.05'
+        '-=1.05',
       )
       .fromTo(
         '.stagger-right',
         { y: 20, opacity: 0 },
         { y: 0, opacity: 1, duration: 0.85, stagger: 0.05, ease: 'expo.out' },
-        '-=0.95'
+        '-=0.95',
       );
 
     if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
@@ -174,14 +177,13 @@ export default function Login() {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, { scope: containerRef });
 
-  // 3. Choreographed GSAP Transition saat Skenario Berubah
   useGSAP(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const preset = CAMERA_PRESETS[selectedIdx] || CAMERA_PRESETS[2];
+    const preset = CAMERA_PRESETS[primaryTabIndex] || CAMERA_PRESETS[2];
 
     if (pillIndicatorRef.current) {
       gsap.to(pillIndicatorRef.current, {
-        xPercent: selectedIdx * 100,
+        xPercent: primaryTabIndex * 100,
         duration: reduced ? 0 : 0.5,
         ease: 'expo.out',
       });
@@ -189,7 +191,7 @@ export default function Login() {
 
     if (scrollProgressRef.current) {
       gsap.to(scrollProgressRef.current, {
-        scaleX: (selectedIdx + 1) / mockAccounts.length,
+        scaleX: (primaryTabIndex + 1) / 3,
         duration: reduced ? 0 : 0.5,
         ease: 'expo.out',
       });
@@ -211,7 +213,7 @@ export default function Login() {
     gsap.fromTo(
       '.morph-text-item',
       { y: 6, opacity: 0 },
-      { y: 0, opacity: 1, duration: 0.45, stagger: 0.03, ease: 'expo.out', overwrite: 'auto' }
+      { y: 0, opacity: 1, duration: 0.45, stagger: 0.03, ease: 'expo.out', overwrite: 'auto' },
     );
 
     if (svgLineIkuRef.current) {
@@ -230,9 +232,8 @@ export default function Login() {
         ease: 'expo.out',
       });
     }
-  }, { dependencies: [selectedIdx, isIkuActive, isKpiActive], scope: containerRef });
+  }, { dependencies: [primaryTabIndex, activeAccount.email, isIkuActive, isKpiActive], scope: containerRef });
 
-  // Submit Form Login
   const handleLoginSubmit = (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -262,7 +263,6 @@ export default function Login() {
     }, 360);
   };
 
-  // Transisi dari Form Kredensial menuju Gerbang Pilihan Menu (IKU vs KPI)
   const transitionToWorkspaceGate = () => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setStep('workspace_gate');
@@ -288,14 +288,13 @@ export default function Login() {
           gsap.fromTo(
             '.gate-stagger',
             { y: 20, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.65, stagger: 0.06, ease: 'expo.out' }
+            { y: 0, opacity: 1, duration: 0.65, stagger: 0.06, ease: 'expo.out' },
           );
         });
       },
     });
   };
 
-  // Kembali ke Form Login dari Gerbang Pilihan
   const handleBackToCredentials = () => {
     setHoveredGate(null);
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -306,7 +305,7 @@ export default function Login() {
 
     if (bgPhotoRef.current) {
       gsap.to(bgPhotoRef.current, {
-        scale: CAMERA_PRESETS[selectedIdx].scale,
+        scale: CAMERA_PRESETS[primaryTabIndex].scale,
         duration: 0.9,
         ease: 'expo.out',
       });
@@ -324,21 +323,19 @@ export default function Login() {
           gsap.fromTo(
             formStageRef.current,
             { y: -16, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.55, ease: 'expo.out' }
+            { y: 0, opacity: 1, duration: 0.55, ease: 'expo.out' },
           );
         });
       },
     });
   };
 
-  // Eksekusi Pilihan Menu pada Akun Peran Ganda ('iku' atau 'kpi')
   const handleChooseDualPortal = (chosenMenu) => {
     if (!pendingDualUser) return;
     completeDualLogin(pendingDualUser, chosenMenu);
     performPortalExit('/internal');
   };
 
-  // Animasi Keluar Halaman Menuju Dashboard Internal
   const performPortalExit = (destination) => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       navigate(destination);
@@ -358,12 +355,12 @@ export default function Login() {
       .to(
         '.login-left-pane',
         { clipPath: 'inset(0 100% 0 0)', duration: 0.7, ease: 'expo.inOut' },
-        '-=0.12'
+        '-=0.12',
       )
       .to(
         '.login-right-pane',
         { opacity: 0, duration: 0.5, ease: 'power2.inOut' },
-        '<'
+        '<',
       );
   };
 
@@ -373,7 +370,9 @@ export default function Login() {
       ? 'Masuk ke Pusat Kendali PRP'
       : activeAccount.role === 'dual'
         ? 'Verifikasi & Pilih Ruang Kerja'
-        : `Masuk ke Ruang Kerja ${activeAccount.role === 'iku_only' ? 'IKU' : 'KPI'}`;
+        : activeAccount.role === 'iku_only'
+          ? 'Masuk ke Ruang Kerja IKU'
+          : `Masuk Lembar Kerja KPI (${activeAccount.picCodes?.join(', ') || 'Unit'})`;
 
   return (
     <div
@@ -460,10 +459,10 @@ export default function Login() {
           background: #094E68;
           color: #ffffff;
           border: 1px solid #094E68;
-          border-radius: 10px;
+          border-radius: 8px;
           font-size: 0.8rem;
           font-weight: 700;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.06em;
           text-transform: uppercase;
           display: flex;
           align-items: center;
@@ -479,7 +478,7 @@ export default function Login() {
           width: 100%;
           text-align: left;
           padding: 1.35rem 1.5rem;
-          border-radius: 12px;
+          border-radius: 8px;
           border: 1.5px solid #D8E4EA;
           background: #ffffff;
           color: #072534;
@@ -515,9 +514,6 @@ export default function Login() {
         }
       `}</style>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          PANEL KIRI: KAMPUS ITPLN & HUD TELEMETRI OTORITAS
-         ═══════════════════════════════════════════════════════════════════ */}
       <div
         className="login-left-pane"
         style={{
@@ -532,7 +528,6 @@ export default function Login() {
           background: '#062C3D',
         }}
       >
-        {/* 1. FOTO GEDUNG ITPLN */}
         <div
           ref={bgPhotoRef}
           style={{
@@ -547,7 +542,6 @@ export default function Login() {
           }}
         />
 
-        {/* 2. GRADASI MIDNIGHT PETROL PELINDUNG KONTRAS TEKS */}
         <div
           style={{
             position: 'absolute',
@@ -558,7 +552,6 @@ export default function Login() {
           }}
         />
 
-        {/* Bar Atas: Navigasi Beranda Publik */}
         <div
           style={{
             position: 'relative',
@@ -573,7 +566,6 @@ export default function Login() {
           </Link>
         </div>
 
-        {/* Konten Bawah: Identitas Sistem & Kartu Status Otoritas */}
         <div style={{ position: 'relative', zIndex: 5, maxWidth: '560px' }}>
           <div
             className="stagger-left"
@@ -611,7 +603,7 @@ export default function Login() {
           >
             Satu gerbang akses,
             <br />
-            tiga ruang kerja terukur.
+            otoritas PIC terukur.
           </h2>
 
           <p
@@ -623,18 +615,17 @@ export default function Login() {
               margin: '0 0 1.45rem',
             }}
           >
-            Hak akses dipetakan berdasarkan peran unit kerja: pelaporan 8 IKU Kemendikbudristek, lembar kerja KPI operasional fakultas/unit, atau pusat tata kelola Direktorat PRP.
+            Hak akses dipetakan ketat per peran dan kode PIC unit kerja: pelaporan 8 IKU Kemendikbudristek, lembar kerja KPI dengan transparansi lintas unit, atau pusat kendali Direktorat PRP.
           </p>
 
-          {/* SINGLE GLASS TELEMETRY CARD (Maks 1 elemen blur sesuai standar performa) */}
           <div
             ref={hudCardRef}
             className="stagger-left"
             style={{
               border: '1px solid rgba(197, 222, 232, 0.32)',
-              borderRadius: '14px',
+              borderRadius: '8px',
               padding: '1.25rem 1.35rem',
-              background: 'rgba(6, 44, 61, 0.78)',
+              background: 'rgba(6, 44, 61, 0.82)',
               backdropFilter: 'blur(14px)',
               WebkitBackdropFilter: 'blur(14px)',
               boxShadow: '0 20px 40px rgba(4, 24, 34, 0.32)',
@@ -643,7 +634,6 @@ export default function Login() {
               willChange: 'transform',
             }}
           >
-            {/* Bar Progress Skenario di Puncak Kartu */}
             <div
               style={{
                 position: 'absolute',
@@ -686,7 +676,7 @@ export default function Login() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  Profil Otoritas Aktif ({selectedIdx + 1}/3)
+                  Profil Otoritas Aktif ({primaryTabIndex + 1}/3)
                 </div>
                 <div
                   style={{
@@ -697,7 +687,7 @@ export default function Login() {
                     fontFamily: "'Outfit', sans-serif",
                   }}
                 >
-                  {activeAccount.code} // {activeAccount.roleTitle}
+                  {activeAccount.code || `0${primaryTabIndex + 1}`} // {activeAccount.roleTitle || activeAccount.name}
                 </div>
               </div>
 
@@ -708,17 +698,16 @@ export default function Login() {
                   fontWeight: 800,
                   letterSpacing: '0.06em',
                   padding: '0.3rem 0.65rem',
-                  borderRadius: '6px',
+                  borderRadius: '4px',
                   background: '#ffffff',
                   color: '#072534',
                   flexShrink: 0,
                 }}
               >
-                {activeAccount.badge}
+                {activeAccount.badge || (activeAccount.picCodes?.length ? `PIC: ${activeAccount.picCodes.join(', ')}` : 'AKUN AKTIF')}
               </span>
             </div>
 
-            {/* Sirkuit SVG Penghubung Peran -> Modul IKU & KPI (Statis bersih tanpa loop tak berujung) */}
             <svg
               viewBox="0 0 440 36"
               fill="none"
@@ -742,18 +731,17 @@ export default function Login() {
               <circle cx="220" cy="5" r="4" fill="#1B9AAA" />
             </svg>
 
-            {/* 2 Kotak Status Modul (IKU & KPI) */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
               <div
                 style={{
                   padding: '0.85rem 1rem',
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   background: isIkuActive ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)',
                   border: isIkuActive
                     ? '1px solid rgba(197, 222, 232, 0.55)'
                     : '1px solid rgba(197, 222, 232, 0.16)',
                   opacity: isIkuActive ? 1 : 0.65,
-                  transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                  transition: 'background-color 0.35s ease, border-color 0.35s ease, opacity 0.35s ease',
                 }}
               >
                 <div
@@ -778,13 +766,13 @@ export default function Login() {
               <div
                 style={{
                   padding: '0.85rem 1rem',
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   background: isKpiActive ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)',
                   border: isKpiActive
                     ? '1px solid rgba(197, 222, 232, 0.55)'
                     : '1px solid rgba(197, 222, 232, 0.16)',
                   opacity: isKpiActive ? 1 : 0.65,
-                  transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                  transition: 'background-color 0.35s ease, border-color 0.35s ease, opacity 0.35s ease',
                 }}
               >
                 <div
@@ -802,7 +790,11 @@ export default function Login() {
                   {isKpiActive ? <Check size={14} /> : <Lock size={13} />}
                 </div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 700, fontFamily: "'Outfit', sans-serif", color: '#ffffff' }}>
-                  {isKpiActive ? 'Akses Diizinkan' : 'Tidak Termasuk Peran'}
+                  {isKpiActive
+                    ? (activeAccount.role === 'kpi_only' && activeAccount.picCodes?.length
+                      ? `Hak Input PIC: ${activeAccount.picCodes.join(', ')}`
+                      : 'Akses Penuh PRP')
+                    : 'Tidak Termasuk Peran'}
                 </div>
               </div>
             </div>
@@ -810,9 +802,6 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          PANEL KANAN: FORM AUTENTIKASI & GERBANG RUANG KERJA
-         ═══════════════════════════════════════════════════════════════════ */}
       <div
         className="login-right-pane"
         style={{
@@ -853,14 +842,13 @@ export default function Login() {
         </Link>
 
         <div className="right-inner-wrap" style={{ width: '100%', maxWidth: '456px' }}>
-          {/* Identitas Logo ITPLN */}
           <div
             className="stagger-right"
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '0.9rem',
-              marginBottom: '2rem',
+              marginBottom: '1.75rem',
             }}
           >
             <img src="/logo_pln.png" alt="Logo Institut Teknologi PLN" style={{ height: '40px', width: 'auto' }} />
@@ -909,7 +897,6 @@ export default function Login() {
             </div>
           </div>
 
-          {/* ──── TAHAP 1: FORM AUTENTIKASI & PEMILIH 3 SKENARIO ──── */}
           {step === 'credentials' && (
             <div ref={formStageRef}>
               <h1
@@ -931,15 +918,14 @@ export default function Login() {
                 style={{
                   color: '#334155',
                   fontSize: '0.9rem',
-                  margin: '0 0 1.55rem',
+                  margin: '0 0 1.4rem',
                   lineHeight: 1.55,
                 }}
               >
-                Pilih akun simulasi peran di bawah ini atau masukkan email kerja beserta kata sandi Anda.
+                Pilih skenario otoritas unit/PIC di bawah ini atau masukkan email kerja beserta kata sandi Anda.
               </p>
 
-              {/* SLIDING PILL SELECTOR: 3 PERAN PENGUJIAN */}
-              <div className="stagger-right" style={{ marginBottom: '1.6rem' }}>
+              <div className="stagger-right" style={{ marginBottom: '1.4rem' }}>
                 <div
                   style={{
                     display: 'flex',
@@ -960,7 +946,7 @@ export default function Login() {
                       color: '#475569',
                     }}
                   >
-                    Profil Simulasi Lokal
+                    Profil Simulasi Otoritas
                   </span>
                   <span
                     className="morph-text-item"
@@ -970,7 +956,6 @@ export default function Login() {
                   </span>
                 </div>
 
-                {/* Track 3 Pilihan */}
                 <div
                   role="group"
                   aria-label="Pilih skenario akun simulasi"
@@ -980,7 +965,7 @@ export default function Login() {
                     gridTemplateColumns: 'repeat(3, 1fr)',
                     background: '#EDF3F6',
                     padding: '4px',
-                    borderRadius: '10px',
+                    borderRadius: '8px',
                     border: '1px solid #D8E4EA',
                   }}
                 >
@@ -994,7 +979,7 @@ export default function Login() {
                       left: '4px',
                       width: 'calc((100% - 8px) / 3)',
                       background: '#094E68',
-                      borderRadius: '7px',
+                      borderRadius: '6px',
                       boxShadow: '0 4px 12px rgba(9, 78, 104, 0.2)',
                       zIndex: 1,
                     }}
@@ -1002,10 +987,10 @@ export default function Login() {
 
                   {[
                     { label: '01. PIC IKU', sub: 'Khusus IKU' },
-                    { label: '02. PIC KPI', sub: 'Khusus KPI' },
+                    { label: '02. PIC KPI', sub: 'Per Unit / PIC' },
                     { label: '03. Admin PRP', sub: 'Pusat Kendali' },
                   ].map((tab, idx) => {
-                    const isSelected = selectedIdx === idx;
+                    const isSelected = primaryTabIndex === idx;
                     return (
                       <button
                         key={tab.label}
@@ -1018,7 +1003,7 @@ export default function Login() {
                           minHeight: '48px',
                           background: 'transparent',
                           border: 'none',
-                          borderRadius: '7px',
+                          borderRadius: '6px',
                           padding: '0.55rem 0.35rem',
                           cursor: 'pointer',
                           textAlign: 'center',
@@ -1051,7 +1036,38 @@ export default function Login() {
                   })}
                 </div>
 
-                {/* Kotak Penjelasan Otoritas Aktif */}
+                {primaryTabIndex === 1 && kpiAccounts.length > 0 && (
+                  <label
+                    style={{
+                      display: 'grid',
+                      gap: '0.32rem',
+                      marginTop: '0.65rem',
+                      padding: '0.68rem 0.85rem',
+                      background: '#EDF3F6',
+                      border: '1px solid #B8CAD4',
+                      borderRadius: '8px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      color: '#072534',
+                    }}
+                  >
+                    <span>Pilih Akun Unit Kerja / PIC KPI (Pembatasan Hak Input Baris)</span>
+                    <select
+                      aria-label="Pilih akun unit PIC KPI"
+                      className="ent-select"
+                      value={activeAccount.email}
+                      onChange={(e) => handleSelectKpiUnitAccount(e.target.value)}
+                      style={{ minHeight: '44px', background: '#FFFFFF', fontSize: '0.8rem', fontWeight: 600 }}
+                    >
+                      {kpiAccounts.map((acc) => (
+                        <option key={acc.email} value={acc.email}>
+                          {acc.picCodes?.length ? `[PIC: ${acc.picCodes.join(', ')}] ` : ''}{acc.name} ({acc.email})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
                 <div
                   className="morph-text-item"
                   style={{
@@ -1065,8 +1081,8 @@ export default function Login() {
                     lineHeight: 1.52,
                   }}
                 >
-                  <strong style={{ color: '#072534' }}>{activeAccount.roleTitle}:</strong>{' '}
-                  {activeAccount.description}
+                  <strong style={{ color: '#072534' }}>{activeAccount.roleTitle || activeAccount.name}:</strong>{' '}
+                  {activeAccount.description || 'Akses terkunci sesuai otoritas PIC unit kerja.'}
                 </div>
               </div>
 
@@ -1081,7 +1097,7 @@ export default function Login() {
                     borderRadius: '8px',
                     background: '#FEF2F2',
                     border: '1px solid #FECACA',
-                    color: '#B91C1C',
+                    color: '#7F1D1D',
                     fontSize: '0.82rem',
                     fontWeight: 600,
                     marginBottom: '1.2rem',
@@ -1092,8 +1108,7 @@ export default function Login() {
                 </div>
               )}
 
-              {/* Form Input Kredensial */}
-              <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.3rem' }}>
+              <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div className="stagger-right">
                   <label
                     htmlFor="email-input"
@@ -1122,10 +1137,12 @@ export default function Login() {
                       onBlur={() => setFocusedField(null)}
                       onChange={(e) => {
                         setEmail(e.target.value);
-                        const foundIdx = mockAccounts.findIndex(
-                          (a) => a.email.toLowerCase() === e.target.value.trim().toLowerCase()
+                        const found = allAccounts.find(
+                          (a) => a.email.toLowerCase() === e.target.value.trim().toLowerCase(),
                         );
-                        if (foundIdx !== -1) setSelectedIdx(foundIdx);
+                        if (found) {
+                          setSelectedIdx(found.role === 'iku_only' ? 0 : found.role === 'kpi_only' ? 1 : 2);
+                        }
                       }}
                       placeholder="nama@itpln.ac.id"
                     />
@@ -1186,7 +1203,6 @@ export default function Login() {
             </div>
           )}
 
-          {/* ──── TAHAP 2 (KHUSUS AKUN PERAN GANDA 'dual'): GERBANG PEMILIHAN RUANG KERJA ──── */}
           {step === 'workspace_gate' && (
             <div ref={gateStageRef}>
               <div
@@ -1239,7 +1255,6 @@ export default function Login() {
                 hak akses ke kedua modul. Pilih ruang kerja yang ingin Anda buka terlebih dahulu:
               </p>
 
-              {/* 2 Pilihan Eksklusif: Menu IKU vs Menu KPI */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', marginBottom: '1.5rem' }}>
                 <button
                   type="button"

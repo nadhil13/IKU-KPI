@@ -55,7 +55,7 @@ export default function Home() {
       return undefined;
     }
 
-    // 1. HERO MASKED LINE REVEAL & HAIRLINE DRAW
+    // Hero line reveal and hairline draw
     const tl = gsap.timeline({ defaults: { ease: 'expo.out' } });
     tl.fromTo(
       '.hero-watermark',
@@ -136,7 +136,7 @@ export default function Home() {
       },
     });
 
-    // 2. TELEMETRY LEDGER ODOMETER ROLL-UP & SELF-DRAWING KEYLINE
+    // Ledger odometer roll-up and self-drawing keyline
     gsap.fromTo(
       '.ledger-top-rule',
       { scaleX: 0 },
@@ -184,7 +184,7 @@ export default function Home() {
       }
     );
 
-    // 3. SCRUBBED CLIP-PATH CURTAIN REVEAL & COUNTER-PARALLAX FOR SECTION 01 & 02
+    // Clip-path curtain reveal with counter-parallax on the IKU and KPI photos
     gsap.utils.toArray('.arch-photo-frame').forEach((frame) => {
       gsap.fromTo(
         frame,
@@ -242,7 +242,7 @@ export default function Home() {
       );
     });
 
-    // 4. EDITORIAL REFERENCE LEDGER: SELF-DRAWING DIVIDERS & ROW STAGGER
+    // Reference ledger dividers draw in and rows stagger
     gsap.utils.toArray('.ed-row-line').forEach((line) => {
       gsap.fromTo(
         line,
@@ -271,7 +271,7 @@ export default function Home() {
       }
     );
 
-    // 5. DUAL OPPOSING KINETIC MARQUEES & FINALE MONOLITH
+    // Opposing marquee tracks scrubbed by scroll
     gsap.to('.marquee-track-left', {
       xPercent: -20,
       ease: 'none',
@@ -448,7 +448,6 @@ export default function Home() {
         }
       `}</style>
 
-      {/* ─── 1. HERO SECTION (ITPLN Architectural Entry) ─── */}
       <section
         id="beranda"
         className="hero-section"
@@ -608,7 +607,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── 1B. FULL-BLEED ARCHITECTURAL TELEMETRY LEDGER ─── */}
       <section
         className="corp-pillars-strip"
         style={{
@@ -655,7 +653,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── 2. IKU SECTION (Architectural Split with Scrubbed Curtain Photo) ─── */}
       <section
         id="iku"
         className="iku-section home-content-section"
@@ -731,7 +728,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── 3. KPI SECTION (Architectural Split with Scrubbed Curtain Photo) ─── */}
       <section
         id="kpi"
         className="kpi-section home-content-section"
@@ -807,10 +803,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── 4. ENTERPRISE SYSTEM ARCHITECTURE ─── */}
       <EnterpriseArchitecture />
 
-      {/* ─── 5. EDITORIAL GOVERNANCE REFERENCE LEDGER ─── */}
       <section
         className="gov-res-section"
         style={{
@@ -863,7 +857,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ─── 6. DUAL KINETIC MARQUEE & ITPLN SSO MONOLITH ─── */}
       <section
         className="marquee-section"
         style={{
@@ -873,7 +866,6 @@ export default function Home() {
           position: 'relative',
         }}
       >
-        {/* Dual Opposing Kinetic Typography Tracks */}
         <div
           style={{
             position: 'absolute',

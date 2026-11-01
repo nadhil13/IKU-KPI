@@ -1,4 +1,4 @@
-/* ───────────── Desainer Tabel KPI: Swiss Architectural Spreadsheet (ITPLN Campus) ───────────── */
+/* Desainer Tabel KPI - Kanvas Spreadsheet Arsitektural ITPLN */
 .kpi-designer-page {
   --line: #D8E4EA;
   --line-strong: #B8CAD4;
@@ -19,7 +19,6 @@
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
 }
 
-/* Header */
 .kpi-designer-page .designer-hero {
   display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap;
   gap: 1rem 1.5rem; padding: .5rem 0 1.25rem;
@@ -38,7 +37,7 @@
   margin: .35rem 0;
   color: #072534;
 }
-.kpi-designer-page .designer-hero p { font-size: .82rem; color: #334155; line-height: 1.6; max-width: 70ch; margin: 0; }
+.kpi-designer-page .designer-hero p { font-size: .82rem; color: #334155; line-height: 1.6; max-width: 72ch; margin: 0; }
 .kpi-designer-page .designer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
 .kpi-designer-page .designer-period { display: flex; align-items: center; gap: .4rem; font-size: .74rem; font-weight: 700; color: #334155; }
 .kpi-designer-page .designer-period input {
@@ -47,17 +46,14 @@
   background: #FFFFFF; color: #072534; font: inherit;
 }
 
-/* Fokus aksesibilitas keyboard */
 .kpi-designer-page button:focus-visible,
 .kpi-designer-page select:focus-visible,
-.kpi-designer-page .designer-period input:focus-visible,
-.kpi-designer-page .formula-detail input:focus-visible,
+.kpi-designer-page input:focus-visible,
 .kpi-designer-page .sheet-scroll:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
-/* Tombol */
 .kpi-designer-page button {
   display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
   min-height: 38px; padding: .5rem .8rem; border: 1px solid var(--line-strong); border-radius: 6px;
@@ -81,7 +77,6 @@
 .kpi-designer-page .badge.warn,
 .kpi-designer-page button.has-error .badge.warn { background: var(--warn); }
 
-/* Rekap bobot realtime */
 .kpi-designer-page .designer-weight {
   display: inline-flex; align-items: center; gap: .3rem; padding: .24rem .6rem;
   border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: .71rem; font-weight: 600;
@@ -89,7 +84,6 @@
 .kpi-designer-page .designer-weight.ok { background: #F0FDF4; border: 1px solid #86EFAC; color: #14532D; }
 .kpi-designer-page .designer-weight.warn { background: #FFFBEB; border: 1px solid #FCD34D; color: var(--warn); }
 
-/* Quick-fix & penanda bagian */
 .kpi-designer-page button.fix {
   margin-left: .4rem; min-height: 28px; padding: .15rem .5rem; border: 1px dashed currentColor; border-radius: 6px;
   font-size: .68rem; font-weight: 700; color: var(--warn);
@@ -99,13 +93,12 @@
 @keyframes kpi-flash { 0% { background: #FDE68A; } 100% { background: transparent; } }
 .kpi-designer-page .issue-tag {
   display: inline-block; margin-right: .35rem; padding: .08rem .35rem; border-radius: 4px;
-  font-size: .62rem; font-weight: 800; text-transform: uppercase;
+  font-size: .64rem; font-weight: 800; text-transform: uppercase;
   color: inherit; background: rgba(7, 37, 52, .08);
 }
 .kpi-designer-page .count-error { color: var(--err); }
 .kpi-designer-page .count-warn { color: var(--warn); }
 
-/* Toolbar */
 .kpi-designer-page .designer-toolbar {
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem;
   padding: .6rem .9rem; border: 1px solid var(--line); border-radius: 6px; background: var(--head); font-size: .76rem;
@@ -115,14 +108,12 @@
 .kpi-designer-page .designer-check input { accent-color: #094E68; width: 16px; height: 16px; }
 .kpi-designer-page .designer-notice { min-height: 1.4rem; padding: .3rem 0; font-size: .76rem; font-weight: 650; color: #14532D; }
 
-/* Layout */
 .kpi-designer-page .designer-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
-.kpi-designer-page .designer-layout.with-panel { grid-template-columns: minmax(0, 1fr) 310px; }
+.kpi-designer-page .designer-layout.with-panel { grid-template-columns: minmax(0, 1fr) 340px; }
 .kpi-designer-page .sheet-shell {
   min-width: 0; border: 1px solid var(--line-strong); border-radius: 6px; background: #FFFFFF; overflow: hidden;
 }
 
-/* ───────────── Formula bar ───────────── */
 .kpi-designer-page .formula-bar {
   position: sticky; top: 0; z-index: 5; display: grid; gap: .45rem;
   padding: .65rem .85rem; border-bottom: 1px solid var(--line-strong); background: var(--head);
@@ -168,22 +159,22 @@
 .kpi-designer-page .formula-bar.picking .pick-hint { color: var(--accent); font-weight: 700; }
 
 .kpi-designer-page .formula-detail { display: flex; flex-wrap: wrap; gap: .5rem; }
-.kpi-designer-page .formula-detail label { display: grid; gap: .2rem; flex: 1 1 220px; font-size: .7rem; font-weight: 700; color: #334155; }
+.kpi-designer-page .formula-detail label { display: grid; gap: .2rem; flex: 1 1 200px; font-size: .7rem; font-weight: 700; color: #334155; }
 .kpi-designer-page .formula-detail label:has(input[type='date']) { flex: 0 1 170px; }
 .kpi-designer-page .formula-detail input { min-height: 36px; padding: .4rem .55rem; border: 1px solid var(--line-strong); border-radius: 5px; background: #FFFFFF; font: inherit; font-size: .76rem; color: #072534; }
 
-/* ───────────── Grid ───────────── */
-.kpi-designer-page .sheet-scroll { overflow: auto; -webkit-overflow-scrolling: touch; max-height: calc(100dvh - 230px); min-height: 360px; }
-.kpi-designer-page .sheet { width: 100%; min-width: 1180px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: .78rem; }
+.kpi-designer-page .sheet-scroll { overflow: auto; -webkit-overflow-scrolling: touch; max-height: calc(100dvh - 230px); min-height: 380px; }
+.kpi-designer-page .sheet { width: 100%; min-width: 1320px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: .78rem; }
 .kpi-designer-page .c-gutter { width: 42px; }
-.kpi-designer-page .c-no { width: 56px; }
-.kpi-designer-page .c-ind { width: 22%; }
-.kpi-designer-page .c-sub { width: 19%; }
-.kpi-designer-page .c-sim { width: 118px; }
-.kpi-designer-page .c-num { width: 96px; }
+.kpi-designer-page .c-no { width: 52px; }
+.kpi-designer-page .c-ind { width: 19%; }
+.kpi-designer-page .c-pic { width: 138px; }
+.kpi-designer-page .c-sub { width: 17%; }
+.kpi-designer-page .c-sim { width: 112px; }
+.kpi-designer-page .c-num { width: 92px; }
 .kpi-designer-page .c-unit { width: 64px; }
-.kpi-designer-page .c-formula { width: 15%; }
-.kpi-designer-page .c-res { width: 84px; }
+.kpi-designer-page .c-formula { width: 14%; }
+.kpi-designer-page .c-res { width: 82px; }
 .kpi-designer-page .c-act { width: 42px; }
 
 .kpi-designer-page .sheet th,
@@ -202,7 +193,6 @@
 .kpi-designer-page .sheet thead .gutter,
 .kpi-designer-page .sheet thead th:first-child { left: 0; z-index: 4; }
 
-/* Sel input: tampil seperti teks biasa, terlihat jelas saat fokus keyboard. */
 .kpi-designer-page .cell-input {
   display: block; width: 100%; box-sizing: border-box; min-height: 36px; padding: .45rem .5rem;
   border: 0; background: transparent; font: inherit; color: inherit; resize: none; line-height: 1.4;
@@ -222,13 +212,92 @@
 .kpi-designer-page .cell-input::placeholder { color: #64748B; }
 .kpi-designer-page .cell-input[type='number']::-webkit-inner-spin-button { opacity: .4; }
 
-/* Baris */
+.kpi-designer-page .pic-cell {
+  position: relative;
+  padding: .35rem .4rem !important;
+}
+.kpi-designer-page .pic-cell-trigger {
+  width: 100%;
+  min-height: 34px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: .25rem;
+  padding: .3rem .42rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 5px;
+  background: #FFFFFF;
+  text-align: left;
+}
+.kpi-designer-page .pic-cell-trigger:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.kpi-designer-page .pic-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: .1rem .38rem;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  color: var(--accent);
+  font: 700 .66rem/1.3 'JetBrains Mono', ui-monospace, Consolas, monospace;
+}
+.kpi-designer-page .pic-empty {
+  font-size: .68rem;
+  color: #475569;
+  font-weight: 600;
+}
+.kpi-designer-page .pic-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  width: 290px;
+  padding: .65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #FFFFFF;
+  box-shadow: 0 16px 36px rgba(7, 37, 52, .18);
+  display: grid;
+  gap: .5rem;
+}
+.kpi-designer-page .pic-popover-search,
+.kpi-designer-page .pic-popover-display {
+  width: 100%;
+  min-height: 34px;
+  padding: .35rem .5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  font: inherit;
+  font-size: .73rem;
+  color: #072534;
+  background: #FFFFFF;
+}
+.kpi-designer-page .pic-popover-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .28rem;
+  max-height: 156px;
+  overflow-y: auto;
+  padding: .15rem 0;
+}
+.kpi-designer-page .pic-option {
+  min-height: 30px;
+  padding: .2rem .5rem;
+  border-radius: 5px;
+  font: 700 .68rem/1.2 'JetBrains Mono', ui-monospace, Consolas, monospace;
+}
+.kpi-designer-page .pic-option.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #FFFFFF;
+}
+
 .kpi-designer-page .sheet tr.item-start > td { border-top: 1px solid var(--line-strong); }
 .kpi-designer-page .sheet tr.selected > td:not(.gutter) { background: var(--head); }
 .kpi-designer-page .sheet tr.selected > .gutter { background: var(--accent); color: #FFFFFF; }
 .kpi-designer-page .sheet tr.row-error > .gutter { box-shadow: inset 3px 0 0 var(--err); color: var(--err); }
 
-/* Baris judul bagian */
 .kpi-designer-page .section-row td { background: var(--accent-soft) !important; border-top: 1.5px solid var(--accent); }
 .kpi-designer-page .section-row .gutter { font-weight: 800; color: #072534; }
 .kpi-designer-page .section-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .4rem .55rem; }
@@ -244,13 +313,12 @@
   outline-offset: 1px;
 }
 .kpi-designer-page .section-bar .code { width: 48px; font-weight: 800; text-align: center; }
-.kpi-designer-page .section-bar .title { flex: 1 1 280px; font-weight: 750; font-size: .85rem; }
+.kpi-designer-page .section-bar .title { flex: 1 1 260px; font-weight: 750; font-size: .85rem; }
 .kpi-designer-page .section-bar .mini { display: inline-flex; align-items: center; gap: .3rem; font-size: .72rem; font-weight: 700; color: #334155; }
 .kpi-designer-page .section-bar .mini input { width: 72px; border-color: var(--line-strong); background: #FFFFFF; text-align: right; }
 .kpi-designer-page .section-bar .sum { font-size: .72rem; font-weight: 700; color: #14532D; }
 .kpi-designer-page .section-bar .sum.warn { color: var(--warn); }
 
-/* Rumusan isian */
 .kpi-designer-page .sub-wrap { position: relative; }
 .kpi-designer-page .sub-actions {
   position: absolute; top: 2px; right: 2px; z-index: 2; display: none; gap: 1px; padding: 1px;
@@ -261,13 +329,12 @@
 .kpi-designer-page .sub-actions button { min-height: 28px; padding: .2rem .35rem; border: 0; border-radius: 4px; font-size: .66rem; }
 .kpi-designer-page .sub-actions button.on { background: var(--accent-soft); color: var(--accent); }
 
-/* Sel yang bisa direferensikan */
 .kpi-designer-page .ref-cell { position: relative; }
 .kpi-designer-page .ref-tag {
-  position: absolute; top: 2px; left: 4px; font: 600 .58rem/1 'JetBrains Mono', ui-monospace, Consolas, monospace; color: #475569;
+  position: absolute; top: 2px; left: 4px; font: 600 .64rem/1 'JetBrains Mono', ui-monospace, Consolas, monospace; color: #475569;
   pointer-events: none; letter-spacing: .02em;
 }
-.kpi-designer-page .ref-cell .cell-input { padding-top: 1rem; }
+.kpi-designer-page .ref-cell .cell-input { padding-top: 1.05rem; }
 .kpi-designer-page .ref-cell.sim { background: #FFFDF7; }
 .kpi-designer-page .sheet-scroll.picking .ref-cell.pickable { cursor: copy; }
 .kpi-designer-page .sheet-scroll.picking .ref-cell.pickable .cell-input { pointer-events: none; }
@@ -275,7 +342,6 @@
 .kpi-designer-page .ref-cell.is-ref { box-shadow: inset 0 0 0 1.5px var(--ref); background: var(--ref-soft) !important; }
 .kpi-designer-page .ref-cell.is-ref .ref-tag { color: var(--ref); font-weight: 800; }
 
-/* Rumus & hasil */
 .kpi-designer-page .formula-cell { padding: .25rem !important; }
 .kpi-designer-page .formula-preview {
   display: flex !important; flex-direction: column; align-items: flex-start !important; gap: .15rem !important;
@@ -284,14 +350,13 @@
 }
 .kpi-designer-page .formula-preview:hover { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
 .kpi-designer-page .formula-preview.error { border-color: var(--err) !important; color: var(--err) !important; }
-.kpi-designer-page .formula-preview small { font: 600 .6rem/1 system-ui, sans-serif; color: #475569; text-transform: uppercase; }
+.kpi-designer-page .formula-preview small { font: 600 .64rem/1 system-ui, sans-serif; color: #475569; text-transform: uppercase; }
 .kpi-designer-page .result { padding: .55rem .5rem !important; text-align: right; font-weight: 750; font-variant-numeric: tabular-nums; color: #072534; }
-.kpi-designer-page .result small { display: block; margin-top: .25rem; font-size: .62rem; font-weight: 500; color: #475569; text-align: left; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.kpi-designer-page .result small { display: block; margin-top: .25rem; font-size: .64rem; font-weight: 500; color: #475569; text-align: left; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .kpi-designer-page tfoot td { background: var(--head); border-top: 1.5px solid var(--accent); }
 .kpi-designer-page .total-label { padding: .6rem .65rem !important; text-align: right; font-weight: 800; text-transform: uppercase; font-size: .71rem; color: #072534; }
 .kpi-designer-page .result.total { font-size: .9rem; color: #094E68; }
 
-/* Menu aksi baris */
 .kpi-designer-page .act-cell { text-align: center; padding-top: .2rem !important; }
 .kpi-designer-page .sheet-menu { position: relative; display: inline-block; }
 .kpi-designer-page .sheet-menu .menu {
@@ -304,7 +369,6 @@
   width: calc(100% - 1.4rem); margin: .7rem; border-style: dashed; padding: .65rem;
 }
 
-/* Panel samping */
 .kpi-designer-page .designer-aside { display: grid; gap: .8rem; position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); overflow: auto; }
 .kpi-designer-page .designer-panel { padding: .95rem; border: 1px solid var(--line); border-radius: 8px; background: #FFFFFF; }
 .kpi-designer-page .designer-panel h2 { display: flex; align-items: center; gap: .4rem; margin: 0 0 .45rem; font-size: .9rem; color: #072534; }
@@ -319,7 +383,19 @@
 .kpi-designer-page .designer-history { display: flex; align-items: center; justify-content: space-between; padding: .45rem 0; border-bottom: 1px solid var(--line); font-size: .76rem; font-weight: 700; color: #072534; }
 .kpi-designer-page .designer-history small { display: block; font-weight: 500; color: #475569; }
 
-/* Preview */
+.kpi-designer-page .rule-grid { display: grid; gap: .55rem; margin-top: .5rem; }
+.kpi-designer-page .rule-field { display: grid; gap: .22rem; font-size: .71rem; font-weight: 700; color: #334155; }
+.kpi-designer-page .rule-field input[type='number'],
+.kpi-designer-page .rule-field select {
+  width: 100%; min-height: 36px; padding: .35rem .5rem; border: 1px solid var(--line-strong); border-radius: 6px;
+  background: #FFFFFF; color: #072534; font: inherit; font-size: .74rem;
+}
+.kpi-designer-page .rule-guide {
+  padding: .6rem .7rem; border-radius: 6px; background: var(--head); border: 1px solid var(--line);
+  font-size: .72rem; color: #334155; line-height: 1.5; margin-bottom: .6rem;
+}
+.kpi-designer-page .rule-guide strong { color: #072534; }
+
 .kpi-designer-page .designer-preview { padding: 1rem; }
 .kpi-designer-page .designer-sim-banner { padding: .55rem .75rem; border-radius: 6px; background: #FFFBEB; border: 1px solid #FCD34D; color: var(--warn); font-size: .74rem; font-weight: 800; }
 
@@ -337,7 +413,9 @@
   .kpi-designer-page .formula-row select,
   .kpi-designer-page .formula-input,
   .kpi-designer-page .formula-detail input,
-  .kpi-designer-page .cell-input {
+  .kpi-designer-page .cell-input,
+  .kpi-designer-page .rule-field input[type='number'],
+  .kpi-designer-page .rule-field select {
     min-height: 44px;
   }
   .kpi-designer-page button.link {

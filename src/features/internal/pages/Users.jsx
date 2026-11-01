@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, Search, SlidersHorizontal, ShieldCheck, Pencil, Trash2, X, Check, KeyRound
 } from 'lucide-react';
@@ -6,6 +6,8 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { MOCK_ACCOUNTS, readMergedUsers, useAuth } from '../../auth/context/AuthContext';
+import { normalizePicCodes, readMasterPicCatalog } from '../../kpi/kpiSchema';
+import { syncActiveKpiFormUnits } from '../../kpi/kpiWorkflowStore';
 import { minimumPasswordLength, notifyAdminUpdated, resetUserPassword, writeAudit } from '../adminStore';
 import './Users.css';
 
@@ -16,13 +18,14 @@ const usersList = MOCK_ACCOUNTS;
 const roleLabels = {
   all: 'Semua peran',
   iku_only: 'Otoritas IKU',
-  kpi_only: 'Otoritas KPI',
+  kpi_only: 'Otoritas KPI (Unit/PIC)',
   superadmin_prp: 'Superadmin PRP',
 };
 
 const readUsers = () =>
   readMergedUsers().map((user) => ({
     ...user,
+    picCodes: Array.isArray(user.picCodes) ? user.picCodes : [],
     roleLabel: roleLabels[user.role] || user.role,
     accessScope: user.allowedPortals.join(' & ').toUpperCase(),
     lastActivity: user.lastActivity || 'Belum tercatat',
@@ -32,12 +35,16 @@ export default function Users() {
   const { currentUser } = useAuth();
   const pageRef = useRef(null);
   const [users, setUsers] = useState(readUsers);
+  const [picCatalog, setPicCatalog] = useState(readMasterPicCatalog);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [editing, setEditing] = useState(null);
 
   useEffect(() => {
-    const refresh = () => setUsers(readUsers());
+    const refresh = () => {
+      setUsers(readUsers());
+      setPicCatalog(readMasterPicCatalog());
+    };
     window.addEventListener('prp-admin-updated', refresh);
     window.addEventListener('storage', refresh);
     return () => {
@@ -58,19 +65,36 @@ export default function Users() {
   const persist = (next) => {
     setUsers(next);
     localStorage.setItem('prp_users', JSON.stringify(next));
+    syncActiveKpiFormUnits();
     notifyAdminUpdated();
   };
 
-  const openCreate = () =>
+  const openCreate = () => {
+    setPicCatalog(readMasterPicCatalog());
     setEditing({
       id: `user-${crypto.randomUUID()}`,
       name: '',
+      unit: '',
       email: '',
       password: '',
       role: 'kpi_only',
+      picCodes: ['BAKT'],
       status: 'Aktif',
-      avatar: 'USR',
+      avatar: 'PIC',
     });
+  };
+
+  const togglePicSelection = (code) => {
+    setEditing((prev) => {
+      if (!prev) return prev;
+      const current = normalizePicCodes(prev.picCodes || []);
+      const exists = current.some((c) => c.toLowerCase() === code.toLowerCase());
+      const nextPics = exists
+        ? current.filter((c) => c.toLowerCase() !== code.toLowerCase())
+        : [...current, code];
+      return { ...prev, picCodes: nextPics };
+    });
+  };
 
   const saveUser = () => {
     const latest = readUsers();
@@ -83,6 +107,11 @@ export default function Users() {
       || (editing.password && editing.password.length < minimumPasswordLength())
     ) {
       window.alert(`Nama, email valid, dan password minimal ${minimumPasswordLength()} karakter wajib diisi (password edit boleh kosong).`);
+      return;
+    }
+    const cleanPicCodes = editing.role === 'kpi_only' ? normalizePicCodes(editing.picCodes || []) : (editing.role === 'superadmin_prp' ? ['PRP'] : []);
+    if (editing.role === 'kpi_only' && cleanPicCodes.length === 0) {
+      window.alert('Pilih minimal satu Kode PIC Penanggung Jawab untuk akun Otoritas KPI agar hak akses baris indikator dapat dipetakan.');
       return;
     }
     if (latest.some((item) => item.email.toLowerCase() === email && item.id !== editing.id)) {
@@ -112,17 +141,25 @@ export default function Users() {
       password: editing.password || original?.password,
       email,
       name: editing.name.trim(),
+      unit: (editing.unit || editing.name).trim(),
+      picCodes: cleanPicCodes,
+      badge: editing.role === 'kpi_only' ? `PIC: ${cleanPicCodes.join(', ')}` : (editing.role === 'superadmin_prp' ? 'SUPERADMIN PRP' : 'IKU ONLY'),
+      roleTitle: editing.role === 'kpi_only' ? `PIC Unit ${cleanPicCodes.join(', ')}` : roleLabels[editing.role],
       roleLabel: roleLabels[editing.role],
       accessScope:
         editing.role === 'iku_only'
           ? '8 IKU Kementerian'
           : editing.role === 'superadmin_prp'
             ? 'Platform, IKU & KPI'
-            : 'KPI Unit & Fakultas',
+            : `KPI (${cleanPicCodes.join(', ')})`,
     };
     const exists = !!original;
     persist(exists ? latest.map((item) => (item.id === normalized.id ? normalized : item)) : [...latest, normalized]);
-    writeAudit(exists ? 'EDIT_AKUN' : 'TAMBAH_AKUN', `Akun ${email}: ${normalized.role}, ${normalized.status}`, currentUser?.email);
+    writeAudit(
+      exists ? 'EDIT_AKUN' : 'TAMBAH_AKUN',
+      `Akun ${email}: ${normalized.role}${cleanPicCodes.length ? ` [PIC: ${cleanPicCodes.join(', ')}]` : ''}, ${normalized.status}`,
+      currentUser?.email,
+    );
     setEditing(null);
   };
 
@@ -130,7 +167,7 @@ export default function Users() {
     const latest = readUsers();
     const target = latest.find((item) => item.id === id);
     if (!target || target.email === currentUser?.email || usersList.some((base) => base.id === id)) {
-      window.alert('Akun sendiri/bawaan tidak dapat dihapus.');
+      window.alert('Akun sendiri atau akun bawaan sistem tidak dapat dihapus.');
       return;
     }
     if (target.role === 'superadmin_prp' && target.status === 'Aktif' && !latest.some((item) => item.id !== id && item.role === 'superadmin_prp' && item.status === 'Aktif')) {
@@ -165,11 +202,14 @@ export default function Users() {
     window.alert(`Password sementara ${user.email}: ${temporaryPassword}`);
   };
 
-  const filteredUsers = users.filter((user) => {
+  const filteredUsers = useMemo(() => users.filter((user) => {
     const query = searchQuery.toLowerCase();
-    const matchesSearch = user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
+    const picText = (user.picCodes || []).join(' ').toLowerCase();
+    const matchesSearch = user.name.toLowerCase().includes(query)
+      || user.email.toLowerCase().includes(query)
+      || picText.includes(query);
     return matchesSearch && (filterRole === 'all' || user.role === filterRole);
-  });
+  }), [users, searchQuery, filterRole]);
 
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -185,15 +225,15 @@ export default function Users() {
       <div className="users-heading">
         <div className="users-head-anim">
           <div className="ent-eyebrow">
-            <ShieldCheck size={12} /> DIREKTORI & OTORITAS / MANAJEMEN PENGGUNA
+            <ShieldCheck size={12} /> DIREKTORI & OTORITAS / HAK AKSES AKUN & PIC
           </div>
-          <h1 className="users-title">Manajemen Pengguna & Akses</h1>
+          <h1 className="users-title">Manajemen Pengguna & Hak Input PIC</h1>
           <p className="users-description">
-            Kelola kredensial, isolasi otoritas ruang kerja (IKU, KPI, maupun Superadmin PRP), serta pemulihan kata sandi teraudit.
+            Kelola kredensial unit kerja, pemetaan kode PIC untuk pembatasan hak input baris KPI, serta pemulihan kata sandi teraudit.
           </p>
         </div>
         <button className="users-action users-head-anim" type="button" onClick={openCreate}>
-          <Plus size={16} /> Tambah Pengguna
+          <Plus size={16} /> Tambah Akun Unit / PIC
         </button>
       </div>
 
@@ -204,14 +244,14 @@ export default function Users() {
           <small>Terdaftar pada sistem</small>
         </div>
         <div className="users-stat">
-          <span>Sesi & Status Aktif</span>
-          <strong>{users.filter((item) => item.status === 'Aktif').length.toString().padStart(2, '0')}</strong>
-          <small>Siap melakukan autentikasi</small>
+          <span>Akun Unit PIC KPI</span>
+          <strong>{users.filter((item) => item.role === 'kpi_only' && item.status === 'Aktif').length.toString().padStart(2, '0')}</strong>
+          <small>Terkunci per kode PIC indikator</small>
         </div>
         <div className="users-stat">
           <span>Isolasi Modul</span>
           <strong>03</strong>
-          <small>PRP · IKU · KPI terpisah</small>
+          <small>PRP · IKU · KPI per PIC</small>
         </div>
         <button
           type="button"
@@ -236,7 +276,7 @@ export default function Users() {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Cari nama pengguna atau alamat email..."
+              placeholder="Cari nama unit, email, atau kode PIC (mis. BAKT, LPPM)..."
               aria-label="Cari pengguna"
             />
           </div>
@@ -260,9 +300,9 @@ export default function Users() {
           <table className="users-table">
             <thead>
               <tr>
-                <th>Identitas Pengguna</th>
+                <th>Identitas Pengguna & Unit</th>
                 <th>Peran Otoritas</th>
-                <th>Cakupan Ruang Kerja</th>
+                <th>Hak Input PIC / Cakupan</th>
                 <th>Aktivitas Terakhir</th>
                 <th>Status & Tindakan</th>
               </tr>
@@ -284,14 +324,45 @@ export default function Users() {
                     <td>
                       <span className="user-role"><i />{user.roleLabel}</span>
                     </td>
-                    <td className="user-scope">{user.accessScope}</td>
+                    <td className="user-scope">
+                      <div>{user.accessScope}</div>
+                      {user.role === 'kpi_only' && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
+                          {(user.picCodes?.length ? user.picCodes : ['Belum dipetakan']).map((code) => (
+                            <span
+                              key={code}
+                              style={{
+                                fontFamily: 'var(--ent-mono)',
+                                fontSize: '0.66rem',
+                                fontWeight: 700,
+                                padding: '0.12rem 0.42rem',
+                                borderRadius: '4px',
+                                background: '#EDF3F6',
+                                border: '1px solid #D8E4EA',
+                                color: '#094E68',
+                              }}
+                            >
+                              PIC: {code}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td className="user-activity">{user.lastActivity}</td>
                     <td>
                       <span className={`user-status ${user.status === 'Aktif' ? 'is-active' : 'is-inactive'}`}>
                         <i />{user.status}
                       </span>
                       <div className="user-row-actions">
-                        <button type="button" className="user-mini-btn" title="Edit user" onClick={() => setEditing({ ...user, password: '' })}>
+                        <button
+                          type="button"
+                          className="user-mini-btn"
+                          title="Edit pengguna dan kode PIC"
+                          onClick={() => {
+                            setPicCatalog(readMasterPicCatalog());
+                            setEditing({ ...user, picCodes: user.picCodes || [], password: '' });
+                          }}
+                        >
                           <Pencil size={12} /> Edit
                         </button>
                         <button type="button" className="user-mini-btn" title="Reset password" onClick={() => resetPassword(user)}>
@@ -319,11 +390,10 @@ export default function Users() {
 
         <footer className="users-footer">
           <span>ACCESS GOVERNANCE · INTERNAL ITPLN</span>
-          <span>Seluruh perubahan hak akses dan reset kredensial tercatat otomatis dalam Audit Trail</span>
+          <span>Seluruh perubahan hak akses PIC dan reset kredensial tercatat otomatis dalam Audit Trail</span>
         </footer>
       </div>
 
-      {/* Modal Tambah / Edit Pengguna */}
       {editing && (
         <div
           role="dialog"
@@ -346,7 +416,7 @@ export default function Users() {
         >
           <div
             style={{
-              width: 'min(520px, 100%)',
+              width: 'min(580px, 100%)',
               background: '#FFFFFF',
               border: '1px solid #B8CAD4',
               borderRadius: '8px',
@@ -356,9 +426,9 @@ export default function Users() {
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1.25rem' }}>
               <div>
-                <div className="ent-eyebrow" style={{ marginBottom: '0.35rem' }}>KONFIGURASI AKUN</div>
+                <div className="ent-eyebrow" style={{ marginBottom: '0.35rem' }}>KONFIGURASI AKUN & HAK INPUT PIC</div>
                 <h2 style={{ margin: 0, fontSize: '1.2rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
-                  {users.some((u) => u.id === editing.id) ? 'Edit Identitas Pengguna' : 'Tambah Pengguna Baru'}
+                  {users.some((u) => u.id === editing.id) ? 'Edit Identitas & Kode PIC Pengguna' : 'Tambah Akun Unit / PIC Baru'}
                 </h2>
               </div>
               <button
@@ -366,7 +436,7 @@ export default function Users() {
                 aria-label="Tutup modal pengguna"
                 onClick={() => setEditing(null)}
                 className="ent-btn"
-                style={{ minWidth: '40px', minHeight: '40px', padding: '0.45rem' }}
+                style={{ minWidth: '44px', minHeight: '44px', padding: '0.45rem' }}
               >
                 <X size={17} />
               </button>
@@ -374,43 +444,45 @@ export default function Users() {
 
             <div style={{ display: 'grid', gap: '0.9rem' }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
-                Nama Lengkap / Unit
+                Nama Lengkap / Unit Kerja
                 <input
                   className="ent-input"
                   aria-label="Nama pengguna"
-                  placeholder="Contoh: Direktorat Akademik ITPLN"
+                  placeholder="Contoh: Biro Akuntansi ITPLN"
                   value={editing.name}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  onChange={(e) => setEditing({ ...editing, name: e.target.value, unit: editing.unit || e.target.value })}
                 />
               </label>
 
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
-                Alamat Email Institusi
-                <input
-                  className="ent-input"
-                  aria-label="Email login"
-                  disabled={editing.email === currentUser?.email || usersList.some((base) => base.id === editing.id)}
-                  type="email"
-                  placeholder="nama.unit@itpln.ac.id"
-                  value={editing.email}
-                  onChange={(e) => setEditing({ ...editing, email: e.target.value })}
-                />
-              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: '0.75rem' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
+                  Alamat Email Institusi
+                  <input
+                    className="ent-input"
+                    aria-label="Email login"
+                    disabled={editing.email === currentUser?.email || usersList.some((base) => base.id === editing.id)}
+                    type="email"
+                    placeholder="nama.unit@itpln.ac.id"
+                    value={editing.email}
+                    onChange={(e) => setEditing({ ...editing, email: e.target.value })}
+                  />
+                </label>
 
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
-                Kata Sandi
-                <input
-                  className="ent-input"
-                  aria-label="Password"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={minimumPasswordLength()}
-                  required={!users.some((user) => user.id === editing.id)}
-                  placeholder={`Minimal ${minimumPasswordLength()} karakter (kosongkan saat edit untuk mempertahankan)`}
-                  value={editing.password || ''}
-                  onChange={(e) => setEditing({ ...editing, password: e.target.value })}
-                />
-              </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
+                  Kata Sandi
+                  <input
+                    className="ent-input"
+                    aria-label="Password"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={minimumPasswordLength()}
+                    required={!users.some((user) => user.id === editing.id)}
+                    placeholder={`Min. ${minimumPasswordLength()} karakter`}
+                    value={editing.password || ''}
+                    onChange={(e) => setEditing({ ...editing, password: e.target.value })}
+                  />
+                </label>
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '0.75rem' }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
@@ -423,7 +495,7 @@ export default function Users() {
                     onChange={(e) => setEditing({ ...editing, role: e.target.value })}
                   >
                     <option value="iku_only">Otoritas IKU</option>
-                    <option value="kpi_only">Otoritas KPI</option>
+                    <option value="kpi_only">Otoritas KPI (Unit/PIC)</option>
                     <option value="superadmin_prp">Superadmin PRP</option>
                   </select>
                 </label>
@@ -442,6 +514,57 @@ export default function Users() {
                   </select>
                 </label>
               </div>
+
+              {editing.role === 'kpi_only' && (
+                <div
+                  style={{
+                    border: '1px solid #D8E4EA',
+                    borderRadius: '8px',
+                    padding: '0.85rem',
+                    background: '#F7FAFB',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#072534' }}>
+                      Kode PIC Penanggung Jawab KPI (Hak Input Baris)
+                    </span>
+                    <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', color: '#0E7480', fontWeight: 700 }}>
+                      {(editing.picCodes || []).length} dipilih
+                    </span>
+                  </div>
+                  <p style={{ margin: '0 0 0.6rem', fontSize: '0.73rem', color: '#475569', lineHeight: 1.45 }}>
+                    Akun ini dapat melihat seluruh indikator KPI secara transparan (View Only), namun hanya diizinkan mengisi nilai, bukti, dan keterangan pada baris yang memiliki salah satu kode PIC terpilih di bawah ini.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', maxHeight: '160px', overflowY: 'auto' }}>
+                    {picCatalog.map((entry) => {
+                      const active = (editing.picCodes || []).some((c) => c.toLowerCase() === entry.code.toLowerCase());
+                      return (
+                        <button
+                          key={entry.code}
+                          type="button"
+                          aria-pressed={active}
+                          title={entry.name}
+                          onClick={() => togglePicSelection(entry.code)}
+                          style={{
+                            minHeight: '34px',
+                            padding: '0.28rem 0.6rem',
+                            borderRadius: '6px',
+                            border: active ? '1px solid #094E68' : '1px solid #CBD5E1',
+                            background: active ? '#094E68' : '#FFFFFF',
+                            color: active ? '#FFFFFF' : '#072534',
+                            fontFamily: 'var(--ent-mono)',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {entry.code}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '0.6rem', marginTop: '1.5rem' }}>

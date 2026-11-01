@@ -186,7 +186,6 @@ export default function AboutIKU() {
         }
       `}</style>
 
-      {/* ─── HERO SECTION ─── */}
       <section
         className="hero-section"
         style={{
@@ -255,7 +254,6 @@ export default function AboutIKU() {
               </div>
             </div>
 
-            {/* Campus Architectural Frame */}
             <div className="hero-light-card" style={{ position: 'relative' }}>
               <div
                 style={{
@@ -317,7 +315,6 @@ export default function AboutIKU() {
         </div>
       </section>
 
-      {/* ─── SECTION 01: RASIONALISASI ─── */}
       <section style={{ padding: 'clamp(4.5rem, 8vw, 7.5rem) 0', borderBottom: '1px solid #D8E4EA' }}>
         <div className="container">
           <div className="about-split-grid">
@@ -369,7 +366,7 @@ export default function AboutIKU() {
         </div>
       </section>
 
-      {/* ─── SECTION 02: VISI & MISI (PINNED ON DESKTOP) ─── */}
+      {/* Pinned on desktop */}
       <section
         ref={visiMisiRef}
         style={{
@@ -468,7 +465,6 @@ export default function AboutIKU() {
         </div>
       </section>
 
-      {/* ─── SECTION 03: DASAR HUKUM ─── */}
       <section className="hukum-section" style={{ padding: 'clamp(4.5rem, 8vw, 7.5rem) 0', background: '#ffffff' }}>
         <div className="container">
           <div style={{ maxWidth: '720px', marginBottom: '3rem' }}>

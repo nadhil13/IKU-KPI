@@ -30,7 +30,6 @@ export default function Navbar() {
 
   const isFoldedRef = useRef(false);
 
-  // Resize handler
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 1024) setIsOpen(false);
@@ -39,7 +38,6 @@ export default function Navbar() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ScrollSpy for sections
   useEffect(() => {
     const handleScroll = () => {
       const ids = ['beranda', 'iku', 'kpi', 'arsitektur'];
@@ -56,7 +54,6 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Initial Entry Animation
   useGSAP(() => {
     const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
 
@@ -88,7 +85,7 @@ export default function Navbar() {
     );
   }, { scope: wrapRef });
 
-  // Ultra-Smooth GSAP Liquid Fold Motion with Hysteresis & Overwrite Protection
+  // Separate enter/leave thresholds keep the fold from flickering near the edge.
   useEffect(() => {
     const performFold = (fold) => {
       if (isFoldedRef.current === fold) return;
@@ -103,7 +100,7 @@ export default function Navbar() {
       const isMobileScreen = window.innerWidth <= 640;
 
       if (fold) {
-        // ─── SMOOTH MORPH TO FLOATING ISLAND (BUTTERY LUXURY EASING) ───
+        // Morph into a floating island.
         gsap.to(wrap, {
           paddingTop: isMobileScreen ? 8 : 14,
           paddingLeft: isMobileScreen ? 12 : 22,
@@ -128,7 +125,6 @@ export default function Navbar() {
           overwrite: 'auto',
         });
 
-        // Subtle tactile 3D fluid dip
         gsap.fromTo(
           island,
           { rotateX: -2.0, scale: 0.99 },
@@ -145,7 +141,6 @@ export default function Navbar() {
           });
         }
       } else {
-        // ─── SMOOTH MORPH BACK TO FULL-WIDTH BAR ───
         gsap.to(wrap, {
           paddingTop: 0,
           paddingLeft: 0,
@@ -204,14 +199,12 @@ export default function Navbar() {
       });
     };
 
-    // Initial check on mount
     onScroll();
 
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Smooth scroll to section or route navigation
   const handleNavClick = (e, item) => {
     e.preventDefault();
     setIsOpen(false);
@@ -259,9 +252,6 @@ export default function Navbar() {
         transformStyle: 'preserve-3d',
       }}
     >
-      {/* ════════════════════════════════════════
-          LIQUID GLASS NAVBAR CONTAINER
-          ════════════════════════════════════════ */}
       <header
         ref={islandRef}
         style={{
@@ -285,10 +275,8 @@ export default function Navbar() {
           transformOrigin: 'center top',
         }}
       >
-        {/* Three.js Liquid Caustic & Fluid Sheen Canvas */}
         <LiquidGlassCanvas navbarRef={islandRef} isFolded={isFolded} />
 
-        {/* ── Top Specular Prismatic Rim Highlight ── */}
         <div
           style={{
             position: 'absolute',
@@ -303,7 +291,6 @@ export default function Navbar() {
           }}
         />
 
-        {/* ── Subtle Bottom Campus Accent Line ── */}
         <div
           style={{
             position: 'absolute',
@@ -318,7 +305,6 @@ export default function Navbar() {
           }}
         />
 
-        {/* ════ BRAND IDENTITY ════ */}
         <Link
           to="/"
           ref={brandRef}
@@ -418,7 +404,6 @@ export default function Navbar() {
           </div>
         </Link>
 
-        {/* ════ DESKTOP NAVIGATION (ARCHITECTURAL SEGMENTED TRACK) ════ */}
         <nav
           ref={navTrackRef}
           aria-label="Navigasi Utama"
@@ -491,7 +476,6 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* ════ CTA BUTTON ════ */}
         <div ref={ctaRef} className="navbar-desktop-cta" style={{ position: 'relative', zIndex: 2, flexShrink: 0 }}>
           <Link
             to="/login"
@@ -526,7 +510,6 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* ════ MOBILE HAMBURGER TOGGLE (44x44px TAP TARGET) ════ */}
         <div className="navbar-mobile-toggle" style={{ position: 'relative', zIndex: 2 }}>
           <button
             type="button"
@@ -553,7 +536,6 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* ════ MOBILE DRAWER ════ */}
       {isOpen && (
         <div className="navbar-mobile-drawer" role="navigation" aria-label="Menu Mobile">
           {navLinks.map((item) => {

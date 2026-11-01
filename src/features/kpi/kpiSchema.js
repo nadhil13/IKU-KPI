@@ -1,7 +1,6 @@
 /**
- * Skema, kalkulasi, dan penyimpanan konfigurasi tabel KPI.
- * Dipakai bersama oleh lembar isian KPI (user) dan Desainer Tabel KPI (Superadmin PRP),
- * sehingga hasil simulasi di desainer selalu identik dengan hasil di lembar user.
+ * Skema, master PIC, kalkulasi, validasi struktur, dan penyimpanan konfigurasi tabel KPI.
+ * Dipakai bersama oleh lembar kerja operasional unit/PIC dan Desainer Tabel KPI (Superadmin PRP).
  */
 
 import { evaluateKpiFormula, validateKpiFormula } from './formulaEngine';
@@ -10,9 +9,166 @@ export const KPI_CONFIG_KEY = 'prp_kpi_config';
 export const KPI_DRAFT_KEY = 'prp_kpi_draft';
 export const KPI_HISTORY_KEY = 'prp_kpi_history';
 export const KPI_LIVE_SYNC_KEY = 'prp_kpi_live_sync';
+export const KPI_VALIDATION_RULES_KEY = 'prp_kpi_validation_rules';
 export const KPI_CONFIG_EVENT = 'prp-kpi-config-updated';
 
-/* ───────────────────────── Parser angka & tanggal ───────────────────────── */
+export const MASTER_KPI_PICS = Object.freeze([
+  { code: 'PPA', name: 'Pusat Pelayanan Akademik (PPA)', category: 'units' },
+  { code: 'BAKT', name: 'Biro Akuntansi (BAKT)', category: 'bureaus' },
+  { code: 'BAG', name: 'Biro Anggaran (BAG)', category: 'bureaus' },
+  { code: 'BKU', name: 'Biro Keuangan (BKU)', category: 'bureaus' },
+  { code: 'PJM', name: 'Pusat Jaminan Mutu (PJM)', category: 'units' },
+  { code: 'PRP', name: 'Direktorat Perencanaan & Pengembangan (PRP)', category: 'teams' },
+  { code: 'BPKA', name: 'Biro Pengembangan Karir & Alumni (BPKA)', category: 'bureaus' },
+  { code: 'BKK', name: 'Biro Kemahasiswaan & Konseling (BKK)', category: 'bureaus' },
+  { code: 'BKAI', name: 'Biro Kerja Sama Akademik Internasional (BKAI)', category: 'bureaus' },
+  { code: 'BPIK', name: 'Biro Pemasaran, Informasi & Komunikasi (BPIK)', category: 'bureaus' },
+  { code: 'BKM', name: 'Biro Kemahasiswaan (BKM)', category: 'bureaus' },
+  { code: 'BSAR', name: 'Biro Sarana & Prasarana (BSAR)', category: 'bureaus' },
+  { code: 'BPAD', name: 'Biro Pengelolaan Aset & Dukungan (BPAD)', category: 'bureaus' },
+  { code: 'FAK', name: 'Fakultas & Program Studi (FAK)', category: 'faculties' },
+  { code: 'LPPM', name: 'Lembaga Penelitian & Pengabdian kepada Masyarakat (LPPM)', category: 'units' },
+  { code: 'SDM', name: 'Bagian Sumber Daya Manusia (SDM)', category: 'bureaus' },
+  { code: 'BSDM', name: 'Biro Sumber Daya Manusia (BSDM)', category: 'bureaus' },
+  { code: 'BKAN', name: 'Biro Kerja Sama Akademik Nasional (BKAN)', category: 'bureaus' },
+  { code: 'BPTI', name: 'Biro Pengembangan Teknologi Informasi (BPTI)', category: 'bureaus' },
+  { code: 'SPI', name: 'Satuan Pengawasan Intern (SPI)', category: 'teams' },
+  { code: 'Akuntansi', name: 'Tim Akuntansi & Pelaporan (Akuntansi)', category: 'teams' },
+  { code: 'WBS', name: 'Whistleblowing System (WBS)', category: 'teams' },
+]);
+
+const CANONICAL_PIC_MAP = new Map(MASTER_KPI_PICS.map((entry) => [entry.code.toLowerCase(), entry.code]));
+
+const readJSON = (key, fallback) => {
+  try {
+    if (typeof localStorage === 'undefined') return fallback;
+    const value = JSON.parse(localStorage.getItem(key) || 'null');
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+export function extractPicCodeFromOrgEntry(entryText) {
+  const raw = String(entryText ?? '').trim();
+  if (!raw) return '';
+  const parenMatch = raw.match(/\(([A-Za-z0-9_-]{2,20})\)\s*$/);
+  if (parenMatch) {
+    const candidate = parenMatch[1].trim();
+    return CANONICAL_PIC_MAP.get(candidate.toLowerCase()) || candidate;
+  }
+  const canonical = CANONICAL_PIC_MAP.get(raw.toLowerCase());
+  if (canonical) return canonical;
+  if (/^[A-Za-z0-9_-]{2,16}$/.test(raw)) return raw;
+  const words = raw.split(/\s+/).filter((word) => /^[A-Za-z]/.test(word) && !/^(dan|&|di|ke|dari|untuk|pada)$/i.test(word));
+  if (words.length >= 2) {
+    const acronym = words.map((word) => word[0].toUpperCase()).join('').slice(0, 8);
+    return CANONICAL_PIC_MAP.get(acronym.toLowerCase()) || acronym;
+  }
+  return raw.slice(0, 12).toUpperCase();
+}
+
+export function readMasterPicCatalog() {
+  const map = new Map(MASTER_KPI_PICS.map((entry) => [entry.code.toLowerCase(), { ...entry }]));
+  const org = readJSON('prp_organization', { units: [], faculties: [], bureaus: [], teams: [] });
+  ['units', 'faculties', 'bureaus', 'teams'].forEach((category) => {
+    const list = Array.isArray(org?.[category]) ? org[category] : [];
+    list.forEach((rawEntry) => {
+      if (rawEntry && typeof rawEntry === 'object') {
+        const rawCode = String(rawEntry.code ?? '').trim();
+        const rawName = String(rawEntry.name ?? '').trim();
+        const code = (rawCode ? (CANONICAL_PIC_MAP.get(rawCode.toLowerCase()) || rawCode) : extractPicCodeFromOrgEntry(rawName));
+        if (!code) return;
+        const key = code.toLowerCase();
+        const existing = map.get(key);
+        map.set(key, {
+          code: existing?.code || code,
+          name: rawName || existing?.name || code,
+          category,
+          picEmail: rawEntry.picEmail || existing?.picEmail || '',
+        });
+        return;
+      }
+      const label = String(rawEntry ?? '').trim();
+      const code = extractPicCodeFromOrgEntry(label);
+      if (!code) return;
+      const key = code.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, { code, name: label, category });
+      }
+    });
+  });
+  return [...map.values()];
+}
+
+export function normalizePicCode(token) {
+  const cleaned = String(token ?? '').trim();
+  if (!cleaned) return '';
+  const fromMaster = CANONICAL_PIC_MAP.get(cleaned.toLowerCase());
+  if (fromMaster) return fromMaster;
+  const dynamicCatalog = readMasterPicCatalog();
+  const fromCatalog = dynamicCatalog.find((entry) => entry.code.toLowerCase() === cleaned.toLowerCase());
+  if (fromCatalog) return fromCatalog.code;
+  return cleaned;
+}
+
+export function normalizePicCodes(input) {
+  const rawTokens = Array.isArray(input)
+    ? input.flatMap((entry) => String(entry ?? '').split(/[,;/+&]|\bdan\b/i))
+    : String(input ?? '').split(/[,;/+&]|\bdan\b/i);
+  const seen = new Set();
+  const result = [];
+  rawTokens.forEach((token) => {
+    const normalized = normalizePicCode(token);
+    if (!normalized) return;
+    const lower = normalized.toLowerCase();
+    if (seen.has(lower)) return;
+    seen.add(lower);
+    result.push(normalized);
+  });
+  return result;
+}
+
+export function formatPicDisplay(pics, customDisplay = '') {
+  const normalized = normalizePicCodes(pics);
+  const trimmedCustom = String(customDisplay ?? '').trim();
+  if (trimmedCustom) {
+    const fromCustom = normalizePicCodes(trimmedCustom);
+    const sameLength = fromCustom.length === normalized.length;
+    const sameCodes = sameLength && fromCustom.every((code, idx) => code.toLowerCase() === normalized[idx].toLowerCase());
+    if (sameCodes) return trimmedCustom;
+  }
+  return normalized.join(', ');
+}
+
+export function getUserPicCodes(user) {
+  if (!user) return [];
+  if (Array.isArray(user.picCodes) && user.picCodes.length > 0) {
+    return normalizePicCodes(user.picCodes);
+  }
+  if (typeof user.picCode === 'string' && user.picCode.trim()) {
+    return normalizePicCodes(user.picCode);
+  }
+  if (typeof user.unit === 'string' && user.unit.trim()) {
+    const paren = user.unit.match(/\(([A-Za-z0-9_,\s-]+)\)/);
+    if (paren) return normalizePicCodes(paren[1]);
+    const direct = CANONICAL_PIC_MAP.get(user.unit.trim().toLowerCase());
+    if (direct) return [direct];
+  }
+  return [];
+}
+
+export function canUserEditKpiItem(item, user) {
+  if (!user || user.status === 'Nonaktif') return false;
+  if (user.role === 'superadmin_prp') return true;
+  const rowPics = normalizePicCodes(item?.pics?.length ? item.pics : (item?.picDisplay || []));
+  // Baris tanpa penugasan PIC spesifik tetap dapat diisi akun KPI untuk menjaga kompatibilitas formulir umum.
+  if (rowPics.length === 0) return !user.role || user.role === 'kpi_only';
+  if (user.role && user.role !== 'kpi_only') return false;
+  const userPics = new Set(getUserPicCodes(user).map((code) => code.toLowerCase()));
+  if (userPics.size === 0) return false;
+  return rowPics.some((code) => userPics.has(code.toLowerCase()));
+}
 
 export function parseIndonesianNumber(input) {
   if (input === null || input === undefined) return null;
@@ -99,8 +255,6 @@ export function formatIndonesianNumber(num, maxDecimals = 2) {
   return num.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: maxDecimals });
 }
 
-/* ───────────────────────── Katalog tipe rumus ───────────────────────── */
-
 export const CALC_TYPES = {
   custom: {
     label: 'Rumus bebas (ala Excel)',
@@ -108,43 +262,43 @@ export const CALC_TYPES = {
     minInputs: 1,
   },
   single_target: {
-    label: 'Realisasi ÷ Target',
-    expression: 'Capaian = Isian 1 ÷ Target × 100%',
+    label: 'Realisasi / Target',
+    expression: 'Capaian = Isian 1 / Target x 100%',
     minInputs: 1,
     needsTarget: true,
   },
   ratio_two: {
     label: 'Rasio dua isian',
-    expression: 'Capaian = Isian 1 ÷ Isian 2 × 100%',
+    expression: 'Capaian = Isian 1 / Isian 2 x 100%',
     minInputs: 2,
   },
   ratio_target_pct: {
     label: 'Rasio isian terhadap target %',
-    expression: 'Capaian = (Isian 1 ÷ Isian 2 × 100%) ÷ Target × 100%',
+    expression: 'Capaian = (Isian 1 / Isian 2 x 100%) / Target x 100%',
     minInputs: 2,
     needsTarget: true,
   },
   sum_two_target: {
-    label: 'Jumlah dua isian ÷ Target',
-    expression: 'Capaian = (Isian 1 + Isian 2) ÷ Target × 100%',
+    label: 'Jumlah dua isian / Target',
+    expression: 'Capaian = (Isian 1 + Isian 2) / Target x 100%',
     minInputs: 2,
     needsTarget: true,
   },
   tracer_study: {
     label: 'Tracer study (6 komponen + responden)',
-    expression: 'Capaian = (Σ Isian 1–6 ÷ Isian 7) ÷ Target × 100%',
+    expression: 'Capaian = (Total Isian 1-6 / Isian 7) / Target x 100%',
     minInputs: 7,
     needsTarget: true,
   },
   primary_with_meta: {
     label: 'Isian utama + keterangan',
-    expression: 'Capaian = Isian 1 ÷ Target × 100% (Isian 2 sebagai catatan)',
+    expression: 'Capaian = Isian 1 / Target x 100% (Isian 2 sebagai catatan)',
     minInputs: 2,
     needsTarget: true,
   },
   compliance_date_single: {
     label: 'Kepatuhan tanggal (1 batas waktu)',
-    expression: 'Penalti penuh jika tanggal isian > batas waktu',
+    expression: 'Penalti penuh jika tanggal isian melewati batas waktu',
     minInputs: 1,
     needsDeadline: 1,
     penalty: true,
@@ -152,7 +306,7 @@ export const CALC_TYPES = {
   },
   compliance_date_dual: {
     label: 'Kepatuhan tanggal (2 semester)',
-    expression: 'Penalti ½ bobot untuk setiap semester yang terlambat',
+    expression: 'Penalti setengah bobot untuk setiap semester yang terlambat',
     minInputs: 2,
     needsDeadline: 2,
     penalty: true,
@@ -160,21 +314,20 @@ export const CALC_TYPES = {
   },
   compliance_integration_pct: {
     label: 'Kepatuhan persentase (target 100%)',
-    expression: 'Penalti = (100% − Isian 1) × bobot',
+    expression: 'Penalti = (100% - Isian 1) x bobot',
     minInputs: 1,
     penalty: true,
   },
   compliance_audit_ratio: {
     label: 'Rasio temuan audit belum ditindaklanjuti',
-    expression: 'Penalti = (Isian 1 ÷ Isian 2) × bobot',
+    expression: 'Penalti = (Isian 1 / Isian 2) x bobot',
     minInputs: 2,
     penalty: true,
   },
 };
 
 /**
- * Rumus ekuivalen untuk preset non-tanggal, supaya PRP bisa mengubah preset
- * menjadi "Rumus bebas" lalu mengedit rumusnya tanpa mulai dari nol.
+ * Rumus ekuivalen untuk preset non-tanggal agar PRP dapat beralih ke rumus bebas tanpa menulis dari nol.
  */
 export const PRESET_FORMULA_EXPR = {
   single_target: 'I1/T*100',
@@ -187,19 +340,13 @@ export const PRESET_FORMULA_EXPR = {
   compliance_audit_ratio: '100-I1/I2*100',
 };
 
-/* ───────────────────────── Kalkulasi per baris ───────────────────────── */
-
 const toDeadline = (iso) => (iso ? new Date(`${iso}T23:59:59`) : null);
 
 export const cleanRefCode = (value) => String(value ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
 export const itemRefPrefix = (sectionCode, itemNo) => `${cleanRefCode(sectionCode || 'A')}${cleanRefCode(itemNo || '1')}`;
 
 /**
- * Membangun peta referensi sel ala Excel untuk seluruh tabel KPI.
- * Contoh untuk Bagian A nomor 1a:
- *   - A1A_I1, A1A_I2 -> nilai isian ke-1, ke-2 pada baris A.1a
- *   - A1A_T          -> nilai Target baris A.1a
- *   - A1A_B          -> nilai Bobot baris A.1a
+ * Membangun peta referensi sel ala Excel untuk seluruh tabel KPI (mis. A1A_I1, A1A_T, A1A_B).
  */
 export function buildKpiCellDirectory(sections = [], values = {}) {
   const cells = {};
@@ -236,8 +383,7 @@ export function buildKpiCellDirectory(sections = [], values = {}) {
 }
 
 /**
- * Menghitung satu baris indikator KPI.
- * Capaian selalu dibatasi 0–100%. Skor dibatasi 0..bobot (positif) atau −|bobot|..0 (penalti).
+ * Menghitung satu baris indikator KPI. Capaian dibatasi 0-100%, skor dibatasi oleh bobot baris.
  */
 export function computeKpiItem(item, values, isPenaltySection, allSections = null) {
   const bobot = Number(item.bobot) || 0;
@@ -260,7 +406,6 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
 
   switch (item.calcType) {
     case 'custom': {
-      // Hasil rumus = capaian (%). Penalti: skor = (100 − capaian)% × bobot (bobot sudah negatif).
       const globalCells = allSections ? buildKpiCellDirectory(allSections, values).cells : null;
       const result = evaluateKpiFormula(item.formulaExpr, {
         inputs: parsedSubs.map((sub) => sub.num),
@@ -373,7 +518,6 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
       break;
     }
     default: {
-      // single_target & fallback
       if (n(0) !== null && targetNum > 0) {
         ratioPercent = (n(0) / targetNum) * 100;
         weightedScore = (ratioPercent / 100) * bobot;
@@ -391,16 +535,13 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
   return { parsedSubs, ratioPercent, weightedScore, extraNote };
 }
 
-/* ───────────────────────── Normalisasi struktur ───────────────────────── */
-
 const toDisplay = (value) => formatIndonesianNumber(Number(value) || 0, 2);
 const slug = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 export const createId = (prefix = 'kpi') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
 /**
- * Menyeragamkan struktur sebelum dipublish: angka valid, key isian unik,
- * dan rowSpan untuk export Excel/PDF dihitung ulang otomatis.
+ * Menyeragamkan struktur sebelum dipublikasikan: angka valid, PIC ternormalisasi, key isian unik, dan rowSpan ekspor dihitung otomatis.
  */
 export function normalizeKpiSections(sections) {
   const usedKeys = new Set();
@@ -409,7 +550,6 @@ export function normalizeKpiSections(sections) {
     const code = String(section.code || String.fromCharCode(65 + sectionIndex)).trim();
     const items = (section.items || []).map((item, itemIndex) => {
       const meta = CALC_TYPES[item.calcType] || CALC_TYPES.single_target;
-      // Bagian penalti selalu berbobot negatif, bagian capaian selalu positif.
       const rawBobot = Math.abs(Number(item.bobot) || 0);
       const bobot = section.isPenaltySection ? -rawBobot : rawBobot;
       const targetNum = Number(item.targetNum) || 0;
@@ -422,6 +562,8 @@ export function normalizeKpiSections(sections) {
         usedKeys.add(key);
         return { ...sub, key, label: sub.label || `Isian ${subIndex + 1}`, isTextInput: meta.textInput ? true : Boolean(sub.isTextInput) };
       });
+      const pics = normalizePicCodes(item.pics ?? item.picDisplay ?? []);
+      const picDisplay = formatPicDisplay(pics, item.picDisplay);
 
       return {
         ...item,
@@ -430,6 +572,8 @@ export function normalizeKpiSections(sections) {
         excelNo: String(item.excelNo ?? item.no ?? itemIndex + 1),
         indikator: item.indikator || 'Indikator baru',
         formula: item.formula || '',
+        pics,
+        picDisplay,
         bobot,
         bobotDisplay: toDisplay(bobot),
         targetNum,
@@ -442,7 +586,6 @@ export function normalizeKpiSections(sections) {
       };
     });
 
-    // Hitung ulang rowSpan untuk sel NO & INDIKATOR yang digabung (merge) pada export.
     items.forEach((item, index) => {
       if (!item.hideExcelNo) {
         let span = 0;
@@ -482,13 +625,92 @@ export function normalizeKpiSections(sections) {
   return normalized;
 }
 
-/** Pembulatan presisi tetap agar penjumlahan desimal (0,1 + 0,2) tidak memunculkan selisih semu. */
 const roundWeight = (value) => Math.round((Number(value) || 0) * 1e6) / 1e6;
 const WEIGHT_TOLERANCE = 0.0001;
 export const TARGET_TOTAL_WEIGHT = 100;
 
-/** Validasi struktur untuk ditampilkan di desainer. */
-export function validateKpiSections(sections) {
+export const DEFAULT_KPI_VALIDATION_RULES = Object.freeze({
+  targetPositiveWeight: TARGET_TOTAL_WEIGHT,
+  totalWeightPolicy: 'warn',
+  sectionWeightPolicy: 'warn',
+  maxPenaltyWeight: 12.5,
+  penaltyWeightPolicy: 'off',
+  requirePicPolicy: 'off',
+  requireFormulaText: false,
+  requireEvidenceOnSubmit: true,
+});
+
+const sanitizePolicy = (value, fallback) => (['error', 'warn', 'off'].includes(value) ? value : fallback);
+
+export function readKpiValidationRules() {
+  const stored = readJSON(KPI_VALIDATION_RULES_KEY, null);
+  if (!stored || typeof stored !== 'object') return { ...DEFAULT_KPI_VALIDATION_RULES };
+  const targetPositiveWeight = Number(stored.targetPositiveWeight);
+  const maxPenaltyWeight = Number(stored.maxPenaltyWeight);
+  return {
+    targetPositiveWeight: Number.isFinite(targetPositiveWeight) && targetPositiveWeight > 0 ? targetPositiveWeight : DEFAULT_KPI_VALIDATION_RULES.targetPositiveWeight,
+    totalWeightPolicy: sanitizePolicy(stored.totalWeightPolicy, DEFAULT_KPI_VALIDATION_RULES.totalWeightPolicy),
+    sectionWeightPolicy: sanitizePolicy(stored.sectionWeightPolicy, DEFAULT_KPI_VALIDATION_RULES.sectionWeightPolicy),
+    maxPenaltyWeight: Number.isFinite(maxPenaltyWeight) && maxPenaltyWeight >= 0 ? maxPenaltyWeight : DEFAULT_KPI_VALIDATION_RULES.maxPenaltyWeight,
+    penaltyWeightPolicy: sanitizePolicy(stored.penaltyWeightPolicy, DEFAULT_KPI_VALIDATION_RULES.penaltyWeightPolicy),
+    requirePicPolicy: sanitizePolicy(stored.requirePicPolicy, DEFAULT_KPI_VALIDATION_RULES.requirePicPolicy),
+    requireFormulaText: Boolean(stored.requireFormulaText),
+    requireEvidenceOnSubmit: stored.requireEvidenceOnSubmit === undefined ? DEFAULT_KPI_VALIDATION_RULES.requireEvidenceOnSubmit : Boolean(stored.requireEvidenceOnSubmit),
+    updatedAt: stored.updatedAt || null,
+    updatedBy: stored.updatedBy || null,
+  };
+}
+
+export function saveKpiValidationRules(patch = {}, actor = 'Superadmin PRP') {
+  const current = readKpiValidationRules();
+  const merged = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actor,
+  };
+  const sanitized = {
+    targetPositiveWeight: Number.isFinite(Number(merged.targetPositiveWeight)) && Number(merged.targetPositiveWeight) > 0
+      ? Number(merged.targetPositiveWeight)
+      : DEFAULT_KPI_VALIDATION_RULES.targetPositiveWeight,
+    totalWeightPolicy: sanitizePolicy(merged.totalWeightPolicy, DEFAULT_KPI_VALIDATION_RULES.totalWeightPolicy),
+    sectionWeightPolicy: sanitizePolicy(merged.sectionWeightPolicy, DEFAULT_KPI_VALIDATION_RULES.sectionWeightPolicy),
+    maxPenaltyWeight: Number.isFinite(Number(merged.maxPenaltyWeight)) && Number(merged.maxPenaltyWeight) >= 0
+      ? Number(merged.maxPenaltyWeight)
+      : DEFAULT_KPI_VALIDATION_RULES.maxPenaltyWeight,
+    penaltyWeightPolicy: sanitizePolicy(merged.penaltyWeightPolicy, DEFAULT_KPI_VALIDATION_RULES.penaltyWeightPolicy),
+    requirePicPolicy: sanitizePolicy(merged.requirePicPolicy, DEFAULT_KPI_VALIDATION_RULES.requirePicPolicy),
+    requireFormulaText: Boolean(merged.requireFormulaText),
+    requireEvidenceOnSubmit: merged.requireEvidenceOnSubmit === undefined ? true : Boolean(merged.requireEvidenceOnSubmit),
+    updatedAt: merged.updatedAt,
+    updatedBy: merged.updatedBy,
+  };
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(KPI_VALIDATION_RULES_KEY, JSON.stringify(sanitized));
+    const audits = readJSON('prp_audit', []);
+    const auditEntry = {
+      id: createId('audit'),
+      action: 'ATURAN_VALIDASI_KPI',
+      detail: `Aturan validasi struktur diperbarui (target bobot ${sanitized.targetPositiveWeight}, kebijakan bobot ${sanitized.totalWeightPolicy}, kebijakan PIC ${sanitized.requirePicPolicy})`,
+      actor,
+      at: sanitized.updatedAt,
+    };
+    localStorage.setItem('prp_audit', JSON.stringify([auditEntry, ...audits].slice(0, 500)));
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(KPI_CONFIG_EVENT, { detail: { validationRules: sanitized } }));
+    window.dispatchEvent(new Event('prp-admin-updated'));
+  }
+  return sanitized;
+}
+
+/**
+ * Validasi struktur tabel KPI berdasarkan aturan teknis rumus dan kebijakan tata kelola Admin PRP.
+ */
+export function validateKpiSections(sections, rulesOverride = null) {
+  const rules = rulesOverride
+    ? { ...readKpiValidationRules(), ...rulesOverride }
+    : readKpiValidationRules();
   const issues = [];
   const keys = new Map();
   const codes = new Set();
@@ -505,7 +727,6 @@ export function validateKpiSections(sections) {
       issues.push({ level: 'warn', sectionCode: section.code, message: `Bagian ${section.code} belum memiliki baris indikator.` });
     }
 
-    // Semua perbandingan memakai nilai absolut: bagian penalti disimpan negatif, tapi ditampilkan positif di tabel.
     const itemSum = roundWeight(section.items.reduce((acc, item) => acc + Math.abs(Number(item.bobot) || 0), 0));
     const sectionWeight = roundWeight(Math.abs(Number(section.totalWeight) || 0));
     const diff = roundWeight(itemSum - sectionWeight);
@@ -519,27 +740,28 @@ export function validateKpiSections(sections) {
       diff,
       matches: Math.abs(diff) <= WEIGHT_TOLERANCE,
     });
-    if (Math.abs(diff) > WEIGHT_TOLERANCE) {
+    if (Math.abs(diff) > WEIGHT_TOLERANCE && rules.sectionWeightPolicy !== 'off') {
       issues.push({
-        level: 'warn',
+        level: rules.sectionWeightPolicy,
         sectionCode: section.code,
-        message: `Bagian ${section.code}: Σ bobot baris ${fmt(itemSum)} ≠ bobot bagian ${fmt(sectionWeight)} (selisih ${diff > 0 ? '+' : ''}${fmt(diff)}). `
+        message: `Bagian ${section.code}: total bobot baris ${fmt(itemSum)} tidak sama dengan bobot bagian ${fmt(sectionWeight)} (selisih ${diff > 0 ? '+' : ''}${fmt(diff)}). `
           + `Ubah bobot bagian menjadi ${fmt(itemSum)} atau ${diff > 0 ? 'kurangi' : 'tambah'} bobot baris sebanyak ${fmt(Math.abs(diff))}.`,
       });
     }
     section.items.forEach((item) => {
       const meta = CALC_TYPES[item.calcType] || CALC_TYPES.single_target;
-      if ((item.subrows?.length || 0) < meta.minInputs) {
-        issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no} ${item.indikator}: rumus "${meta.label}" butuh minimal ${meta.minInputs} isian.` });
+      const rowSubrows = item.subrows || item.inputs || [];
+      if (rowSubrows.length < meta.minInputs) {
+        issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no} ${item.indikator || item.label || ''}: rumus "${meta.label}" butuh minimal ${meta.minInputs} isian.` });
       }
       if (item.calcType === 'custom') {
-        const formulaError = validateKpiFormula(item.formulaExpr, item.subrows?.length || 0, allowedRefs);
+        const formulaError = validateKpiFormula(item.formulaExpr, rowSubrows.length, allowedRefs);
         if (formulaError) issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: ${formulaError}` });
         if (/\bT\b/i.test(item.formulaExpr || '') && !(Number(item.targetNum) > 0)) {
           issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: rumus memakai T, target numerik harus > 0.` });
         }
       }
-      if (meta.needsTarget && !(Number(item.targetNum) > 0)) {
+      if (meta.needsTarget && item.calcType && !(Number(item.targetNum) > 0)) {
         issues.push({ level: 'error', itemId: item.id, message: `${section.code}.${item.no}: target numerik harus > 0.` });
       }
       if (meta.needsDeadline === 1 && !item.deadlineISO) {
@@ -551,6 +773,23 @@ export function validateKpiSections(sections) {
       if (meta.penalty && !section.isPenaltySection) {
         issues.push({ level: 'warn', itemId: item.id, message: `${section.code}.${item.no}: rumus kepatuhan sebaiknya berada di bagian penalti.` });
       }
+      if (rules.requirePicPolicy !== 'off') {
+        const rowPics = normalizePicCodes(item.pics ?? item.picDisplay ?? []);
+        if (rowPics.length === 0) {
+          issues.push({
+            level: rules.requirePicPolicy,
+            itemId: item.id,
+            message: `${section.code}.${item.no} ${item.indikator || ''}: PIC penanggung jawab belum ditetapkan.`,
+          });
+        }
+      }
+      if (rules.requireFormulaText && !String(item.formula ?? '').trim()) {
+        issues.push({
+          level: 'warn',
+          itemId: item.id,
+          message: `${section.code}.${item.no} ${item.indikator || ''}: narasi rumusan indikator masih kosong.`,
+        });
+      }
       (item.subrows || []).forEach((sub) => {
         if (sub.key && keys.has(sub.key)) issues.push({ level: 'error', itemId: item.id, message: `Key isian "${sub.key}" dipakai lebih dari satu kali.` });
         keys.set(sub.key, true);
@@ -558,32 +797,31 @@ export function validateKpiSections(sections) {
     });
   });
 
-  // Total dihitung dari Σ bobot BARIS (nilai yang benar-benar dipakai saat skoring), bukan dari bobot bagian.
   const positiveTotal = roundWeight(sectionSummaries.filter((s) => !s.isPenaltySection).reduce((acc, s) => acc + s.itemSum, 0));
   const penaltyTotal = roundWeight(sectionSummaries.filter((s) => s.isPenaltySection).reduce((acc, s) => acc + s.itemSum, 0));
-  const totalDiff = roundWeight(positiveTotal - TARGET_TOTAL_WEIGHT);
-  if (Math.abs(totalDiff) > WEIGHT_TOLERANCE) {
+  const targetWeight = Number(rules.targetPositiveWeight) || TARGET_TOTAL_WEIGHT;
+  const totalDiff = roundWeight(positiveTotal - targetWeight);
+  if (Math.abs(totalDiff) > WEIGHT_TOLERANCE && rules.totalWeightPolicy !== 'off') {
     const breakdown = sectionSummaries.filter((s) => !s.isPenaltySection).map((s) => `${s.code} ${fmt(s.itemSum)}`).join(' + ');
     issues.unshift({
-      level: 'warn',
-      message: `Total bobot capaian (non-penalti) = ${breakdown || '0'} = ${fmt(positiveTotal)}; seharusnya ${TARGET_TOTAL_WEIGHT} `
+      level: rules.totalWeightPolicy,
+      message: `Total bobot capaian (non-penalti) = ${breakdown || '0'} = ${fmt(positiveTotal)}; target struktur ${fmt(targetWeight)} `
         + `(${totalDiff > 0 ? 'kelebihan' : 'kurang'} ${fmt(Math.abs(totalDiff))}).`,
     });
   }
-
-  return { issues, positiveTotal, penaltyTotal, totalDiff, sectionSummaries };
-}
-
-/* ───────────────────────── Persistensi & sinkronisasi ───────────────────────── */
-
-const readJSON = (key, fallback) => {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) || 'null');
-    return value ?? fallback;
-  } catch {
-    return fallback;
+  if (rules.penaltyWeightPolicy !== 'off') {
+    const maxPenalty = Number(rules.maxPenaltyWeight) || 0;
+    const penaltyDiff = roundWeight(penaltyTotal - maxPenalty);
+    if (penaltyDiff > WEIGHT_TOLERANCE) {
+      issues.push({
+        level: rules.penaltyWeightPolicy,
+        message: `Total bobot penalti bagian kepatuhan ${fmt(penaltyTotal)} melebihi batas maksimal ${fmt(maxPenalty)} (kelebihan +${fmt(penaltyDiff)}).`,
+      });
+    }
   }
-};
+
+  return { issues, positiveTotal, penaltyTotal, totalDiff, sectionSummaries, rules };
+}
 
 export const readPublishedKpiConfig = () => readJSON(KPI_CONFIG_KEY, null);
 export const readKpiHistory = () => readJSON(KPI_HISTORY_KEY, []);
@@ -604,14 +842,13 @@ export function publishKpiSections(sections, { actor = 'Superadmin PRP', note = 
     localStorage.setItem(KPI_HISTORY_KEY, JSON.stringify(history));
   }
 
-  // Sinkronisasi tab yang sama (event 'storage' hanya otomatis untuk tab lain).
   window.dispatchEvent(new CustomEvent(KPI_CONFIG_EVENT, { detail: config }));
   return config;
 }
 
 export function subscribeKpiConfig(callback) {
   const onStorage = (event) => {
-    if (!event.key || event.key === KPI_CONFIG_KEY) callback();
+    if (!event.key || event.key === KPI_CONFIG_KEY || event.key === KPI_VALIDATION_RULES_KEY) callback();
   };
   window.addEventListener('storage', onStorage);
   window.addEventListener(KPI_CONFIG_EVENT, callback);

@@ -20,7 +20,6 @@ const FUNCTION_ARITY = { SUM: [1, Infinity], AVG: [1, Infinity], MIN: [1, Infini
 
 export const FORMULA_FUNCTIONS = Object.keys(FUNCTION_ARITY);
 
-/* ───────────── Tokenizer ───────────── */
 function tokenize(source) {
   const tokens = [];
   let i = 0;
@@ -65,7 +64,6 @@ function tokenize(source) {
   return tokens;
 }
 
-/* ───────────── Parser (recursive descent) ───────────── */
 function parse(tokens) {
   let pos = 0;
   const peek = () => tokens[pos];
@@ -149,7 +147,6 @@ function parse(tokens) {
   return ast;
 }
 
-/* ───────────── Kompilasi + cache ───────────── */
 const cache = new Map();
 
 function collectVars(node, set = new Set()) {
@@ -178,7 +175,6 @@ export function compileFormula(source) {
   return result;
 }
 
-/* ───────────── Evaluasi ───────────── */
 function evaluate(node, scope) {
   switch (node.t) {
     case 'num': return node.v;

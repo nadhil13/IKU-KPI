@@ -1,16 +1,34 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Check, ExternalLink, Search, ShieldCheck, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Check, ExternalLink, Eye, Download, FileText, Image as ImageIcon,
+  Link2, Search, ShieldCheck, X, Layers, History, CheckCircle2,
+} from 'lucide-react';
 import { useAuth } from '../../auth/context/AuthContext';
-import KPIDataEntrySheet from '../../kpi/components/KPIDataEntrySheet';
-import { KPI_TRANSITIONS, readKpiWorkflow, readUnitSubmission, readUnitEvidence, reviewUnitKpi, reviewUnitEvidence, subscribeKpiWorkflow } from '../../kpi/kpiWorkflowStore';
+import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG, EvidencePreviewModal } from '../../kpi/components/KPIDataEntrySheet';
+import {
+  KPI_TRANSITIONS,
+  readKpiWorkflow,
+  readUnitSubmission,
+  readUnitDraft,
+  readUnitEvidence,
+  reviewUnitKpi,
+  reviewUnitEvidence,
+  subscribeKpiWorkflow,
+  readIntegratedKpiBoard,
+  ensureDefaultKpiDistribution,
+  getEditableItemsForUser,
+} from '../../kpi/kpiWorkflowStore';
 import { formatIndonesianNumber } from '../../kpi/kpiSchema';
+import { readAudit } from '../adminStore';
 
 const labels = {
-  SUBMITTED: 'Dikirim unit',
-  APPROVED: 'Disetujui',
+  DRAFT: 'Sedang dikerjakan (Draft)',
+  SUBMITTED: 'Dikirim ke pusat',
+  APPROVED: 'Disetujui PRP',
   NEEDS_REVISION: 'Perlu revisi / buka kembali',
   REJECTED: 'Ditolak',
-  LOCKED: 'Dikunci',
+  LOCKED: 'Dikunci final',
 };
 
 const badgeFor = (status) => {
@@ -22,12 +40,30 @@ const badgeFor = (status) => {
   return 'ent-badge';
 };
 
-const actionLabel = (from, to) => (from === 'LOCKED' && to === 'NEEDS_REVISION' ? 'Buka kembali (unlock)' : labels[to]);
+const actionLabels = {
+  APPROVED: 'Setujui Submission',
+  NEEDS_REVISION: 'Minta Revisi',
+  REJECTED: 'Tolak Submission',
+  LOCKED: 'Kunci Final',
+};
+
+const actionLabel = (from, to) => (from === 'LOCKED' && to === 'NEEDS_REVISION' ? 'Buka Kembali (Unlock)' : (actionLabels[to] || labels[to]));
+
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n <= 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 export default function KPISubmissionInbox({ selected: controlledSelected, onSelect }) {
   const { currentUser } = useAuth();
   const [state, setState] = useState(readKpiWorkflow);
+  const [auditTick, setAuditTick] = useState(0);
   const [localSelected, setLocalSelected] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [showIntegratedSheet, setShowIntegratedSheet] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [note, setNote] = useState('');
@@ -43,19 +79,48 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     setError('');
   }, [onSelect]);
 
-  useEffect(() => subscribeKpiWorkflow(() => setState(readKpiWorkflow())), []);
+  useEffect(() => {
+    const offWorkflow = subscribeKpiWorkflow(() => {
+      setState(readKpiWorkflow());
+      setAuditTick((n) => n + 1);
+    });
+    const onAdmin = () => setAuditTick((n) => n + 1);
+    window.addEventListener('prp-admin-updated', onAdmin);
+    return () => {
+      offWorkflow();
+      window.removeEventListener('prp-admin-updated', onAdmin);
+    };
+  }, []);
+
+  const latestForm = state.forms[state.forms.length - 1] || null;
+  const integratedBoard = useMemo(
+    () => (latestForm ? readIntegratedKpiBoard(latestForm.id, state) : null),
+    [latestForm, state],
+  );
+
+  const kpiAuditEntries = useMemo(() => {
+    void auditTick;
+    const all = readAudit();
+    return all
+      .filter((entry) => /KPI|DISTRIBUSI|PUBLIKASI|VALIDASI|ORGANISASI/i.test(String(entry.action || '')))
+      .slice(0, 12);
+  }, [auditTick]);
 
   const form = state.forms.find((f) => f.id === selected?.formId);
   const record = selected && readUnitSubmission(selected.formId, selected.email, state);
+  const selectedFormBoard = useMemo(
+    () => (form ? readIntegratedKpiBoard(form.id, state) : null),
+    [form, state],
+  );
 
   useEffect(() => {
     if (!record || !form) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') updateSelected(null);
+      if (event.key === 'Escape' && !previewDoc) updateSelected(null);
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [record, form, updateSelected]);
+  }, [record, form, previewDoc, updateSelected]);
 
   const mutate = (action) => {
     setError('');
@@ -68,117 +133,346 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     }
   };
 
+  const boardMetrics = useMemo(() => {
+    if (!integratedBoard) return null;
+    const statuses = integratedBoard.unitStatuses || [];
+    const submittedCount = statuses.filter((u) => u.status === 'SUBMITTED').length;
+    const approvedCount = statuses.filter((u) => u.status === 'APPROVED' || u.status === 'LOCKED').length;
+    const draftCount = statuses.filter((u) => u.status === 'DRAFT' || u.status === 'NEEDS_REVISION').length;
+    const totalEvidence = statuses.reduce((sum, u) => sum + u.evidenceCount, 0);
+    const verifiedEvidence = statuses.reduce((sum, u) => sum + u.verifiedEvidenceCount, 0);
+    return { submittedCount, approvedCount, draftCount, totalEvidence, verifiedEvidence };
+  }, [integratedBoard]);
+
+  const indicatorLabelById = useMemo(() => {
+    const map = {};
+    (form?.sections || []).forEach((sec) => {
+      (sec.items || []).forEach((item) => {
+        map[item.id] = `${sec.code}.${item.no} ${item.indikator}`;
+      });
+    });
+    return map;
+  }, [form]);
+
   return (
-    <div className="gov-table">
-      <div className="gov-table-head">
-        <div>
-          <h2>Inbox Distribusi Formulir KPI Unit Kerja</h2>
-          <span>Pantau status pengiriman dan nilai akhir KPI pada setiap versi formulir yang telah didistribusikan</span>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',
-          gap: '0.65rem',
-          padding: '0.9rem 1.3rem',
-          background: '#F7FAFB',
-          borderBottom: '1px solid #D8E4EA',
-        }}
-      >
-        <div style={{ position: 'relative' }}>
-          <Search size={14} color="#475569" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input
-            className="gov-field"
-            style={{ paddingLeft: '2.2rem' }}
-            aria-label="Cari unit/periode"
-            placeholder="Cari unit kerja atau periode..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <select className="gov-field" aria-label="Status" value={filter} onChange={(e) => setFilter(e.target.value)}>
-          <option value="">Semua status pengisian</option>
-          <option value="EMPTY">Belum submit</option>
-          {Object.entries(labels).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-      </div>
-
-      {error && !record && (
-        <div role="alert" style={{ margin: '1rem 1.3rem', padding: '0.75rem 1rem', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C', fontSize: '0.78rem', fontWeight: 600 }}>
-          {error}
-        </div>
-      )}
-
-      {!state.forms.length && (
-        <div className="gov-placeholder">Belum ada distribusi formulir KPI ke Unit Kerja. Gunakan Desainer Tabel KPI untuk mengirim versi formulir.</div>
-      )}
-
-      {[...state.forms].reverse().map((f) => (
-        <section key={f.id} style={{ borderBottom: '1px solid #D8E4EA' }}>
-          <div style={{ padding: '0.8rem 1.3rem', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <h3 style={{ margin: 0, fontSize: '0.84rem', fontWeight: 700, color: '#072534', fontFamily: 'Outfit, sans-serif' }}>
-              Periode {f.period} · Versi v{f.version}
-            </h3>
-            <span className="ent-badge">{f.units.length} unit penerima</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {latestForm && integratedBoard && boardMetrics && (
+        <section className="gov-table" aria-label="Papan Integrasi Sistem Pusat KPI">
+          <div className="gov-table-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.85rem' }}>
+            <div>
+              <h2>Papan Integrasi Sistem Pusat KPI Lintas Unit &amp; PIC</h2>
+              <span>
+                Rekonsiliasi otomatis capaian, bukti dukung, dan keterangan dari seluruh unit kerja pada Periode {latestForm.period} (Versi v{latestForm.version})
+              </span>
+            </div>
+            <button
+              type="button"
+              className="ent-btn ent-btn-primary"
+              onClick={() => setShowIntegratedSheet((prev) => !prev)}
+            >
+              <Layers size={14} />
+              <span>{showIntegratedSheet ? 'Sembunyikan Tabel Terpusat' : 'Buka Tabel Rekonsiliasi 29 Indikator'}</span>
+            </button>
           </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',
+              gap: '0.85rem',
+              padding: '1rem 1.3rem',
+              background: '#FFFFFF',
+            }}
+          >
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+              <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Skor Institusi Terpusat
+              </div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#072534', marginTop: '0.2rem', fontVariantNumeric: 'tabular-nums' }}>
+                {formatIndonesianNumber(integratedBoard.totalScore, 2)} <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>/ 100 Poin</span>
+              </div>
+            </div>
+
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+              <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Cakupan Indikator Terisi
+              </div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#094E68', marginTop: '0.2rem', fontVariantNumeric: 'tabular-nums' }}>
+                {integratedBoard.filledIndicatorCount} / {integratedBoard.totalIndicatorCount} <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>Baris</span>
+              </div>
+            </div>
+
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+              <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Status Pengajuan Unit PIC
+              </div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#072534', marginTop: '0.35rem', lineHeight: 1.45 }}>
+                {boardMetrics.submittedCount} Menunggu Review · {boardMetrics.approvedCount} Disetujui · {boardMetrics.draftCount} Draft
+              </div>
+            </div>
+
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+              <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Verifikasi Bukti Capaian
+              </div>
+              <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#14532D', marginTop: '0.2rem', fontVariantNumeric: 'tabular-nums' }}>
+                {boardMetrics.verifiedEvidence} / {boardMetrics.totalEvidence} <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>Terverifikasi</span>
+              </div>
+            </div>
+          </div>
+
+          {showIntegratedSheet && (
+            <div style={{ padding: '1rem 1.3rem 1.3rem', borderTop: '1px solid #D8E4EA', background: '#F7FAFB' }}>
+              <KPIDataEntrySheet
+                key={`integrated:${latestForm.id}:${auditTick}`}
+                sectionsOverride={latestForm.sections}
+                valuesOverride={integratedBoard.values}
+                notesOverride={integratedBoard.notes}
+                evidenceOverride={Object.values(integratedBoard.evidenceByItem || {}).flat()}
+                contributorMapOverride={integratedBoard.contributorsByItem}
+                persist={false}
+                readOnly
+              />
+            </div>
+          )}
+        </section>
+      )}
+
+      <div className="gov-table">
+        <div className="gov-table-head">
+          <div>
+            <h2>Monitoring Submission &amp; Verifikasi Bukti KPI Unit Kerja</h2>
+            <span>Pantau status pengiriman per akun PIC, verifikasi berkas PDF/gambar atau tautan Drive, dan tetapkan persetujuan PRP</span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',
+            gap: '0.65rem',
+            padding: '0.9rem 1.3rem',
+            background: '#F7FAFB',
+            borderBottom: '1px solid #D8E4EA',
+          }}
+        >
+          <div style={{ position: 'relative' }}>
+            <Search size={14} color="#475569" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <input
+              className="gov-field"
+              style={{ paddingLeft: '2.2rem' }}
+              aria-label="Cari unit, PIC, atau periode"
+              placeholder="Cari unit kerja, kode PIC, atau periode..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <select className="gov-field" aria-label="Status" value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="">Semua status pengisian</option>
+            <option value="EMPTY">Belum mulai mengisi</option>
+            {Object.entries(labels).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </div>
+
+        {error && !record && (
+          <div role="alert" style={{ margin: '1rem 1.3rem', padding: '0.75rem 1rem', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#7F1D1D', fontSize: '0.78rem', fontWeight: 600 }}>
+            {error}
+          </div>
+        )}
+
+        {!state.forms.length && (
+          <div className="gov-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <div>Belum ada distribusi formulir KPI aktif pada penyimpanan peramban ini.</div>
+            <button
+              type="button"
+              className="ent-btn ent-btn-primary"
+              onClick={() => mutate(() => ensureDefaultKpiDistribution(KPI_SECTIONS_CONFIG))}
+            >
+              Inisialisasi Formulir 29 Indikator &amp; PIC ITPLN
+            </button>
+          </div>
+        )}
+
+        {[...state.forms].reverse().map((f) => (
+          <section key={f.id} style={{ borderBottom: '1px solid #D8E4EA' }}>
+            <div style={{ padding: '0.8rem 1.3rem', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: '0.84rem', fontWeight: 700, color: '#072534', fontFamily: 'Outfit, sans-serif' }}>
+                Periode {f.period} · Versi v{f.version}
+              </h3>
+              <span className="ent-badge">{f.units.length} akun unit/PIC terdaftar</span>
+            </div>
+            <div style={{ overflowX: 'auto' }} data-lenis-prevent>
+              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                <thead>
+                  <tr style={{ color: '#475569', background: '#FFFFFF', borderBottom: '1px solid #D8E4EA' }}>
+                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Unit Kerja / Akun</th>
+                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Otoritas PIC</th>
+                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Status</th>
+                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Bukti Capaian</th>
+                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Skor Kontribusi</th>
+                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Tindakan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {f.units
+                    .filter((u) => `${u.name} ${u.email} ${(u.picCodes || []).join(' ')} ${f.period}`.toLowerCase().includes(search.toLowerCase()))
+                    .map((u) => {
+                      const r = readUnitSubmission(f.id, u.email, state);
+                      const d = readUnitDraft(f.id, u.email, state);
+                      const evList = readUnitEvidence(f.id, u.email, state);
+                      const effectiveStatus = r?.status || (d || evList.length > 0 ? 'DRAFT' : 'EMPTY');
+                      if (filter && effectiveStatus !== filter) return null;
+
+                      const assignedCount = getEditableItemsForUser(f, {
+                        role: 'kpi_only',
+                        status: 'Aktif',
+                        email: u.email,
+                        picCodes: u.picCodes,
+                        unit: u.name,
+                      }).length;
+                      const verifiedCount = evList.filter((e) => e.status === 'VERIFIED').length;
+                      const fileCount = evList.filter((e) => e.kind === 'file').length;
+                      const linkCount = evList.length - fileCount;
+
+                      return (
+                        <tr key={u.email} style={{ borderTop: '1px solid #D8E4EA' }}>
+                          <td style={{ padding: '0.78rem 1.15rem' }}>
+                            <strong style={{ color: '#072534', display: 'block' }}>{u.name}</strong>
+                            <small style={{ color: '#475569' }}>{u.email}</small>
+                          </td>
+                          <td style={{ padding: '0.78rem 1.15rem' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
+                              {(u.picCodes || []).length > 0 ? (u.picCodes || []).map((code) => (
+                                <span
+                                  key={code}
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    fontWeight: 700,
+                                    fontFamily: 'JetBrains Mono, monospace',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    background: '#EDF3F6',
+                                    border: '1px solid #B8CAD4',
+                                    color: '#072534',
+                                  }}
+                                >
+                                  {code}
+                                </span>
+                              )) : <span style={{ color: '#475569' }}>-</span>}
+                              <span style={{ fontSize: '0.69rem', color: '#475569', marginLeft: '0.2rem' }}>
+                                ({assignedCount} baris)
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.78rem 1.15rem' }}>
+                            <span className={badgeFor(effectiveStatus)}>
+                              <span className="ent-badge-dot" />
+                              {labels[effectiveStatus] || 'Belum submit'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.78rem 1.15rem', color: '#334155', fontSize: '0.73rem' }}>
+                            {evList.length > 0 ? (
+                              <div>
+                                <strong style={{ color: '#072534' }}>{verifiedCount}/{evList.length}</strong> terverifikasi
+                                <div style={{ fontSize: '0.67rem', color: '#475569' }}>
+                                  {fileCount > 0 ? `${fileCount} berkas` : ''}{fileCount > 0 && linkCount > 0 ? ' · ' : ''}{linkCount > 0 ? `${linkCount} tautan` : ''}
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ color: '#475569' }}>Belum ada</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.78rem 1.15rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#072534' }}>
+                            {r ? `${formatIndonesianNumber(r.totalScore, 2)} Poin` : '-'}
+                          </td>
+                          <td style={{ padding: '0.78rem 1.15rem' }}>
+                            {r && (
+                              <button
+                                type="button"
+                                className="gov-button"
+                                onClick={() => updateSelected({ formId: f.id, email: u.email })}
+                              >
+                                Tinjau &amp; Verifikasi
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <section className="gov-table" aria-label="Rekap Audit Trail KPI Terpusat">
+        <div className="gov-table-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <h2>Rekap Audit Trail KPI Terpusat</h2>
+            <span>Jejak aktivitas pengiriman unit, verifikasi bukti dukung, perubahan struktur tabel, dan aturan validasi PRP</span>
+          </div>
+          <Link to="/internal/audit-log" className="gov-button" style={{ textDecoration: 'none' }}>
+            <History size={14} />
+            <span>Buka Log Audit Lengkap</span>
+          </Link>
+        </div>
+        {kpiAuditEntries.length === 0 ? (
+          <div className="gov-placeholder">Belum ada rekaman aktivitas workflow KPI pada sesi ini.</div>
+        ) : (
           <div style={{ overflowX: 'auto' }} data-lenis-prevent>
-            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
               <thead>
-                <tr style={{ color: '#475569', background: '#FFFFFF', borderBottom: '1px solid #D8E4EA' }}>
-                  <th style={{ padding: '0.68rem 1.3rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Unit Kerja</th>
-                  <th style={{ padding: '0.68rem 1.3rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Status</th>
-                  <th style={{ padding: '0.68rem 1.3rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Skor Total</th>
-                  <th style={{ padding: '0.68rem 1.3rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Tindakan</th>
+                <tr style={{ color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
+                  <th style={{ padding: '0.65rem 1.15rem', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Waktu</th>
+                  <th style={{ padding: '0.65rem 1.15rem', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Aksi</th>
+                  <th style={{ padding: '0.65rem 1.15rem', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pelaku / Akun</th>
+                  <th style={{ padding: '0.65rem 1.15rem', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Rincian Rekaman</th>
                 </tr>
               </thead>
               <tbody>
-                {f.units.filter((u) => `${u.name} ${u.email} ${f.period}`.toLowerCase().includes(search.toLowerCase())).map((u) => {
-                  const r = readUnitSubmission(f.id, u.email, state);
-                  if (filter && (r?.status || 'EMPTY') !== filter) return null;
-                  return (
-                    <tr key={u.email} style={{ borderTop: '1px solid #D8E4EA' }}>
-                      <td style={{ padding: '0.78rem 1.3rem' }}>
-                        <strong style={{ color: '#072534', display: 'block' }}>{u.name}</strong>
-                        <small style={{ color: '#475569' }}>{u.email}</small>
-                      </td>
-                      <td style={{ padding: '0.78rem 1.3rem' }}>
-                        <span className={badgeFor(r?.status)}>
-                          <span className="ent-badge-dot" />
-                          {labels[r?.status] || 'Belum submit'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.78rem 1.3rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#072534' }}>
-                        {r ? formatIndonesianNumber(r.totalScore) : '-'}
-                      </td>
-                      <td style={{ padding: '0.78rem 1.3rem' }}>
-                        {r && (
-                          <button
-                            type="button"
-                            className="gov-button"
-                            onClick={() => updateSelected({ formId: f.id, email: u.email })}
-                          >
-                            Tinjau Detail
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {kpiAuditEntries.map((item) => (
+                  <tr key={item.id} style={{ borderTop: '1px solid #D8E4EA' }}>
+                    <td style={{ padding: '0.68rem 1.15rem', color: '#475569', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                      {item.at ? new Date(item.at).toLocaleString('id-ID') : '-'}
+                    </td>
+                    <td style={{ padding: '0.68rem 1.15rem' }}>
+                      <span
+                        style={{
+                          fontSize: '0.65rem',
+                          fontWeight: 700,
+                          fontFamily: 'JetBrains Mono, monospace',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: '#EDF3F6',
+                          border: '1px solid #B8CAD4',
+                          color: '#094E68',
+                        }}
+                      >
+                        {item.action}
+                      </span>
+                    </td>
+                    <td style={{ padding: '0.68rem 1.15rem', fontWeight: 600, color: '#072534' }}>
+                      {item.actor || 'Sistem'}
+                    </td>
+                    <td style={{ padding: '0.68rem 1.15rem', color: '#334155' }}>
+                      {item.detail}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-        </section>
-      ))}
+        )}
+      </section>
 
       {record && form && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Tinjauan KPI"
+          aria-label="Tinjauan KPI Unit"
           data-lenis-prevent
           onClick={(event) => {
             if (event.target === event.currentTarget) updateSelected(null);
@@ -197,7 +491,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
         >
           <div
             style={{
-              width: 'min(1280px, 100%)',
+              width: 'min(1320px, 100%)',
               background: '#FFFFFF',
               border: '1px solid #B8CAD4',
               borderRadius: '8px',
@@ -205,7 +499,6 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               overflow: 'hidden',
             }}
           >
-            {/* Modal Topbar */}
             <div
               style={{
                 padding: '1.15rem 1.5rem',
@@ -220,11 +513,16 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             >
               <div>
                 <div className="ent-eyebrow" style={{ marginBottom: '0.35rem' }}>
-                  <ShieldCheck size={12} /> REVIEW SUBMISSION KPI UNIT
+                  <ShieldCheck size={12} /> VERIFIKASI SUBMISSION &amp; BUKTI CAPAIAN KPI
                 </div>
                 <h3 style={{ margin: 0, fontSize: '1.15rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
-                  {record.unit} · {form.period}
+                  {record.unit} · Periode {form.period}
                 </h3>
+                <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '0.2rem' }}>
+                  Akun: <strong>{record.email}</strong>
+                  {(record.picCodes || []).length > 0 ? ` · Kode PIC: ${record.picCodes.join(', ')}` : ''}
+                  {Array.isArray(record.assignedIndicatorIds) ? ` · ${record.assignedIndicatorIds.length} indikator ditugaskan` : ''}
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
                 <span className={badgeFor(record.status)}>
@@ -237,23 +535,21 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </div>
             </div>
 
-            {/* Modal Body */}
             <div style={{ padding: 'clamp(1rem, 2.5vw, 1.5rem)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               {error && (
-                <div role="alert" style={{ padding: '0.8rem 1rem', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C', fontSize: '0.8rem', fontWeight: 600 }}>
+                <div role="alert" style={{ padding: '0.8rem 1rem', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#7F1D1D', fontSize: '0.8rem', fontWeight: 600 }}>
                   {error}
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '1.15rem' }}>
-                {/* Panel Catatan & Keputusan */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.15rem' }}>
                 <div className="ent-card" style={{ padding: '1.2rem' }}>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
-                    Catatan / alasan wajib (untuk verifikasi bukti, revisi, buka kembali, atau penolakan)
+                    Catatan pemeriksaan PRP (wajib diisi saat menolak bukti, meminta revisi, atau menolak submission)
                     <textarea
                       className="ent-textarea"
                       rows={3}
-                      placeholder="Tuliskan catatan pemeriksaan atau alasan keputusan..."
+                      placeholder="Tuliskan catatan verifikasi atau instruksi revisi untuk unit kerja..."
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                     />
@@ -261,7 +557,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginTop: '0.95rem', fontSize: '0.78rem', fontWeight: 600, color: '#334155', cursor: 'pointer' }}>
                     <input type="checkbox" style={{ accentColor: '#094E68', width: '16px', height: '16px' }} checked={complete} onChange={(e) => setComplete(e.target.checked)} />
-                    Saya telah memeriksa kelengkapan seluruh isian dan bukti pendukung unit.
+                    Saya telah memeriksa kesesuaian capaian, bukti fisik/digital, dan keterangan unit.
                   </label>
 
                   {(() => {
@@ -270,7 +566,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     return (
                       <p style={{ margin: '0.65rem 0 0.95rem', fontSize: '0.75rem', color: '#475569' }}>
                         Bukti terverifikasi: <strong style={{ color: '#072534' }}>{verified}/{items.length}</strong>
-                        {items.length && verified < items.length ? '. Setujui setelah seluruh bukti terverifikasi.' : ''}
+                        {items.length && verified < items.length ? '. Verifikasi seluruh bukti capaian sebelum menyetujui submission.' : ''}
                       </p>
                     );
                   })()}
@@ -284,7 +580,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         disabled={(status === 'APPROVED' && !complete) || (status !== 'APPROVED' && status !== 'LOCKED' && !note.trim())}
                         onClick={() => {
                           if (record.status === 'LOCKED' && !window.confirm('Buka kembali submission yang sudah dikunci? Unit dapat mengubah data lagi.')) return;
-                          mutate(() => reviewUnitKpi(form.id, record.email, status, note, currentUser));
+                          mutate(() => reviewUnitKpi(form.id, record.email, status, note || 'Disetujui dan terverifikasi oleh PRP', currentUser));
                         }}
                       >
                         {status === 'APPROVED' && <Check size={14} />}
@@ -292,92 +588,210 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                       </button>
                     ))}
                   </div>
+
+                  {record.notes && Object.keys(record.notes).length > 0 && (
+                    <div style={{ marginTop: '1rem', paddingTop: '0.9rem', borderTop: '1px solid #D8E4EA' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#072534', marginBottom: '0.45rem' }}>
+                        Ringkasan Keterangan per Baris ({Object.keys(record.notes).length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '150px', overflowY: 'auto' }}>
+                        {Object.entries(record.notes).map(([itemId, text]) => (
+                          <div key={itemId} style={{ fontSize: '0.72rem', padding: '0.45rem 0.6rem', borderRadius: '6px', background: '#F7FAFB', border: '1px solid #D8E4EA', color: '#334155' }}>
+                            <strong style={{ color: '#094E68' }}>{indicatorLabelById[itemId] || itemId}:</strong> {text}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Panel Bukti Pendukung */}
                 <div className="ent-card" style={{ padding: '1.2rem' }}>
-                  <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.88rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
-                    Daftar Tautan Bukti Pendukung
-                  </h4>
-                  {!readUnitEvidence(form.id, record.email, state).length && (
-                    <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Belum ada tautan bukti yang dilampirkan.</p>
-                  )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    {readUnitEvidence(form.id, record.email, state).map((e) => (
-                      <div
-                        key={e.id}
-                        style={{
-                          padding: '0.75rem 0.85rem',
-                          borderRadius: '8px',
-                          background: '#F7FAFB',
-                          border: '1px solid #D8E4EA',
-                          fontSize: '0.75rem',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.45rem',
-                        }}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.88rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
+                      Daftar Dokumen &amp; Tautan Bukti Capaian ({readUnitEvidence(form.id, record.email, state).length})
+                    </h4>
+                    {record.status === 'SUBMITTED' && readUnitEvidence(form.id, record.email, state).some((e) => e.status !== 'VERIFIED') && (
+                      <button
+                        type="button"
+                        className="ent-btn ent-btn-teal"
+                        style={{ padding: '0.38rem 0.7rem', fontSize: '0.71rem' }}
+                        onClick={() => mutate(() => {
+                          const pendingList = readUnitEvidence(form.id, record.email, readKpiWorkflow()).filter((ev) => ev.status !== 'VERIFIED');
+                          pendingList.forEach((ev) => {
+                            reviewUnitEvidence(
+                              form.id,
+                              record.email,
+                              ev.id,
+                              'VERIFIED',
+                              note.trim() || 'Bukti capaian sesuai dan terverifikasi oleh PRP',
+                              currentUser,
+                            );
+                          });
+                        })}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700, color: '#094E68', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            {e.label} <ExternalLink size={12} />
-                          </a>
-                          <span className="ent-badge">{e.indicatorId} · {e.status}</span>
-                        </div>
-                        {e.note && <div style={{ color: '#475569', fontSize: '0.71rem' }}>Catatan: {e.note}</div>}
-                        {record.status === 'SUBMITTED' && (
-                          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                            <button
-                              type="button"
-                              className="ent-btn ent-btn-teal"
-                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.71rem' }}
-                              disabled={!note.trim()}
-                              title={note.trim() ? '' : 'Isi catatan pemeriksaan terlebih dahulu'}
-                              onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'VERIFIED', note, currentUser))}
-                            >
-                              Verifikasi Bukti
-                            </button>
-                            <button
-                              type="button"
-                              className="ent-btn"
-                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.71rem', color: '#B91C1C' }}
-                              disabled={!note.trim()}
-                              onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'REJECTED', note, currentUser))}
-                            >
-                              Tolak Bukti
-                            </button>
+                        <CheckCircle2 size={13} />
+                        <span>Verifikasi Semua Bukti</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {!readUnitEvidence(form.id, record.email, state).length && (
+                    <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Belum ada bukti capaian yang dilampirkan oleh unit ini.</p>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '340px', overflowY: 'auto' }}>
+                    {readUnitEvidence(form.id, record.email, state).map((e) => {
+                      const isFile = e.kind === 'file' || Boolean(e.dataUrl);
+                      const isImg = /^image\//i.test(e.mimeType || '');
+                      return (
+                        <div
+                          key={e.id}
+                          style={{
+                            padding: '0.75rem 0.85rem',
+                            borderRadius: '8px',
+                            background: '#F7FAFB',
+                            border: '1px solid #D8E4EA',
+                            fontSize: '0.75rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.45rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, color: '#072534' }}>
+                                {isFile ? (isImg ? <ImageIcon size={14} color="#094E68" /> : <FileText size={14} color="#094E68" />) : <Link2 size={14} color="#094E68" />}
+                                <span>{e.label}</span>
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '0.15rem' }}>
+                                Indikator: <strong>{indicatorLabelById[e.indicatorId] || e.indicatorId}</strong>
+                                {e.fileName ? ` · ${e.fileName} (${formatBytes(e.fileSize)})` : ''}
+                              </div>
+                            </div>
+                            <span className="ent-badge">{e.status}</span>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {isFile ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="gov-button"
+                                  style={{ padding: '0.32rem 0.65rem', fontSize: '0.7rem' }}
+                                  onClick={() => setPreviewDoc(e)}
+                                >
+                                  <Eye size={12} /> Pratinjau Dokumen
+                                </button>
+                                {e.dataUrl && (
+                                  <a
+                                    href={e.dataUrl}
+                                    download={e.fileName || `${e.label}.pdf`}
+                                    className="gov-button"
+                                    style={{ padding: '0.32rem 0.65rem', fontSize: '0.7rem', textDecoration: 'none' }}
+                                  >
+                                    <Download size={12} /> Unduh
+                                  </a>
+                                )}
+                              </>
+                            ) : (
+                              <a
+                                href={e.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="gov-button"
+                                style={{ padding: '0.32rem 0.65rem', fontSize: '0.7rem', textDecoration: 'none' }}
+                              >
+                                <ExternalLink size={12} /> Buka Tautan
+                              </a>
+                            )}
+
+                            {record.status === 'SUBMITTED' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="ent-btn ent-btn-teal"
+                                  style={{ padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
+                                  onClick={() => mutate(() => reviewUnitEvidence(
+                                    form.id,
+                                    record.email,
+                                    e.id,
+                                    'VERIFIED',
+                                    note.trim() || 'Bukti capaian sesuai dan terverifikasi oleh PRP',
+                                    currentUser,
+                                  ))}
+                                >
+                                  Verifikasi Bukti
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ent-btn"
+                                  style={{ padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#7F1D1D' }}
+                                  disabled={!note.trim()}
+                                  title={note.trim() ? '' : 'Tuliskan alasan penolakan pada kolom catatan terlebih dahulu'}
+                                  onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'REJECTED', note, currentUser))}
+                                >
+                                  Tolak Bukti
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          {e.note && <div style={{ color: '#475569', fontSize: '0.7rem' }}>Catatan verifikasi: {e.note}</div>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
-              {/* Riwayat Snapshot */}
               {(record.history || []).length > 0 && (
                 <div className="ent-card" style={{ padding: '1rem 1.2rem' }}>
                   <h4 style={{ margin: '0 0 0.6rem', fontSize: '0.86rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
-                    Riwayat Keputusan & Snapshot ({record.history.length})
+                    Riwayat Audit Submission &amp; Snapshot ({record.history.length})
                   </h4>
                   {(record.history || []).map((h, index) => (
                     <details key={index} style={{ padding: '0.55rem 0', borderTop: index > 0 ? '1px solid #D8E4EA' : 'none', fontSize: '0.74rem' }}>
                       <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#334155' }}>
-                        {new Date(h.at).toLocaleString('id-ID')} · {h.from} {'->'} {h.status} · {h.actor?.email || 'Legacy'} {h.note ? `· ${h.note}` : ''}
+                        {new Date(h.at).toLocaleString('id-ID')} · {h.from} {'->'} {h.status} · {h.actor?.email || 'Sistem'} {h.note ? `· ${h.note}` : ''}
                       </summary>
                       <pre style={{ marginTop: '0.5rem', padding: '0.75rem', borderRadius: '6px', background: '#F7FAFB', border: '1px solid #D8E4EA', whiteSpace: 'pre-wrap', fontSize: '0.68rem', color: '#334155' }}>
-                        {JSON.stringify(h.snapshot, null, 2)}
+                        {JSON.stringify(
+                          {
+                            ...h.snapshot,
+                            evidence: (h.snapshot?.evidence || []).map((ev) => ({
+                              ...ev,
+                              dataUrl: ev.dataUrl ? `[Berkas tertanam ${formatBytes(ev.fileSize)}]` : '',
+                            })),
+                          },
+                          null,
+                          2,
+                        )}
                       </pre>
                     </details>
                   ))}
                 </div>
               )}
 
-              {/* Lembar Kerja KPI Read-Only */}
-              <KPIDataEntrySheet key={`${form.id}:${record.email}`} sectionsOverride={form.sections} valuesOverride={record.values} persist={false} readOnly />
+              <KPIDataEntrySheet
+                key={`${form.id}:${record.email}:${record.status}`}
+                sectionsOverride={form.sections}
+                valuesOverride={{ ...(selectedFormBoard?.values || {}), ...(record.values || {}) }}
+                notesOverride={{ ...(selectedFormBoard?.notes || {}), ...(record.notes || {}) }}
+                evidenceOverride={readUnitEvidence(form.id, record.email, state)}
+                contributorMapOverride={selectedFormBoard?.contributorsByItem}
+                highlightPicCodes={record.picCodes}
+                persist={false}
+                readOnly
+              />
             </div>
           </div>
         </div>
       )}
+
+      <EvidencePreviewModal
+        evidence={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
     </div>
   );
 }

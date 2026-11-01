@@ -1,6 +1,40 @@
 const AUDIT_KEY = 'prp_audit';
 const CONFIG_KEY = 'prp_system_config';
 const ORG_KEY = 'prp_organization';
+
+export const DEFAULT_ITPLN_ORGANIZATION = Object.freeze({
+  units: [
+    'Pusat Pelayanan Akademik (PPA)',
+    'Pusat Jaminan Mutu (PJM)',
+    'Lembaga Penelitian & Pengabdian kepada Masyarakat (LPPM)',
+  ],
+  faculties: [
+    'Fakultas & Program Studi (FAK)',
+  ],
+  bureaus: [
+    'Biro Akuntansi (BAKT)',
+    'Biro Anggaran (BAG)',
+    'Biro Keuangan (BKU)',
+    'Biro Pengembangan Karir & Alumni (BPKA)',
+    'Biro Kemahasiswaan & Konseling (BKK)',
+    'Biro Kerja Sama Akademik Internasional (BKAI)',
+    'Biro Pemasaran, Informasi & Komunikasi (BPIK)',
+    'Biro Kemahasiswaan (BKM)',
+    'Biro Sarana & Prasarana (BSAR)',
+    'Biro Pengelolaan Aset & Dukungan (BPAD)',
+    'Bagian Sumber Daya Manusia (SDM)',
+    'Biro Sumber Daya Manusia (BSDM)',
+    'Biro Kerja Sama Akademik Nasional (BKAN)',
+    'Biro Pengembangan Teknologi Informasi (BPTI)',
+  ],
+  teams: [
+    'Direktorat Perencanaan & Pengembangan (PRP)',
+    'Satuan Pengawasan Intern (SPI)',
+    'Tim Akuntansi & Pelaporan (Akuntansi)',
+    'Whistleblowing System (WBS)',
+  ],
+});
+
 export const notifyAdminUpdated = () => window.dispatchEvent(new Event('prp-admin-updated'));
 export const minimumPasswordLength = () => Math.max(8, Math.min(64, Number(readSystemConfig().minimumPasswordLength) || 8));
 
@@ -29,6 +63,17 @@ export const saveOrganization = (organization, actor = 'Superadmin PRP') => {
   notifyAdminUpdated();
   writeAudit('STRUKTUR_ORGANISASI', 'Struktur unit/fakultas/biro/tim diperbarui', actor);
   return organization;
+};
+
+export const seedDefaultOrganization = (actor = 'Superadmin PRP') => {
+  const current = readOrganization();
+  const merged = {
+    units: [...new Set([...(current.units || []), ...DEFAULT_ITPLN_ORGANIZATION.units])],
+    faculties: [...new Set([...(current.faculties || []), ...DEFAULT_ITPLN_ORGANIZATION.faculties])],
+    bureaus: [...new Set([...(current.bureaus || []), ...DEFAULT_ITPLN_ORGANIZATION.bureaus])],
+    teams: [...new Set([...(current.teams || []), ...DEFAULT_ITPLN_ORGANIZATION.teams])],
+  };
+  return saveOrganization(merged, actor);
 };
 
 export const writeAudit = (action, detail, actor = 'Superadmin PRP') => {

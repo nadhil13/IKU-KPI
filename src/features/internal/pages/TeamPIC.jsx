@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, GitBranch, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { Building2, Database, GitBranch, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { MOCK_ACCOUNTS, useAuth } from '../../auth/context/AuthContext';
+import { MASTER_KPI_PICS, extractPicCodeFromOrgEntry } from '../../kpi/kpiSchema';
 import { readOrganization, saveOrganization } from '../adminStore';
 import './TeamPIC.css';
 
@@ -10,9 +11,60 @@ const TYPES = { units: 'Unit Kerja', faculties: 'Fakultas', bureaus: 'Biro', tea
 const blank = (type = 'units') => ({ type, name: '', code: '', parentId: '', picEmail: '' });
 const createOrgId = () => `org-${crypto.randomUUID()}`;
 
+const DEFAULT_PIC_EMAIL_BY_CODE = {
+  PPA: 'ppa@itpln.ac.id',
+  BAKT: 'bakt@itpln.ac.id',
+  BAG: 'bag@itpln.ac.id',
+  BKU: 'bku@itpln.ac.id',
+  PJM: 'pjm@itpln.ac.id',
+  PRP: 'prp.unit@itpln.ac.id',
+  BPKA: 'bpka@itpln.ac.id',
+  BKK: 'bkk@itpln.ac.id',
+  BKAI: 'bkai@itpln.ac.id',
+  BPIK: 'bpik@itpln.ac.id',
+  BKM: 'bpik@itpln.ac.id',
+  BSAR: 'bpik@itpln.ac.id',
+  BPAD: 'bpik@itpln.ac.id',
+  FAK: 'fak@itpln.ac.id',
+  LPPM: 'lppm@itpln.ac.id',
+  SDM: 'sdm@itpln.ac.id',
+  BSDM: 'sdm@itpln.ac.id',
+  BKAN: 'bkan@itpln.ac.id',
+  BPTI: 'bpti@itpln.ac.id',
+  SPI: 'spi@itpln.ac.id',
+  Akuntansi: 'spi@itpln.ac.id',
+  WBS: 'spi@itpln.ac.id',
+};
+
+const normalizeOrgItem = (entry, idx, type) => {
+  if (entry && typeof entry === 'object') {
+    return {
+      id: entry.id || `org-${type}-${idx}`,
+      name: String(entry.name || ''),
+      code: String(entry.code || ''),
+      parentId: String(entry.parentId || ''),
+      picEmail: String(entry.picEmail || ''),
+    };
+  }
+  const label = String(entry || '').trim();
+  const extractedCode = extractPicCodeFromOrgEntry(label);
+  return {
+    id: `org-${type}-${idx}-${extractedCode || 'item'}`,
+    name: label,
+    code: extractedCode,
+    parentId: '',
+    picEmail: DEFAULT_PIC_EMAIL_BY_CODE[extractedCode] || '',
+  };
+};
+
 const loadOrganization = () => {
   const value = readOrganization() || {};
-  return Object.fromEntries(Object.keys(TYPES).map((type) => [type, Array.isArray(value[type]) ? value[type] : []]));
+  return Object.fromEntries(
+    Object.keys(TYPES).map((type) => [
+      type,
+      Array.isArray(value[type]) ? value[type].map((entry, idx) => normalizeOrgItem(entry, idx, type)) : [],
+    ]),
+  );
 };
 
 const loadAccounts = () => {
@@ -108,6 +160,39 @@ export default function TeamPIC() {
     setMessage('');
   };
 
+  const handleSeedMasterPics = () => {
+    if (!canEdit) return;
+    const latest = loadOrganization();
+    const existingCodes = new Set(flatten(latest).map((item) => String(item.code || '').toLowerCase()).filter(Boolean));
+    const next = {
+      units: [...latest.units],
+      faculties: [...latest.faculties],
+      bureaus: [...latest.bureaus],
+      teams: [...latest.teams],
+    };
+    let addedCount = 0;
+    MASTER_KPI_PICS.forEach((pic) => {
+      if (existingCodes.has(pic.code.toLowerCase())) return;
+      const category = TYPES[pic.category] ? pic.category : 'units';
+      next[category].push({
+        id: `org-master-${pic.code.toLowerCase()}`,
+        name: pic.name,
+        code: pic.code,
+        parentId: '',
+        picEmail: DEFAULT_PIC_EMAIL_BY_CODE[pic.code] || '',
+      });
+      existingCodes.add(pic.code.toLowerCase());
+      addedCount += 1;
+    });
+    saveOrganization(next, currentUser?.email || currentUser?.name || 'Superadmin PRP');
+    setOrganization(next);
+    setMessage(
+      addedCount > 0
+        ? `${addedCount} master unit & kode PIC resmi ITPLN berhasil disinkronkan ke direktori.`
+        : 'Seluruh 22 master unit & kode PIC resmi ITPLN sudah terdaftar dalam direktori.',
+    );
+  };
+
   const updateField = (name, value) => {
     setEditor((current) => ({ ...current, [name]: value }));
     setErrors((current) => ({ ...current, [name]: '' }));
@@ -118,15 +203,21 @@ export default function TeamPIC() {
     if (!editor || !canEdit) return;
     const latest = loadOrganization();
     const list = flatten(latest);
-    const normalized = { ...editor, name: editor.name.trim(), code: editor.code.trim().toUpperCase() };
+    const trimmedCode = editor.code.trim();
+    const canonicalMaster = MASTER_KPI_PICS.find((m) => m.code.toLowerCase() === trimmedCode.toLowerCase());
+    const normalized = {
+      ...editor,
+      name: editor.name.trim(),
+      code: canonicalMaster ? canonicalMaster.code : trimmedCode.toUpperCase(),
+    };
     const nextErrors = {};
     if (!normalized.name) nextErrors.name = 'Nama organisasi wajib diisi.';
     if (normalized.name.length > 120) nextErrors.name = 'Nama maksimal 120 karakter.';
     if (list.some((item) => keyOf(item) !== editingKey && item.type === editor.type && item.name?.toLowerCase() === normalized.name.toLowerCase())) {
       nextErrors.name = 'Nama sudah digunakan dalam kategori ini.';
     }
-    if (normalized.code && !/^[A-Z0-9._-]{1,24}$/.test(normalized.code)) nextErrors.code = 'Kode organisasi tidak valid.';
-    if (normalized.code && list.some((item) => keyOf(item) !== editingKey && item.code?.toUpperCase() === normalized.code)) {
+    if (normalized.code && !/^[A-Za-z0-9._-]{1,24}$/.test(normalized.code)) nextErrors.code = 'Kode organisasi tidak valid.';
+    if (normalized.code && list.some((item) => keyOf(item) !== editingKey && item.code?.toLowerCase() === normalized.code.toLowerCase())) {
       nextErrors.code = 'Kode organisasi sudah digunakan.';
     }
     const parent = list.find((item) => keyOf(item) === normalized.parentId);
@@ -153,7 +244,7 @@ export default function TeamPIC() {
       saveOrganization(next, currentUser.email || currentUser.name);
       setOrganization(next);
       setEditor(null);
-      setMessage(editingKey ? 'Struktur organisasi berhasil diperbarui.' : 'Entitas organisasi baru berhasil ditambahkan.');
+      setMessage(editingKey ? 'Struktur organisasi & kode PIC berhasil diperbarui.' : 'Entitas organisasi & kode PIC baru berhasil ditambahkan.');
     } catch {
       setMessage('Penyimpanan gagal. Periksa penyimpanan browser lalu coba kembali.');
     }
@@ -182,14 +273,19 @@ export default function TeamPIC() {
     <section ref={pageRef} className="team-pic-page">
       <header className="tp-heading">
         <div className="tp-anim-head">
-          <span className="ent-eyebrow"><GitBranch size={12} /> DIREKTORI & OTORITAS / STRUKTUR ORGANISASI</span>
-          <h1>Struktur Organisasi & PIC</h1>
-          <p>Pemetaan hierarki unit kerja, fakultas, biro, serta tim pelaksana beserta penanggung jawab (PIC) resmi.</p>
+          <span className="ent-eyebrow"><GitBranch size={12} /> DIREKTORI & OTORITAS / MASTER PIC UNIT KERJA</span>
+          <h1>Struktur Organisasi & Master PIC</h1>
+          <p>Master data unit kerja, fakultas, biro, dan tim pelaksana yang tersinkronisasi langsung dengan kolom PIC pada Desainer Tabel KPI.</p>
         </div>
         {canEdit && (
-          <button type="button" className="tp-primary tp-anim-head" onClick={() => openEditor()}>
-            <Plus size={16} /> Tambah Entitas Organisasi
-          </button>
+          <div className="tp-anim-head" style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <button type="button" className="tp-secondary" onClick={handleSeedMasterPics}>
+              <Database size={15} /> Muat 22 Master PIC ITPLN
+            </button>
+            <button type="button" className="tp-primary" onClick={() => openEditor()}>
+              <Plus size={16} /> Tambah Entitas / PIC
+            </button>
+          </div>
         )}
       </header>
 
@@ -211,6 +307,45 @@ export default function TeamPIC() {
         ))}
       </div>
 
+      <div
+        style={{
+          background: '#FFFFFF',
+          border: '1px solid #D8E4EA',
+          borderRadius: '8px',
+          padding: '0.95rem 1.15rem',
+          marginBottom: '1rem',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.55rem' }}>
+          <strong style={{ fontSize: '0.8rem', color: '#072534', fontFamily: 'Outfit, sans-serif' }}>
+            Katalog Kode PIC Resmi Tabel KPI ITPLN ({MASTER_KPI_PICS.length} Kode Master)
+          </strong>
+          <span style={{ fontSize: '0.73rem', color: '#475569' }}>
+            Setiap kode organisasi baru yang ditambahkan di halaman ini otomatis tersedia pada kolom PIC Desainer Tabel KPI.
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+          {MASTER_KPI_PICS.map((entry) => (
+            <span
+              key={entry.code}
+              title={entry.name}
+              style={{
+                fontFamily: 'var(--ent-mono)',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '0.2rem 0.5rem',
+                borderRadius: '4px',
+                background: '#EDF3F6',
+                border: '1px solid #D8E4EA',
+                color: '#094E68',
+              }}
+            >
+              {entry.code}
+            </span>
+          ))}
+        </div>
+      </div>
+
       {!canEdit && (
         <div className="tp-readonly">
           <ShieldCheck size={16} /> Mode baca direktori. Pengelolaan struktur organisasi dikhususkan bagi otoritas Superadmin PRP.
@@ -223,8 +358,8 @@ export default function TeamPIC() {
         <form className="tp-editor" onSubmit={submit} noValidate>
           <div className="tp-editor-heading">
             <div>
-              <h2>{editingKey ? 'Perbarui Entitas Organisasi' : 'Registrasi Entitas Organisasi Baru'}</h2>
-              <p>Kolom bertanda * wajib dilengkapi dengan kode unik.</p>
+              <h2>{editingKey ? 'Perbarui Entitas Organisasi & Kode PIC' : 'Registrasi Entitas Organisasi & Kode PIC Baru'}</h2>
+              <p>Kode Organisasi berfungsi sebagai kode PIC pada Desainer Tabel KPI serta hak akses input lembar kerja unit.</p>
             </div>
             <button type="button" className="tp-icon" aria-label="Tutup editor" onClick={() => setEditor(null)}>
               <X size={17} />
@@ -239,12 +374,12 @@ export default function TeamPIC() {
             </label>
             <label>
               Nama Organisasi *
-              <input autoFocus maxLength={120} placeholder="Contoh: Fakultas Ketenagalistrikan dan Energi Terbarukan" value={editor.name} onChange={(event) => updateField('name', event.target.value)} />
+              <input autoFocus maxLength={120} placeholder="Contoh: Biro Akuntansi (BAKT)" value={editor.name} onChange={(event) => updateField('name', event.target.value)} />
               {errors.name && <small className="tp-field-error">{errors.name}</small>}
             </label>
             <label>
-              Kode Organisasi
-              <input maxLength={24} placeholder="Contoh: FKET" value={editor.code} onChange={(event) => updateField('code', event.target.value)} />
+              Kode PIC / Organisasi
+              <input maxLength={24} placeholder="Contoh: BAKT" value={editor.code} onChange={(event) => updateField('code', event.target.value)} />
               {errors.code && <small className="tp-field-error">{errors.code}</small>}
             </label>
             <label>
@@ -256,12 +391,12 @@ export default function TeamPIC() {
               {errors.parentId && <small className="tp-field-error">{errors.parentId}</small>}
             </label>
             <label className="tp-wide">
-              Penanggung Jawab (PIC)
+              Akun Penanggung Jawab (PIC)
               <select value={editor.picEmail} onChange={(event) => updateField('picEmail', event.target.value)}>
                 <option value="">Belum ditugaskan</option>
                 {accounts.map((account) => (
                   <option key={account.email} value={account.email} disabled={account.status === 'Nonaktif'}>
-                    {account.name || account.email} · {account.email}
+                    {account.name || account.email} · {account.email}{account.picCodes?.length ? ` (PIC: ${account.picCodes.join(', ')})` : ''}
                   </option>
                 ))}
               </select>
@@ -281,7 +416,7 @@ export default function TeamPIC() {
             <Search size={16} color="#475569" />
             <input
               aria-label="Cari organisasi atau PIC"
-              placeholder="Cari nama organisasi, kode unit, atau PIC..."
+              placeholder="Cari nama organisasi, kode PIC, atau email akun..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -298,9 +433,10 @@ export default function TeamPIC() {
             <thead>
               <tr>
                 <th>Entitas Organisasi</th>
+                <th>Kode PIC</th>
                 <th>Kategori</th>
                 <th>Hierarki Induk</th>
-                <th>Penanggung Jawab (PIC)</th>
+                <th>Akun Penanggung Jawab</th>
                 {canEdit && <th>Aksi</th>}
               </tr>
             </thead>
@@ -315,9 +451,29 @@ export default function TeamPIC() {
                         <span className="tp-avatar"><Building2 size={17} /></span>
                         <div>
                           <strong>{item.name}</strong>
-                          <small>{item.code || 'Tanpa kode'}</small>
+                          <small>{TYPES[item.type]}</small>
                         </div>
                       </div>
+                    </td>
+                    <td>
+                      {item.code ? (
+                        <span
+                          style={{
+                            fontFamily: 'var(--ent-mono)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '4px',
+                            background: '#EDF3F6',
+                            border: '1px solid #D8E4EA',
+                            color: '#094E68',
+                          }}
+                        >
+                          {item.code}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#475569', fontSize: '0.76rem' }}>Tanpa kode</span>
+                      )}
                     </td>
                     <td>
                       <span className={`tp-badge tp-${item.type}`}>{TYPES[item.type]}</span>
@@ -326,7 +482,7 @@ export default function TeamPIC() {
                     <td>
                       {item.picEmail ? (
                         <div className="tp-pic">
-                          <strong>{pic?.name || 'Akun tidak tersedia'}</strong>
+                          <strong>{pic?.name || 'Akun terdaftar'}</strong>
                           <small>{item.picEmail}</small>
                         </div>
                       ) : (
@@ -355,8 +511,12 @@ export default function TeamPIC() {
         {!visible.length && (
           <div className="tp-empty">
             <GitBranch size={30} color="#475569" style={{ margin: '0 auto' }} />
-            <h2>{rows.length ? 'Tidak ada entitas yang cocok' : 'Struktur organisasi belum didaftarkan'}</h2>
-            <p>{rows.length ? 'Gunakan kata kunci berbeda atau atur ulang filter kategori.' : 'Tambahkan unit kerja, fakultas, biro, atau tim untuk memetakan PIC kinerja.'}</p>
+            <h2>{rows.length ? 'Tidak ada entitas yang cocok' : 'Direktori organisasi masih kosong'}</h2>
+            <p>
+              {rows.length
+                ? 'Gunakan kata kunci berbeda atau atur ulang filter kategori.'
+                : 'Klik tombol "Muat 22 Master PIC ITPLN" di bagian atas untuk mengisi seluruh master unit kerja resmi secara instan.'}
+            </p>
           </div>
         )}
       </div>

@@ -361,7 +361,6 @@ export default function EnterpriseArchitecture() {
           boxSizing: 'border-box',
         }}
       >
-        {/* ════ 1. HEADER ARSITEKTURAL ITPLN ════ */}
         <div style={{ textAlign: 'center', maxWidth: '780px', margin: '0 auto' }}>
           <div
             className="topo-header-item"
@@ -412,9 +411,8 @@ export default function EnterpriseArchitecture() {
           </p>
         </div>
 
-        {/* ════ 2. OPEN TOPOLOGICAL CANVAS ════ */}
         <div className="topo-layout" style={{ margin: 'auto 0' }}>
-          {/* ── KIRI: 3 SKENARIO OTORITAS LOGIN (KEYBOARD ACCESSIBLE BUTTONS) ── */}
+          {/* Skenario otoritas login dengan navigasi tombol ramah papan ketik. */}
           <div style={{ display: 'flex', flexDirection: 'column', paddingRight: '1rem' }}>
             {ROLES_DATA.map((item, idx) => {
               const isActive = idx === activeIdx;
@@ -470,7 +468,7 @@ export default function EnterpriseArchitecture() {
                             color: '#ffffff',
                             opacity: isActive ? 1 : 0,
                             transform: isActive ? 'translateX(0)' : 'translateX(-6px)',
-                            transition: 'all 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
+                            transition: 'opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
                             pointerEvents: 'none',
                           }}
                         >
@@ -507,7 +505,7 @@ export default function EnterpriseArchitecture() {
             })}
           </div>
 
-          {/* ── TENGAH: CONTINUOUS BEZIER SVG ── */}
+          {/* Jembatan Bezier SVG antara peran aktif dan ruang kerja tujuan. */}
           <div className="topo-svg-bridge" style={{ width: '370px', height: '420px', position: 'relative' }} aria-hidden="true">
             <svg
               viewBox="0 0 370 420"
@@ -588,7 +586,7 @@ export default function EnterpriseArchitecture() {
                 fill={current.iku.unlocked ? '#0E7480' : '#ffffff'}
                 stroke={current.iku.unlocked ? '#094E68' : '#94A3B8'}
                 strokeWidth="2"
-                style={{ transition: 'all 0.5s ease' }}
+                style={{ transition: 'fill 0.5s ease, stroke 0.5s ease' }}
               />
               <circle
                 cx="370"
@@ -597,10 +595,10 @@ export default function EnterpriseArchitecture() {
                 fill={current.kpi.unlocked ? '#0E7480' : '#ffffff'}
                 stroke={current.kpi.unlocked ? '#094E68' : '#94A3B8'}
                 strokeWidth="2"
-                style={{ transition: 'all 0.5s ease' }}
+                style={{ transition: 'fill 0.5s ease, stroke 0.5s ease' }}
               />
 
-              {/* ── CENTRAL ORBITAL SSO GATE ── */}
+              {/* Simpul pusat gerbang SSO. */}
               <g
                 ref={ssoCoreGroupRef}
                 style={{
@@ -642,9 +640,8 @@ export default function EnterpriseArchitecture() {
             </svg>
           </div>
 
-          {/* ── KANAN: 2 ARCHITECTURAL PLANES ── */}
+          {/* Bidang ruang kerja tujuan (8 IKU Kementerian dan KPI Operasional). */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {/* PLANE 1: 8 IKU KEMENTERIAN */}
             <div
               ref={ikuPlaneRef}
               className="workspace-plane"
@@ -727,7 +724,6 @@ export default function EnterpriseArchitecture() {
               </div>
             </div>
 
-            {/* PLANE 2: KPI OPERASIONAL ITPLN */}
             <div
               ref={kpiPlaneRef}
               className="workspace-plane"
@@ -812,7 +808,7 @@ export default function EnterpriseArchitecture() {
           </div>
         </div>
 
-        {/* ════ 3. ARCHITECTURAL PROGRESS LINE & 44x44px STEP BUTTONS ════ */}
+        {/* Indikator progres dan tombol pemilih skenario (target sentuh >= 44x44px). */}
         <div
           style={{
             paddingTop: '1.25rem',

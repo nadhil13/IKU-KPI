@@ -25,7 +25,6 @@ export default function Footer() {
             borderBottom: '1px solid #12485E',
           }}
         >
-          {/* Brand Column */}
           <div style={{ maxWidth: '380px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.1rem' }}>
               <img src="/logo_pln.png" alt="Logo Institut Teknologi PLN" style={{ height: '32px', filter: 'brightness(0) invert(1)' }} />
@@ -62,7 +61,6 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Navigation Column 1 */}
           <div>
             <h3 style={{ color: '#ffffff', marginBottom: '1rem', fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>
               01 // EKOSISTEM KINERJA
@@ -75,7 +73,6 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Navigation Column 2 */}
           <div>
             <h3 style={{ color: '#ffffff', marginBottom: '1rem', fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>
               02 // PANDUAN &amp; REGULASI
@@ -88,7 +85,6 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Contact Column */}
           <div>
             <h3 style={{ color: '#ffffff', marginBottom: '1rem', fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>
               03 // KAMPUS UTAMA ITPLN
