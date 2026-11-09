@@ -494,8 +494,10 @@ export function AuthProvider({ children }) {
   };
 
   const completeDualLogin = (user, chosenWorkspace) => {
+    const targetUser = user || currentUser;
     const validChoice = chosenWorkspace === 'kpi' ? 'kpi' : 'iku';
-    if (!currentUser || user.email !== currentUser.email || !portalsForRole(currentUser.role).includes(validChoice)) return;
+    if (!targetUser || !portalsForRole(targetUser.role).includes(validChoice)) return;
+    setCurrentUser(targetUser);
     setActiveWorkspace(validChoice);
     setActiveContext(validChoice);
   };

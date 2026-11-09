@@ -414,7 +414,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             <h2>Rekap Audit Trail KPI Terpusat</h2>
             <span>Jejak aktivitas pengiriman unit, verifikasi bukti dukung, perubahan struktur tabel, dan aturan validasi PRP</span>
           </div>
-          <Link to="/internal/audit-log" className="gov-button" style={{ textDecoration: 'none' }}>
+          <Link to="/internal/admin/governance?tab=audit" className="gov-button" style={{ textDecoration: 'none' }}>
             <History size={14} />
             <span>Buka Log Audit Lengkap</span>
           </Link>

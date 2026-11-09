@@ -13,6 +13,7 @@ import {
   readUnitSubmission,
   readUnitDraft,
   saveUnitKpiDraft,
+  clearUnitKpiDraft,
   subscribeKpiWorkflow,
   submitUnitKpi,
   readUnitEvidence,
@@ -903,7 +904,7 @@ export default function KPIDataEntrySheet(props) {
     if (shouldEnsureDefault) {
       const current = readKpiWorkflow();
       if (!current.forms.length) {
-        ensureDefaultKpiDistribution(KPI_SECTIONS_CONFIG);
+        ensureDefaultKpiDistribution(KPI_SECTIONS_CONFIG, '2026', { silent: true });
       }
     }
     return readKpiWorkflow();
@@ -913,6 +914,11 @@ export default function KPIDataEntrySheet(props) {
   const activeForm = isUnit
     ? getUnitKpiForm(currentUser?.email, workflowState)
     : workflowState.forms[workflowState.forms.length - 1] || null;
+
+  const resolvedSectionsOverride = useMemo(
+    () => (isUnit && activeForm?.sections ? hydrateSectionsWithDefaultPics(activeForm.sections) : props.sectionsOverride),
+    [isUnit, activeForm, props.sectionsOverride],
+  );
 
   if (isUnit && !activeForm) {
     return (
@@ -932,7 +938,7 @@ export default function KPIDataEntrySheet(props) {
     <KPIEntryContent
       key={isUnit ? `${activeForm.id}:${currentUser.email}:${record?.status || 'DRAFT'}` : `sheet:${Boolean(props.sectionsOverride)}`}
       {...props}
-      sectionsOverride={isUnit ? hydrateSectionsWithDefaultPics(activeForm.sections) : props.sectionsOverride}
+      sectionsOverride={resolvedSectionsOverride}
       unitForm={isUnit ? activeForm : null}
       unitUser={currentUser}
       submission={record}
@@ -1815,13 +1821,14 @@ function KPIEntryContent({
     };
   }, [effectiveValues, governedSections, orderedKeys, editableItemIds, ownEvidenceByItem, isUnitMode]);
 
+  const lastMetricsJsonRef = useRef('');
   useEffect(() => {
     if (onMetricsUpdate) {
       const secA = calculated.sections[0];
       const secB = calculated.sections[1];
       const secC = calculated.sections[2];
       const secD = calculated.sections[3];
-      onMetricsUpdate({
+      const payload = {
         totalBobot: 100,
         totalScore: calculated.netTotalScore,
         positiveScoreABC: calculated.positiveScoreABC,
@@ -1847,9 +1854,19 @@ function KPIEntryContent({
           completed: sec.secCompleted,
           total: sec.secTotalItems,
         })),
-      });
+      };
+      const serialized = JSON.stringify(payload);
+      if (serialized !== lastMetricsJsonRef.current) {
+        lastMetricsJsonRef.current = serialized;
+        onMetricsUpdate(payload);
+      }
     }
   }, [calculated, onMetricsUpdate]);
+
+  const sectionsStructureKey = useMemo(
+    () => governedSections.map((sec) => `${sec.code}:${sec.items.map((item) => item.id).join(',')}`).join('|'),
+    [governedSections],
+  );
 
   useGSAP(() => {
     const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1903,7 +1920,7 @@ function KPIEntryContent({
     }
 
     ScrollTrigger.refresh();
-  }, { dependencies: [activeSectionTab, governedSections, rowScopeFilter], scope: containerRef });
+  }, { dependencies: [activeSectionTab, sectionsStructureKey, rowScopeFilter], scope: containerRef });
 
   useEffect(() => {
     if (activeSectionTab !== 'ALL' && !governedSections.some((sec) => sec.code === activeSectionTab)) {
@@ -2076,6 +2093,8 @@ function KPIEntryContent({
       'd_5_tot': '24',
     };
     const nextValues = { ...values };
+    const nextNotes = { ...notes };
+    const simulatedEvidenceItems = [];
     governedSections.forEach((sec) => sec.items.forEach((item) => {
       if (isUnitMode && !editableItemIds.has(item.id)) return;
       item.subrows.forEach((sub, subIndex) => {
@@ -2088,10 +2107,53 @@ function KPIEntryContent({
           nextValues[sub.key] = formatIndonesianNumber(subIndex === 0 ? target * 0.85 : target, 2);
         }
       });
+      if (!String(nextNotes[item.id] ?? '').trim()) {
+        nextNotes[item.id] = `Realisasi capaian indikator ${sec.code}.${item.no} telah diverifikasi unit (${formatPicDisplay(item.pics, item.picDisplay) || 'PIC'}).`;
+      }
+      if ((ownEvidenceByItem[item.id] || []).length === 0) {
+        simulatedEvidenceItems.push({ secCode: sec.code, item });
+      }
     }));
     setValues(nextValues);
+    setNotes(nextNotes);
+    if (isUnitMode && unitForm && unitUser && simulatedEvidenceItems.length > 0) {
+      simulatedEvidenceItems.forEach(({ secCode, item }) => {
+        try {
+          addUnitEvidence(unitForm.id, unitUser, {
+            indicatorId: item.id,
+            kind: 'link',
+            label: `Bukti Capaian ${secCode}.${item.no} (${formatPicDisplay(item.pics, item.picDisplay) || 'PIC'})`,
+            url: `https://drive.itpln.ac.id/bukti-kpi/${secCode.toLowerCase()}-${String(item.no).toLowerCase()}`,
+          });
+        } catch {
+          // Abaikan bila lampiran simulasi ditolak karena pembatasan periode
+        }
+      });
+    } else if (!isUnitMode && simulatedEvidenceItems.length > 0) {
+      setLocalEvidenceList((prev) => {
+        const nextList = [...prev];
+        simulatedEvidenceItems.forEach(({ secCode, item }) => {
+          if (!nextList.some((ev) => ev.indicatorId === item.id)) {
+            nextList.push({
+              id: createId('ev-local'),
+              indicatorId: item.id,
+              kind: 'link',
+              label: `Bukti Capaian ${secCode}.${item.no} (${formatPicDisplay(item.pics, item.picDisplay) || 'PIC'})`,
+              url: `https://drive.itpln.ac.id/bukti-kpi/${secCode.toLowerCase()}-${String(item.no).toLowerCase()}`,
+              status: 'PENDING',
+              uploadedAt: new Date().toISOString(),
+            });
+          }
+        });
+        return nextList;
+      });
+    }
     setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.DRAFT, revisionNote: '' }));
-    showToast(isUnitMode ? `Nilai simulasi diterapkan pada ${calculated.picTotalIndicators} indikator PIC Anda.` : 'Data simulasi demo diterapkan pada seluruh indikator.');
+    showToast(
+      isUnitMode
+        ? `Nilai simulasi, keterangan, dan bukti tautan diterapkan pada ${calculated.picTotalIndicators} indikator PIC Anda.`
+        : 'Data simulasi demo diterapkan pada seluruh indikator.',
+    );
   };
 
   const handleReset = () => {
@@ -2104,11 +2166,22 @@ function KPIEntryContent({
       editableItemIds.forEach((id) => { delete clearedNotes[id]; });
       setValues(cleared);
       setNotes(clearedNotes);
+      if (unitForm && unitUser) {
+        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true });
+      }
     } else {
       setValues(emptyDefaults);
       setNotes({});
+      setLocalEvidenceList([]);
+    }
+    try {
+      localStorage.removeItem(valuesKey);
+      localStorage.removeItem(notesKey);
+    } catch {
+      // Abaikan kegagalan hapus penyimpanan lokal
     }
     setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
+    showToast('Isian, keterangan draf, dan lampiran simulasi telah dikosongkan.');
   };
 
   const handleSubmit = () => {

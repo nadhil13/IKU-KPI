@@ -132,7 +132,12 @@ export default function Dashboard() {
     scoreB: 0,
     scoreC: 0,
     scoreD: 0,
-    sectionScores: [],
+    sectionScores: [
+      { code: 'A', title: 'PERSPEKTIF KEBERLANJUTAN', weight: 25, weightDisplay: '25', score: 0, isPenaltySection: false, completed: 0, total: 7 },
+      { code: 'B', title: 'PERSPEKTIF MAHASISWA', weight: 26, weightDisplay: '26', score: 0, isPenaltySection: false, completed: 0, total: 7 },
+      { code: 'C', title: 'PERSPEKTIF BISNIS INTERNAL, LEARNING & DEVELOPMENT', weight: 49, weightDisplay: '49', score: 0, isPenaltySection: false, completed: 0, total: 10 },
+      { code: 'D', title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)', weight: -12.5, weightDisplay: '-12,5', score: 0, isPenaltySection: true, completed: 0, total: 5 },
+    ],
   });
 
   const dashRef = useRef(null);

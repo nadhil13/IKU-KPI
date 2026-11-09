@@ -68,7 +68,12 @@ function inputAllowed(form) {
 }
 
 function owner(form, user) {
-  if (!user?.email || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only') || !form?.units.some((unit) => unit.email === user.email.toLowerCase())) {
+  const normalizedEmail = user?.email?.toLowerCase();
+  const isRegisteredUnit = Boolean(normalizedEmail) && (
+    form?.units?.some((unit) => unit.email === normalizedEmail)
+    || getKpiUnits().some((unit) => unit.email === normalizedEmail)
+  );
+  if (!normalizedEmail || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only') || !form || !isRegisteredUnit) {
     throw new Error('Formulir tidak ditujukan ke akun ini.');
   }
   inputAllowed(form);
@@ -271,34 +276,40 @@ export function reviewUnitEvidence(formId, email, evidenceId, status, note = '',
   });
 }
 
-const write = (state) => {
+const write = (state, options = {}) => {
   localStorage.setItem(KEY, JSON.stringify(state));
-  const entries = read('prp_audit', []);
-  const latest = Object.values(state.submissions || {})
-    .flatMap((record) => record.history || [])
-    .sort((a, b) => b.at.localeCompare(a.at))[0];
-  const signature = latest
-    ? `${latest.at}:${latest.status}:${latest.note}`
-    : `forms:${state.forms.length}:evidence:${Object.values(state.evidence || {}).reduce((sum, list) => sum + (list?.length || 0), 0)}:drafts:${Object.keys(state.drafts || {}).length}`;
-  if (entries[0]?.workflowSignature !== signature) {
-    localStorage.setItem(
-      'prp_audit',
-      JSON.stringify([
-        {
-          id: createId('audit'),
-          action: 'KPI_WORKFLOW',
-          detail: latest ? `${latest.from} -> ${latest.status}: ${latest.note}` : 'Distribusi, draf, atau bukti KPI diperbarui',
-          actor: latest?.actor?.email || 'Workflow KPI',
-          at: new Date().toISOString(),
-          workflowSignature: signature,
-        },
-        ...entries,
-      ].slice(0, 500)),
-    );
+  if (!options.skipAudit) {
+    const entries = read('prp_audit', []);
+    const latest = Object.values(state.submissions || {})
+      .flatMap((record) => record.history || [])
+      .sort((a, b) => b.at.localeCompare(a.at))[0];
+    const signature = latest
+      ? `${latest.at}:${latest.status}:${latest.note}`
+      : `forms:${state.forms.length}:evidence:${Object.values(state.evidence || {}).reduce((sum, list) => sum + (list?.length || 0), 0)}:drafts:${Object.keys(state.drafts || {}).length}`;
+    if (entries[0]?.workflowSignature !== signature) {
+      localStorage.setItem(
+        'prp_audit',
+        JSON.stringify([
+          {
+            id: createId('audit'),
+            action: 'KPI_WORKFLOW',
+            detail: latest ? `${latest.from} -> ${latest.status}: ${latest.note}` : 'Distribusi, draf, atau bukti KPI diperbarui',
+            actor: latest?.actor?.email || 'Workflow KPI',
+            at: new Date().toISOString(),
+            workflowSignature: signature,
+          },
+          ...entries,
+        ].slice(0, 500)),
+      );
+    }
   }
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('prp-admin-updated'));
-    window.dispatchEvent(new Event(EVENT));
+    if (!options.skipAdminEvent) {
+      window.dispatchEvent(new Event('prp-admin-updated'));
+    }
+    if (!options.skipWorkflowEvent) {
+      window.dispatchEvent(new Event(EVENT));
+    }
   }
 };
 
@@ -328,7 +339,7 @@ export function getKpiUnits() {
     }));
 }
 
-export function syncActiveKpiFormUnits() {
+export function syncActiveKpiFormUnits(options = {}) {
   const state = readKpiWorkflow();
   if (!state.forms.length) return null;
   const units = getKpiUnits();
@@ -347,17 +358,25 @@ export function syncActiveKpiFormUnits() {
   if (!changed) return latestForm;
   const updatedForm = { ...latestForm, units: [...existingMap.values()] };
   const nextForms = state.forms.map((f, idx) => (idx === lastIdx ? updatedForm : f));
-  write({ ...state, forms: nextForms });
+  write(
+    { ...state, forms: nextForms },
+    { skipWorkflowEvent: Boolean(options.silent), skipAdminEvent: Boolean(options.silent), skipAudit: Boolean(options.silent) },
+  );
   return updatedForm;
 }
 
-export function ensureDefaultKpiDistribution(defaultSections, period = String(new Date().getFullYear())) {
+export function ensureDefaultKpiDistribution(defaultSections, period = String(new Date().getFullYear()), options = {}) {
+  const writeOpts = {
+    skipWorkflowEvent: Boolean(options.silent),
+    skipAdminEvent: Boolean(options.silent),
+    skipAudit: Boolean(options.silent),
+  };
   const state = readKpiWorkflow();
   const defaultPicById = new Map(
     (defaultSections || []).flatMap((sec) => (sec.items || []).map((item) => [item.id, item])),
   );
   if (state.forms.length > 0) {
-    const synced = syncActiveKpiFormUnits() || state.forms[state.forms.length - 1];
+    const synced = syncActiveKpiFormUnits(options) || state.forms[state.forms.length - 1];
     if (!synced || defaultPicById.size === 0) return synced;
     let hydratedAnyPic = false;
     const nextSections = (synced.sections || []).map((sec) => ({
@@ -381,7 +400,7 @@ export function ensureDefaultKpiDistribution(defaultSections, period = String(ne
     const lastIdx = freshState.forms.length - 1;
     const updatedForm = { ...freshState.forms[lastIdx], sections: normalizeKpiSections(nextSections) };
     const nextForms = freshState.forms.map((f, idx) => (idx === lastIdx ? updatedForm : f));
-    write({ ...freshState, forms: nextForms });
+    write({ ...freshState, forms: nextForms }, writeOpts);
     return updatedForm;
   }
   const units = getKpiUnits();
@@ -410,8 +429,8 @@ export function ensureDefaultKpiDistribution(defaultSections, period = String(ne
     units,
     sentAt: new Date().toISOString(),
   };
-  write({ ...state, forms: [form] });
-  if (!published?.sections?.length) {
+  write({ ...state, forms: [form] }, writeOpts);
+  if (!published?.sections?.length && !options.silent) {
     publishKpiSections(normalized, { actor: 'Sistem Inisialisasi PRP', snapshot: true, note: `Distribusi awal periode ${period}` });
   }
   return form;
@@ -441,11 +460,44 @@ export function distributeKpiForm(sections, { period = String(new Date().getFull
 }
 
 export function getUnitKpiForm(email, state = readKpiWorkflow()) {
-  return [...state.forms].reverse().find((form) => form.units.some((unit) => unit.email === email?.toLowerCase())) || null;
+  const normalizedEmail = email?.toLowerCase();
+  if (!normalizedEmail || !state.forms?.length) return null;
+  const directMatch = [...state.forms].reverse().find((form) => form.units?.some((unit) => unit.email === normalizedEmail));
+  if (directMatch) return directMatch;
+  const isActiveKpiUnit = getKpiUnits().some((unit) => unit.email === normalizedEmail);
+  return isActiveKpiUnit ? state.forms[state.forms.length - 1] : null;
 }
 
 export function readUnitSubmission(formId, email, state = readKpiWorkflow()) {
   return state.submissions[submissionKey(formId, email)] || null;
+}
+
+export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false } = {}) {
+  const state = readKpiWorkflow();
+  const form = state.forms.find((entry) => entry.id === formId);
+  if (!form || !user?.email) return;
+  const key = submissionKey(formId, user.email);
+  const previous = state.submissions[key];
+  if (previous && !['NEEDS_REVISION'].includes(previous.status)) return;
+  const nextDrafts = { ...(state.drafts || {}) };
+  delete nextDrafts[key];
+  const nextEvidence = { ...(state.evidence || {}) };
+  if (clearPendingEvidence && Array.isArray(nextEvidence[key])) {
+    const remaining = nextEvidence[key].filter((ev) => ev.status === 'VERIFIED');
+    if (remaining.length > 0) {
+      nextEvidence[key] = remaining;
+    } else {
+      delete nextEvidence[key];
+    }
+  }
+  write(
+    {
+      ...state,
+      drafts: nextDrafts,
+      evidence: nextEvidence,
+    },
+    { skipAudit: true },
+  );
 }
 
 export function saveUnitKpiDraft(formId, user, { values = {}, notes = {} } = {}) {
@@ -483,6 +535,15 @@ export function saveUnitKpiDraft(formId, user, { values = {}, notes = {} } = {})
     }
   });
 
+  const existingDraft = state.drafts?.[key];
+  if (
+    existingDraft
+    && JSON.stringify(existingDraft.values || {}) === JSON.stringify(filteredValues)
+    && JSON.stringify(existingDraft.notes || {}) === JSON.stringify(filteredNotes)
+  ) {
+    return existingDraft;
+  }
+
   const draft = {
     formId,
     email: user.email.toLowerCase(),
@@ -493,13 +554,16 @@ export function saveUnitKpiDraft(formId, user, { values = {}, notes = {} } = {})
     updatedAt: new Date().toISOString(),
   };
 
-  write({
-    ...state,
-    drafts: {
-      ...(state.drafts || {}),
-      [key]: draft,
+  write(
+    {
+      ...state,
+      drafts: {
+        ...(state.drafts || {}),
+        [key]: draft,
+      },
     },
-  });
+    { skipAudit: true, skipAdminEvent: true },
+  );
   return draft;
 }
 
