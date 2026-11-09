@@ -915,10 +915,19 @@ export default function KPIDataEntrySheet(props) {
     ? getUnitKpiForm(currentUser?.email, workflowState)
     : workflowState.forms[workflowState.forms.length - 1] || null;
 
-  const resolvedSectionsOverride = useMemo(
-    () => (isUnit && activeForm?.sections ? hydrateSectionsWithDefaultPics(activeForm.sections) : props.sectionsOverride),
-    [isUnit, activeForm, props.sectionsOverride],
-  );
+  const resolvedSectionsOverride = useMemo(() => {
+    void revision;
+    if (!isUnit) return props.sectionsOverride;
+    const published = readPublishedKpiConfig();
+    if (published?.sections?.length) {
+      const pubTime = Date.parse(published.publishedAt || '') || 0;
+      const formTime = Date.parse(activeForm?.updatedAt || activeForm?.sentAt || '') || 0;
+      if (pubTime >= formTime) {
+        return hydrateSectionsWithDefaultPics(published.sections);
+      }
+    }
+    return activeForm?.sections ? hydrateSectionsWithDefaultPics(activeForm.sections) : props.sectionsOverride;
+  }, [isUnit, activeForm, props.sectionsOverride, revision]);
 
   if (isUnit && !activeForm) {
     return (
@@ -1526,6 +1535,8 @@ function KPIEntryContent({
   }, [governedSections, editableItemIds]);
 
   const [structureToast, setStructureToast] = useState(null);
+  const [newlySyncedItemIds, setNewlySyncedItemIds] = useState(() => new Set());
+  const prevItemIdsRef = useRef(null);
   const showToast = (msg) => {
     setStructureToast(msg);
   };
@@ -1534,6 +1545,43 @@ function KPIEntryContent({
     const t = setTimeout(() => setStructureToast(null), 4600);
     return () => clearTimeout(t);
   }, [structureToast]);
+
+  // Deteksi penambahan atau perubahan baris indikator secara realtime
+  useEffect(() => {
+    const currentIds = governedSections.flatMap((sec) => (sec.items || []).map((item) => item.id));
+    if (prevItemIdsRef.current === null) {
+      prevItemIdsRef.current = new Set(currentIds);
+      return undefined;
+    }
+    const addedIds = currentIds.filter((id) => !prevItemIdsRef.current.has(id));
+    const prevCount = prevItemIdsRef.current.size;
+    prevItemIdsRef.current = new Set(currentIds);
+
+    if (addedIds.length > 0) {
+      setNewlySyncedItemIds(new Set(addedIds));
+      showToast(`+${addedIds.length} baris indikator baru ditambahkan oleh Admin PRP secara realtime (total ${currentIds.length} baris).`);
+      if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && containerRef.current) {
+        requestAnimationFrame(() => {
+          addedIds.forEach((id) => {
+            const rowEl = containerRef.current?.querySelector(`[data-kpi-row-id="${id}"]`);
+            if (rowEl) {
+              gsap.fromTo(
+                rowEl,
+                { opacity: 0, y: -10 },
+                { opacity: 1, y: 0, duration: 0.65, ease: 'expo.out', clearProps: 'transform' },
+              );
+            }
+          });
+        });
+      }
+      const timer = setTimeout(() => setNewlySyncedItemIds(new Set()), 8000);
+      return () => clearTimeout(timer);
+    }
+    if (currentIds.length !== prevCount) {
+      showToast(`Struktur baris indikator diperbarui secara realtime (${currentIds.length} baris aktif).`);
+    }
+    return undefined;
+  }, [governedSections]);
 
   useEffect(() => {
     if (isPreview) return undefined;
@@ -2037,6 +2085,33 @@ function KPIEntryContent({
         inputRefs.current[prevKey].select();
       }
     }
+  };
+
+  const handleJumpToNextEmptyInput = () => {
+    if (readOnly || isLocked) return;
+    const emptyKey = navigableKeys.find((k) => String(values[k] ?? '').trim() === '');
+    const targetKey = emptyKey || navigableKeys[0];
+    if (!targetKey) {
+      showToast('Tidak ada kolom input aktif untuk akun ini.');
+      return;
+    }
+    if (activeSectionTab !== 'ALL') {
+      setActiveSectionTab('ALL');
+    }
+    requestAnimationFrame(() => {
+      const inputEl = inputRefs.current[targetKey];
+      if (!inputEl) return;
+      inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      inputEl.focus({ preventScroll: true });
+      const rowTbody = inputEl.closest('.kpi-indicator-tbody');
+      if (rowTbody && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        gsap.fromTo(
+          rowTbody,
+          { backgroundColor: '#EDF3F6' },
+          { backgroundColor: '#FFFFFF', duration: 0.9, ease: 'power2.out', clearProps: 'backgroundColor' },
+        );
+      }
+    });
   };
 
   const handleFillSample = () => {
@@ -3277,6 +3352,17 @@ ${sectionSummaryHtml}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
           {!readOnly && (
             <>
+              <button
+                type="button"
+                onClick={handleJumpToNextEmptyInput}
+                className="clean-btn"
+                disabled={isLocked || navigableKeys.length === 0}
+                title="Gulir langsung ke kolom isian PIC berikutnya yang masih kosong"
+              >
+                <Clock3 size={13} />
+                <span>Lompat ke Isian Kosong</span>
+              </button>
+
               <button type="button" onClick={handleFillSample} className="clean-btn" disabled={isLocked}>
                 <SlidersHorizontal size={13} />
                 <span>{isUnitMode ? 'Simulasi PIC' : 'Isi Simulasi'}</span>
@@ -3455,12 +3541,16 @@ ${sectionSummaryHtml}
                 const picDisplayLabel = formatPicDisplay(rowPics, item.picDisplay) || 'Semua Unit';
                 const isHighlightedForReview = highlightedPicsSet.size > 0
                   && rowPics.some((code) => highlightedPicsSet.has(code.toLowerCase()));
+                const isNewlySyncedRow = newlySyncedItemIds.has(item.id);
                 const contributor = contributorMapOverride?.[item.id] || integratedBoard?.contributorsByItem?.[item.id] || null;
 
                 return (
                   <tbody
                     key={item.id}
+                    data-kpi-row-id={item.id}
+                    data-kpi-section-code={sec.code}
                     className={`kpi-indicator-tbody ${isUnitMode && !canEditRow ? 'is-readonly-pic' : ''}`}
+                    style={isNewlySyncedRow ? { boxShadow: 'inset 4px 0 0 #0E7480', backgroundColor: '#F0FDF4' } : undefined}
                   >
                     {item.groupBannerTitle && (
                       <tr style={{ background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
@@ -3522,7 +3612,25 @@ ${sectionSummaryHtml}
                                   background: isHighlightedForReview ? '#F0FDF4' : '#FFFFFF',
                                 }}
                               >
-                                <div>{item.indikator}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <span>{item.indikator}</span>
+                                  {isNewlySyncedRow && (
+                                    <span
+                                      style={{
+                                        fontSize: '0.62rem',
+                                        fontWeight: 800,
+                                        fontFamily: 'JetBrains Mono, monospace',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        background: '#094E68',
+                                        color: '#FFFFFF',
+                                        letterSpacing: '0.04em',
+                                      }}
+                                    >
+                                      BARU (REALTIME PRP)
+                                    </span>
+                                  )}
+                                </div>
                                 {item.extraNote && (
                                   <div
                                     style={{

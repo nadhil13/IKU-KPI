@@ -19,6 +19,9 @@ import {
   Search,
   CornerDownLeft,
   Radio,
+  Smartphone,
+  Download,
+  CheckCircle2,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -30,6 +33,15 @@ import { readAudit } from '../features/internal/adminStore';
 import { mountSmoothScroll, getLenis } from '../lib/smoothScroll';
 import { ActiveBroadcastBanner, BroadcastComposerModal } from '../features/internal/components/BroadcastCenter';
 import { getRealtimeStatus, subscribeRealtimeStatus } from '../lib/realtimeSync';
+import {
+  initPwaAndNotifications,
+  getPwaAndNotificationState,
+  subscribePwaState,
+  triggerPwaInstallPrompt,
+  requestOsNotificationPermission,
+  setOsNotificationEnabledByUser,
+  dispatchOsNotification,
+} from '../lib/pwaNotifications';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -47,10 +59,20 @@ export default function InternalLayout() {
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [blockedModalInfo, setBlockedModalInfo] = useState(null);
   const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [pwaModalOpen, setPwaModalOpen] = useState(false);
+  const [pwaNotice, setPwaNotice] = useState('');
+  const [pwaState, setPwaState] = useState(() => getPwaAndNotificationState());
   const [rtStatus, setRtStatus] = useState(() => getRealtimeStatus());
   const [telemetryTick, setTelemetryTick] = useState(0);
 
   useEffect(() => subscribeRealtimeStatus(setRtStatus), []);
+  useEffect(() => subscribePwaState(setPwaState), []);
+  useEffect(() => {
+    if (!currentUser) return;
+    initPwaAndNotifications((targetUrl) => {
+      if (targetUrl) navigate(targetUrl);
+    });
+  }, [currentUser, navigate]);
 
   const layoutRef = useRef(null);
   const navScrollRef = useRef(null);
@@ -124,6 +146,7 @@ export default function InternalLayout() {
         setNotifOpen(false);
         setBlockedModalInfo(null);
         setSidebarOpen(false);
+        setPwaModalOpen(false);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1459,6 +1482,40 @@ export default function InternalLayout() {
               </div>
             )}
 
+            <button
+              type="button"
+              data-open-pwa-modal="true"
+              onClick={() => {
+                setPwaNotice('');
+                setPwaModalOpen(true);
+              }}
+              aria-label="Install Aplikasi HP dan Notifikasi Layar Kunci"
+              title="Install Aplikasi di Android/iPhone & Aktifkan Notifikasi Layar HP"
+              style={{
+                height: isMobile ? '44px' : '38px',
+                padding: isMobile && windowWidth <= 600 ? '0 0.6rem' : '0 0.75rem',
+                borderRadius: '8px',
+                background: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#F0FDF4' : '#F7FAFB',
+                border: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '1px solid #86EFAC' : '1px solid #D8E4EA',
+                color: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#14532D' : '#072534',
+                fontSize: '0.73rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.38rem',
+              }}
+            >
+              <Smartphone size={14} />
+              {windowWidth > 680 && (
+                <span>
+                  {pwaState.isInstalled
+                    ? (pwaState.notificationPermission === 'granted' ? 'Notif HP Aktif' : 'Notif HP')
+                    : 'Install & Notif HP'}
+                </span>
+              )}
+            </button>
+
             {isSuperadminPrp && (
               <button
                 type="button"
@@ -1731,6 +1788,230 @@ export default function InternalLayout() {
       </main>
 
       <BroadcastComposerModal open={broadcastModalOpen} onClose={() => setBroadcastModalOpen(false)} />
+
+      {pwaModalOpen && (
+        <div
+          onClick={() => setPwaModalOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 145,
+            background: 'rgba(6, 44, 61, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pwa-modal-title"
+            data-lenis-prevent
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '520px',
+              maxHeight: '90dvh',
+              overflowY: 'auto',
+              background: '#FFFFFF',
+              border: '1px solid #094E68',
+              borderRadius: '10px',
+              boxShadow: '0 24px 48px -12px rgba(7, 37, 52, 0.24)',
+              padding: '1.35rem',
+              color: '#072534',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', borderBottom: '1px solid #D8E4EA', paddingBottom: '0.85rem' }}>
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.66rem', fontWeight: 800, color: '#094E68', fontFamily: 'var(--ent-mono)', letterSpacing: '0.06em' }}>
+                  <Smartphone size={13} /> PWA STANDALONE &amp; NOTIFIKASI LAYAR HP
+                </div>
+                <h2 id="pwa-modal-title" style={{ margin: '0.25rem 0 0', fontFamily: 'Outfit, sans-serif', fontSize: '1.12rem', fontWeight: 800, color: '#072534' }}>
+                  Install di Android / iPhone &amp; Aktifkan Notifikasi Layar Kunci
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPwaModalOpen(false)}
+                aria-label="Tutup dialog aplikasi"
+                style={{ width: '36px', height: '36px', borderRadius: '6px', border: '1px solid #D8E4EA', background: '#FFFFFF', color: '#072534', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {pwaNotice && (
+              <div style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', background: '#F0FDF4', border: '1px solid #86EFAC', color: '#14532D', fontSize: '0.76rem', fontWeight: 600 }}>
+                {pwaNotice}
+              </div>
+            )}
+
+            <div style={{ padding: '0.9rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <div>
+                  <strong style={{ fontSize: '0.82rem', color: '#072534', display: 'block' }}>
+                    1. Notifikasi Layar Kunci &amp; Bilah Status HP
+                  </strong>
+                  <span style={{ fontSize: '0.73rem', color: '#334155', lineHeight: 1.45 }}>
+                    Saat akun Anda masih login, instruksi siaran PRP dan penambahan baris KPI baru akan muncul langsung di layar HP walaupun browser sedang di latar belakang.
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.66rem',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    fontFamily: 'var(--ent-mono)',
+                    background: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#F0FDF4' : '#EDF3F6',
+                    border: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '1px solid #86EFAC' : '1px solid #B8CAD4',
+                    color: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#14532D' : '#094E68',
+                  }}
+                >
+                  {pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? 'AKTIF DI LAYAR HP' : 'BELUM DIAKTIFKAN'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  data-enable-os-notification="true"
+                  onClick={async () => {
+                    if (pwaState.notificationPermission === 'granted') {
+                      const next = !pwaState.notificationEnabledByUser;
+                      setOsNotificationEnabledByUser(next);
+                      setPwaNotice(next ? 'Notifikasi layar HP diaktifkan.' : 'Notifikasi layar HP dijeda.');
+                      return;
+                    }
+                    const res = await requestOsNotificationPermission();
+                    if (res.granted) {
+                      setPwaNotice('Izin notifikasi layar HP aktif. Notifikasi percobaan telah dikirim ke perangkat Anda.');
+                    } else {
+                      setPwaNotice(res.reason || 'Aktifkan izin notifikasi pada pengaturan browser HP Anda.');
+                    }
+                  }}
+                  style={{
+                    minHeight: '40px',
+                    padding: '0.45rem 0.9rem',
+                    borderRadius: '6px',
+                    border: '1px solid #094E68',
+                    background: '#094E68',
+                    color: '#FFFFFF',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <Bell size={14} />
+                  <span>
+                    {pwaState.notificationPermission === 'granted'
+                      ? (pwaState.notificationEnabledByUser ? 'Jeda Notifikasi HP' : 'Aktifkan Kembali Notifikasi HP')
+                      : 'Izinkan Notifikasi Layar HP'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  data-test-os-notification="true"
+                  onClick={async () => {
+                    const sent = await dispatchOsNotification({
+                      force: true,
+                      title: '[SIARAN PERFORMA ITPLN] Uji Notifikasi Layar HP',
+                      body: `Akun ${currentUser?.name || 'Unit'} (${currentUser?.unit || 'ITPLN'}) terhubung ke kanal notifikasi realtime.`,
+                      tag: `performa-test-${Date.now()}`,
+                      url: '/internal',
+                      priority: 'URGENT',
+                    });
+                    setPwaNotice(
+                      sent
+                        ? 'Notifikasi sistem operasi dan nada dering berhasil dikirim ke layar perangkat.'
+                        : 'Nada pengingat berbunyi. Izinkan notifikasi browser agar banner muncul di luar aplikasi.',
+                    );
+                  }}
+                  style={{
+                    minHeight: '40px',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '6px',
+                    border: '1px solid #B8CAD4',
+                    background: '#FFFFFF',
+                    color: '#072534',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <Radio size={14} />
+                  <span>Uji Notifikasi Layar HP</span>
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: '0.9rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: '0.82rem', color: '#072534' }}>
+                  2. Install Aplikasi di Layar Utama HP (Android, iPhone, &amp; Desktop)
+                </strong>
+                {pwaState.isInstalled && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', fontWeight: 700, color: '#14532D' }}>
+                    <CheckCircle2 size={13} /> Terpasang
+                  </span>
+                )}
+              </div>
+
+              {pwaState.canInstallPrompt && !pwaState.isInstalled && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await triggerPwaInstallPrompt();
+                    if (res.installed) {
+                      setPwaNotice('Aplikasi PERFORMA ITPLN berhasil dipasang ke layar utama perangkat Anda.');
+                    }
+                  }}
+                  style={{
+                    minHeight: '42px',
+                    padding: '0.5rem 0.95rem',
+                    borderRadius: '6px',
+                    border: '1px solid #0E7480',
+                    background: '#0E7480',
+                    color: '#FFFFFF',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.45rem',
+                  }}
+                >
+                  <Download size={15} />
+                  <span>Install Aplikasi PERFORMA ITPLN Sekarang</span>
+                </button>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.6rem', fontSize: '0.72rem', color: '#334155', lineHeight: 1.5 }}>
+                <div style={{ padding: '0.65rem 0.75rem', borderRadius: '6px', background: '#FFFFFF', border: '1px solid #D8E4EA' }}>
+                  <strong style={{ color: '#072534', display: 'block', marginBottom: '0.2rem' }}>HP Android (Chrome / Edge):</strong>
+                  Ketuk tombol <strong>Install Aplikasi</strong> di atas atau buka menu titik tiga browser lalu pilih <strong>Install aplikasi / Tambahkan ke Layar Utama</strong>.
+                </div>
+                <div style={{ padding: '0.65rem 0.75rem', borderRadius: '6px', background: '#FFFFFF', border: '1px solid #D8E4EA' }}>
+                  <strong style={{ color: '#072534', display: 'block', marginBottom: '0.2rem' }}>iPhone / iPad (Safari iOS):</strong>
+                  Ketuk ikon <strong>Bagikan (Share)</strong> di bilah bawah Safari, gulir ke bawah, lalu pilih <strong>Tambah ke Layar Utama (Add to Home Screen)</strong>.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dialog navigasi cepat (Ctrl+K). */}
       {cmdOpen && (

@@ -5,7 +5,7 @@ import {
   Link2, Search, ShieldCheck, X, Layers, History, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../auth/context/AuthContext';
-import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG, EvidencePreviewModal } from '../../kpi/components/KPIDataEntrySheet';
+import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG, EvidencePreviewModal } from './KPIDataEntrySheet';
 import {
   KPI_TRANSITIONS,
   readKpiWorkflow,
@@ -18,9 +18,9 @@ import {
   readIntegratedKpiBoard,
   ensureDefaultKpiDistribution,
   getEditableItemsForUser,
-} from '../../kpi/kpiWorkflowStore';
-import { formatIndonesianNumber } from '../../kpi/kpiSchema';
-import { readAudit } from '../adminStore';
+} from '../kpiWorkflowStore';
+import { formatIndonesianNumber } from '../kpiSchema';
+import { readAudit } from '../../internal/adminStore';
 
 const labels = {
   DRAFT: 'Sedang dikerjakan (Draft)',
@@ -171,7 +171,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               onClick={() => setShowIntegratedSheet((prev) => !prev)}
             >
               <Layers size={14} />
-              <span>{showIntegratedSheet ? 'Sembunyikan Tabel Terpusat' : 'Buka Tabel Rekonsiliasi 29 Indikator'}</span>
+              <span>{showIntegratedSheet ? 'Sembunyikan Tabel Terpusat' : 'Buka Tabel Rekonsiliasi Indikator'}</span>
             </button>
           </div>
 

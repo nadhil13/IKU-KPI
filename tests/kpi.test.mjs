@@ -236,4 +236,22 @@ test('pengaturan aturan validasi struktur oleh Admin PRP bekerja dinamis', () =>
   sampleSections[0].items[0].pics = ['PPA'];
   const distributed = store.distributeKpiForm(sampleSections, { period: '2026', actor: prpAdmin });
   assert.equal(distributed.sections[0].items[0].pics[0], 'PPA');
+
+  // Penambahan baris baru secara realtime tanpa meriset draf/submission yang sudah ada.
+  const expandedSections = JSON.parse(JSON.stringify(sampleSections));
+  expandedSections[0].items.push({
+    id: 'A_2_rt',
+    no: '2',
+    indikator: 'Indikator Tambahan Realtime',
+    formula: '[a_2_rt_val]',
+    pics: ['BAKT'],
+    bobot: 25,
+    targetNum: 100,
+    satuan: '%',
+    subrows: [{ key: 'a_2_rt_val', label: 'Capaian Tambahan' }],
+  });
+  const syncedForm = store.syncActiveKpiFormSections(expandedSections, { actor: prpAdmin });
+  assert.equal(syncedForm.id, distributed.id);
+  assert.equal(syncedForm.sections[0].items.length, 2);
+  assert.equal(syncedForm.sections[0].items[1].id, 'A_2_rt');
 });

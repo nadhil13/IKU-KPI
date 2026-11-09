@@ -310,4 +310,84 @@ test('Broadcast Realtime Superadmin PRP: penargetan ALL, ROLE, PIC, USER serta k
   assert.equal(ackRes.status, 200);
   assert.equal(ackRes.json.broadcast.acknowledgements.length, 1);
   assert.equal(ackRes.json.broadcast.acknowledgements[0].email, 'bakt@itpln.ac.id');
+
+  // Superadmin menambah baris indikator baru di prp_kpi_config -> otomatis tersinkron ke form aktif prp_kpi_distribution_v1
+  const configSyncRes = await invokeApi('POST', '/api/v1/sync/push', {
+    token: adminToken,
+    body: {
+      stores: {
+        prp_kpi_config: {
+          version: 3,
+          publishedAt: new Date().toISOString(),
+          publishedBy: 'admin@itpln.ac.id',
+          sections: [
+            {
+              code: 'A',
+              title: 'PERSPEKTIF KEBERLANJUTAN',
+              items: [
+                {
+                  id: 'A_1a',
+                  no: '1',
+                  indikator: 'Pendapatan Vertikal',
+                  pics: ['PPA'],
+                  subrows: [{ key: 'a_1a_num', label: 'Realisasi Maba' }],
+                },
+                {
+                  id: 'A_1b',
+                  no: '1b',
+                  indikator: 'Pendapatan Mahasiswa',
+                  pics: ['BAKT', 'BAG'],
+                  subrows: [{ key: 'a_1b_num', label: 'Realisasi Pendapatan' }],
+                },
+                {
+                  id: 'A_new_rt',
+                  no: '2',
+                  indikator: 'Indikator Baru Realtime',
+                  pics: ['BAKT'],
+                  subrows: [{ key: 'a_new_rt_val', label: 'Realisasi Baru' }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  });
+  assert.equal(configSyncRes.status, 200);
+  const syncedDist = configSyncRes.json.stores.prp_kpi_distribution_v1;
+  assert.equal(syncedDist.forms[0].sections[0].items.length, 3);
+  assert.equal(syncedDist.forms[0].sections[0].items[2].id, 'A_new_rt');
+  // Draf BAKT pada A_1b tetap terjaga utuh
+  assert.equal(syncedDist.drafts['form_2026:bakt@itpln.ac.id'].values.a_1b_num, '95');
+});
+
+test('Hosting Production Gate: Vercel Serverless Gateway, PWA Manifest & Service Worker Notifikasi HP, dan SPA Deep Links', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const vercelHandler = (await import('../api/v1/[...route].js')).default;
+  const { syncActiveFormWithPublishedSections } = await import('../backend/src/modules/kpi/kpiAccessPolicy.js');
+  const { validateAndMergeIkuSubmissionsForUnit } = await import('../backend/src/modules/iku/ikuAccessPolicy.js');
+
+  assert.equal(typeof vercelHandler, 'function');
+  assert.equal(typeof syncActiveFormWithPublishedSections, 'function');
+  assert.equal(typeof validateAndMergeIkuSubmissionsForUnit, 'function');
+
+  // 1. Verifikasi manifest.json untuk instalasi PWA di Android & iPhone (standalone + shortcuts + maskable icon)
+  const manifestRaw = fs.readFileSync(path.resolve('public/manifest.json'), 'utf8');
+  const manifest = JSON.parse(manifestRaw);
+  assert.equal(manifest.display, 'standalone');
+  assert.equal(manifest.start_url, '/internal');
+  assert.ok(Array.isArray(manifest.icons) && manifest.icons.some((i) => i.purpose === 'maskable'));
+  assert.ok(Array.isArray(manifest.shortcuts) && manifest.shortcuts.length >= 2);
+
+  // 2. Verifikasi Service Worker (sw.js) untuk notifikasi layar kunci HP & push handler
+  const swSource = fs.readFileSync(path.resolve('public/sw.js'), 'utf8');
+  assert.ok(swSource.includes('SHOW_OS_NOTIFICATION'));
+  assert.ok(swSource.includes("self.addEventListener('push'"));
+  assert.ok(swSource.includes("self.addEventListener('notificationclick'"));
+
+  // 3. Verifikasi vercel.json mendukung API /api/v1/* dan SPA fallback tanpa 404 saat buka di tab baru
+  const vercelConfig = JSON.parse(fs.readFileSync(path.resolve('vercel.json'), 'utf8'));
+  assert.ok(Array.isArray(vercelConfig.rewrites) && vercelConfig.rewrites.length >= 2);
+  assert.equal(vercelConfig.rewrites[0].source, '/api/v1/(.*)');
 });

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -6,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { hashPassword, verifyPassword, computeSha256 } from '../config/security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_DB_PATH = path.resolve(__dirname, '../../storage/app/private/performa_itpln.sqlite');
+const DEFAULT_DB_PATH = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'performa_itpln.sqlite')
+  : path.resolve(__dirname, '../../storage/app/private/performa_itpln.sqlite');
 
 export const SEED_ACCOUNTS = Object.freeze([
   {
@@ -333,10 +336,22 @@ export function getDatabase(customPath = null) {
       // Abaikan saat penutupan koneksi lama
     }
   }
-  if (targetPath !== ':memory:') {
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  let resolvedPath = targetPath;
+  let db;
+  try {
+    if (resolvedPath !== ':memory:') {
+      fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    }
+    db = new DatabaseSync(resolvedPath);
+  } catch {
+    try {
+      resolvedPath = path.join(os.tmpdir(), 'performa_itpln.sqlite');
+      db = new DatabaseSync(resolvedPath);
+    } catch {
+      resolvedPath = ':memory:';
+      db = new DatabaseSync(':memory:');
+    }
   }
-  const db = new DatabaseSync(targetPath);
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = NORMAL;

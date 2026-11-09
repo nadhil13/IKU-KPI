@@ -1,21 +1,58 @@
 {
-  "name": "Sistem Informasi IKU ITPLN",
-  "short_name": "IKU ITPLN",
-  "start_url": ".",
+  "id": "/internal",
+  "short_name": "PERFORMA ITPLN",
+  "name": "PERFORMA ITPLN - Portal Kinerja Terpadu KPI & IKU",
+  "description": "Aplikasi evaluasi capaian Key Performance Indicator (KPI), 8 Indikator Kinerja Utama (IKU), serta siaran instruksi terpusat Institut Teknologi PLN.",
+  "lang": "id-ID",
+  "start_url": "/internal",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#094e68",
-  "description": "Indikator Kinerja Utama & KPI Institut Teknologi PLN",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#094E68",
+  "background_color": "#F7FAFB",
+  "categories": ["productivity", "education", "business"],
   "icons": [
     {
       "src": "/logo_pln.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/logo_pln.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo_pln.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Lembar Kerja KPI Unit",
+      "short_name": "KPI Unit",
+      "description": "Buka langsung lembar kerja evaluasi capaian & bukti KPI",
+      "url": "/internal",
+      "icons": [{ "src": "/logo_pln.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pengajuan 8 IKU PTN",
+      "short_name": "8 IKU",
+      "description": "Buka direktori dan lembar pengajuan 8 Indikator Kinerja Utama",
+      "url": "/internal/iku-submissions",
+      "icons": [{ "src": "/logo_pln.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Tata Kelola & Desainer KPI (PRP)",
+      "short_name": "Admin PRP",
+      "description": "Kelola baris indikator, PIC, dan tinjauan submission unit",
+      "url": "/internal/admin/governance",
+      "icons": [{ "src": "/logo_pln.png", "sizes": "192x192" }]
     }
   ]
 }

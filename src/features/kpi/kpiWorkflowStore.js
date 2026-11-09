@@ -315,14 +315,50 @@ const write = (state, options = {}) => {
 
 export function subscribeKpiWorkflow(callback) {
   const storage = (event) => {
-    if (!event.key || event.key === KEY) callback();
+    if (!event.key || event.key === KEY || event.key === 'prp_kpi_config') callback();
   };
   window.addEventListener(EVENT, callback);
+  window.addEventListener('prp-kpi-config-updated', callback);
   window.addEventListener('storage', storage);
   return () => {
     window.removeEventListener(EVENT, callback);
+    window.removeEventListener('prp-kpi-config-updated', callback);
     window.removeEventListener('storage', storage);
   };
+}
+
+export function syncActiveKpiFormSections(sections, options = {}) {
+  if (!Array.isArray(sections) || !sections.length) return null;
+  const normalized = normalizeKpiSections(sections);
+  const state = readKpiWorkflow();
+  if (!state.forms.length) return null;
+  const lastIdx = state.forms.length - 1;
+  const latestForm = state.forms[lastIdx];
+  const prevJson = JSON.stringify(latestForm.sections || []);
+  const nextJson = JSON.stringify(normalized);
+  const units = getKpiUnits();
+  const nextUnits = units.length > 0 ? units : latestForm.units || [];
+  if (prevJson === nextJson && JSON.stringify(latestForm.units || []) === JSON.stringify(nextUnits)) {
+    return latestForm;
+  }
+  const updatedForm = {
+    ...latestForm,
+    sections: normalized,
+    units: nextUnits,
+    structureRevision: (Number(latestForm.structureRevision) || 1) + 1,
+    updatedAt: new Date().toISOString(),
+    updatedBy: options.actor || 'Superadmin PRP',
+  };
+  const nextForms = state.forms.map((f, idx) => (idx === lastIdx ? updatedForm : f));
+  write(
+    { ...state, forms: nextForms },
+    {
+      skipWorkflowEvent: Boolean(options.silent),
+      skipAdminEvent: Boolean(options.silent),
+      skipAudit: Boolean(options.silent),
+    },
+  );
+  return updatedForm;
 }
 
 export function getKpiUnits() {

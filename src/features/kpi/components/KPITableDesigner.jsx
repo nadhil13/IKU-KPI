@@ -1,25 +1,26 @@
 /**
  * Desainer Tabel & Formula KPI (Superadmin PRP).
  * Menyediakan pengeditan langsung sel ala spreadsheet, kolom PIC per indikator yang tersinkronisasi
- * dengan master data organisasi, serta konfigurasi aturan validasi struktur oleh Admin PRP.
+ * dengan master data organisasi, sinkronisasi baris realtime ke formulir seluruh unit kerja,
+ * serta konfigurasi aturan validasi struktur oleh Admin PRP.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowUp, Check, CircleCheck, Copy, Ellipsis, Eye, History, MousePointerClick,
-  PanelRightClose, Plus, RotateCcw, Send, Settings2, Sigma, Table2, Trash2, TriangleAlert, Users, X,
+  PanelRightClose, Plus, Radio, RotateCcw, Send, Settings2, Sigma, Table2, Trash2, TriangleAlert, Users, X,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useAuth } from '../../auth/context/AuthContext';
-import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG } from '../../kpi/components/KPIDataEntrySheet';
+import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG } from './KPIDataEntrySheet';
 import {
   CALC_TYPES, PRESET_FORMULA_EXPR, KPI_DRAFT_KEY, KPI_LIVE_SYNC_KEY, DEFAULT_KPI_VALIDATION_RULES,
   createId, normalizeKpiSections, publishKpiSections, readKpiHistory, readPublishedKpiConfig,
   validateKpiSections, computeKpiItem, formatIndonesianNumber, buildKpiCellDirectory, itemRefPrefix,
   readMasterPicCatalog, normalizePicCodes, formatPicDisplay, readKpiValidationRules, saveKpiValidationRules,
-} from '../../kpi/kpiSchema';
-import { compileFormula, describeKpiFormula, validateKpiFormula } from '../../kpi/formulaEngine';
-import { distributeKpiForm } from '../../kpi/kpiWorkflowStore';
+} from '../kpiSchema';
+import { compileFormula, describeKpiFormula, validateKpiFormula } from '../formulaEngine';
+import { distributeKpiForm, syncActiveKpiFormSections, getKpiUnits } from '../kpiWorkflowStore';
 import './KPITableDesigner.css';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -147,7 +148,8 @@ export default function KPITableDesigner() {
   const [sections, setSections] = useState(initialSections);
   const [picCatalog, setPicCatalog] = useState(readMasterPicCatalog);
   const [validationRules, setValidationRules] = useState(readKpiValidationRules);
-  const [liveSync, setLiveSync] = useState(() => localStorage.getItem(KPI_LIVE_SYNC_KEY) === 'true');
+  // Default aktif (true) agar setiap penambahan/perubahan baris langsung tersinkron ke form seluruh unit
+  const [liveSync, setLiveSync] = useState(() => localStorage.getItem(KPI_LIVE_SYNC_KEY) !== 'false');
   const [selectedId, setSelectedId] = useState(null);
   const [pickMode, setPickMode] = useState(false);
   const [menuFor, setMenuFor] = useState(null);
@@ -207,6 +209,7 @@ export default function KPITableDesigner() {
   }, [normalized]);
   const totalScore = [...results.values()].reduce((sum, result) => sum + (result.weightedScore || 0), 0);
   const totalRows = normalized.reduce((sum, section) => sum + section.items.length, 0);
+  const activeUnitCount = useMemo(() => getKpiUnits().length, [picCatalog]);
 
   const notify = useCallback((message) => {
     setNotice(message);
@@ -235,15 +238,18 @@ export default function KPITableDesigner() {
     }
   }, [normalized, notify]);
 
+  // Sinkronisasi struktur & baris realtime ke form seluruh unit kerja
   useEffect(() => {
     if (!liveSync || hasBlockingError) return undefined;
     const timer = window.setTimeout(() => {
       try {
-        publishKpiSections(normalized, { actor: currentUser?.email || 'Superadmin PRP', note: 'Live sync', snapshot: false });
+        const actor = currentUser?.email || 'Superadmin PRP';
+        publishKpiSections(normalized, { actor, note: 'Live sync', snapshot: false });
+        syncActiveKpiFormSections(normalized, { actor });
       } catch {
         notify('Live sync gagal menyimpan konfigurasi.');
       }
-    }, 700);
+    }, 280);
     return () => window.clearTimeout(timer);
   }, [normalized, liveSync, hasBlockingError, notify, currentUser?.email]);
 
@@ -283,12 +289,30 @@ export default function KPITableDesigner() {
     window.setTimeout(() => el.classList.remove('flash'), 1200);
   };
 
+  const pushRealtimeStructureNow = useCallback((nextSectionsRaw, feedbackMessage) => {
+    const clean = normalizeKpiSections(nextSectionsRaw);
+    const actor = currentUser?.email || 'Superadmin PRP';
+    try {
+      publishKpiSections(clean, { actor, note: feedbackMessage || 'Sinkronisasi baris realtime', snapshot: false });
+      syncActiveKpiFormSections(clean, { actor });
+      if (feedbackMessage) notify(feedbackMessage);
+    } catch {
+      // Abaikan jika gagal tulis
+    }
+  }, [currentUser?.email, notify]);
+
   const updateSection = (si, patch) => setSections((current) => current.map((section, index) => (
     index === si ? { ...section, ...patch } : section
   )));
-  const editItems = (si, transform) => setSections((current) => current.map((section, index) => (
-    index === si ? { ...section, items: transform(section.items, section) } : section
-  )));
+  const editItems = (si, transform, immediateSyncNote = '') => setSections((current) => {
+    const next = current.map((section, index) => (
+      index === si ? { ...section, items: transform(section.items, section) } : section
+    ));
+    if (liveSync && immediateSyncNote) {
+      window.queueMicrotask(() => pushRealtimeStructureNow(next, immediateSyncNote));
+    }
+    return next;
+  });
   const updateItem = (si, ii, patch) => editItems(si, (items) => items.map((item, index) => (
     index === ii ? { ...item, ...patch } : item
   )));
@@ -322,36 +346,53 @@ export default function KPITableDesigner() {
     });
   };
 
-  const insertRow = (si, ii, duplicate = false) => editItems(si, (items, section) => {
-    const no = String(nextNumber(items));
-    const item = duplicate ? {
-      ...clone(items[ii]),
-      id: createId(section.code),
-      no,
-      excelNo: no,
-      hideExcelNo: false,
-      subrows: items[ii].subrows.map((sub) => ({ ...sub, key: createId('input') })),
-    } : blankItem(section.code, no);
-    delete item.hideIndikatorCell;
-    const result = [...items];
-    result.splice(ii + 1, 0, item);
-    return result;
-  });
+  const insertRow = (si, ii, duplicate = false) => {
+    let addedId = null;
+    const secCode = normalized[si]?.code || 'A';
+    editItems(
+      si,
+      (items, section) => {
+        const no = String(nextNumber(items));
+        const item = duplicate ? {
+          ...clone(items[ii]),
+          id: createId(section.code),
+          no,
+          excelNo: no,
+          hideExcelNo: false,
+          subrows: items[ii].subrows.map((sub) => ({ ...sub, key: createId('input') })),
+        } : blankItem(section.code, no);
+        delete item.hideIndikatorCell;
+        addedId = item.id;
+        const result = [...items];
+        result.splice(ii + 1, 0, item);
+        return result;
+      },
+      `Baris indikator baru pada Perspektif ${secCode} berhasil ditambahkan dan disinkronkan realtime ke ${activeUnitCount} unit kerja.`,
+    );
+    if (addedId) setSelectedId(addedId);
+  };
 
-  const addSubIndicator = (si, ii) => editItems(si, (items, section) => {
-    const group = groupNumber(items[ii]) || nextNumber(items);
-    const indexes = items.flatMap((item, index) => (groupNumber(item) === group ? [index] : []));
-    if (!indexes.includes(ii)) indexes.push(ii);
-    indexes.sort((a, b) => a - b);
-    const result = items.map((item, index) => {
-      const position = indexes.indexOf(index);
-      if (position < 0) return item;
-      const no = `${group}${letters(position)}`;
-      return { ...item, no, excelNo: no, hideExcelNo: false, hideIndikatorCell: false };
-    });
-    result.splice(Math.max(...indexes) + 1, 0, blankItem(section.code, `${group}${letters(indexes.length)}`));
-    return result;
-  });
+  const addSubIndicator = (si, ii) => {
+    const secCode = normalized[si]?.code || 'A';
+    editItems(
+      si,
+      (items, section) => {
+        const group = groupNumber(items[ii]) || nextNumber(items);
+        const indexes = items.flatMap((item, index) => (groupNumber(item) === group ? [index] : []));
+        if (!indexes.includes(ii)) indexes.push(ii);
+        indexes.sort((a, b) => a - b);
+        const result = items.map((item, index) => {
+          const position = indexes.indexOf(index);
+          if (position < 0) return item;
+          const no = `${group}${letters(position)}`;
+          return { ...item, no, excelNo: no, hideExcelNo: false, hideIndikatorCell: false };
+        });
+        result.splice(Math.max(...indexes) + 1, 0, blankItem(section.code, `${group}${letters(indexes.length)}`));
+        return result;
+      },
+      `Sub-indikator baru pada Perspektif ${secCode} berhasil disinkronkan realtime ke form seluruh unit.`,
+    );
+  };
 
   const changeCalcType = (item, calcType) => patchItemById(item.id, {
     calcType,
@@ -362,7 +403,11 @@ export default function KPITableDesigner() {
     let number = current.length;
     let code;
     do { code = letters(number++).toUpperCase(); } while (current.some((section) => section.code === code));
-    return [...current, { code, title: 'Bagian baru', totalWeight: 0, isPenaltySection: false, items: [blankItem(code, 1)] }];
+    const next = [...current, { code, title: 'Bagian baru', totalWeight: 0, isPenaltySection: false, items: [blankItem(code, 1)] }];
+    if (liveSync) {
+      window.queueMicrotask(() => pushRealtimeStructureNow(next, `Perspektif baru (${code}) ditambahkan dan disinkronkan ke seluruh unit.`));
+    }
+    return next;
   });
 
   const setFormula = (expr) => selected && patchItemById(selected.id, { calcType: 'custom', formulaExpr: expr });
@@ -414,6 +459,21 @@ export default function KPITableDesigner() {
     notify('Seluruh bobot bagian disamakan dengan total bobot baris di bagian masing-masing.');
   };
 
+  const handleSyncStructureRealtime = () => {
+    if (hasBlockingError) {
+      notify('Perbaiki error validasi wajib sebelum menyinkronkan struktur ke unit kerja.');
+      setShowPanel(true);
+      return;
+    }
+    const actor = currentUser?.email || 'Superadmin PRP';
+    const pub = publishKpiSections(normalized, { actor, snapshot: true, note: `Sinkronisasi struktur realtime (${totalRows} indikator)` });
+    const synced = syncActiveKpiFormSections(normalized, { actor });
+    setHistory(readKpiHistory());
+    notify(
+      `Struktur tabel KPI (${totalRows} baris indikator, v${pub.version}) berhasil disinkronkan secara realtime ke ${synced?.units?.length || activeUnitCount} akun unit kerja tanpa menghapus isian unit.`,
+    );
+  };
+
   const distribute = async () => {
     if (sendingRef.current) return;
     if (hasBlockingError || !periodString.trim()) {
@@ -447,10 +507,10 @@ export default function KPITableDesigner() {
     <div ref={rootRef} className="kpi-designer-page" aria-busy={sending}>
       <header className="designer-hero">
         <div>
-          <div className="designer-kicker"><Table2 size={14} /> PRP / DESAINER TABEL, PIC & VALIDASI STRUKTUR KPI</div>
-          <h1>Desainer Tabel & Formula KPI</h1>
+          <div className="designer-kicker"><Table2 size={14} /> PRP / DESAINER TABEL, PIC &amp; SINKRONISASI BARIS REALTIME</div>
+          <h1>Desainer Tabel &amp; Formula KPI</h1>
           <p>
-            Kelola indikator kinerja, tetapkan <strong>PIC Penanggung Jawab</strong> per baris (mengunci hak input unit), rancang rumus <strong>fx</strong>, dan atur kebijakan validasi struktur.
+            Kelola indikator kinerja, tetapkan <strong>PIC Penanggung Jawab</strong> per baris (mengunci hak input unit), rancang rumus <strong>fx</strong>, dan tambahkan baris yang langsung muncul secara <strong>realtime</strong> di formulir tiap unit.
           </p>
         </div>
         <div className="designer-actions">
@@ -463,13 +523,22 @@ export default function KPITableDesigner() {
             onClick={() => {
               if (!window.confirm('Kembalikan draft ke struktur resmi ITPLN beserta 29 pemetaan PIC default?')) return;
               localStorage.removeItem(KPI_DRAFT_KEY);
-              setSections(migrate(KPI_SECTIONS_CONFIG));
+              const defaults = migrate(KPI_SECTIONS_CONFIG);
+              setSections(defaults);
               setSimValues({});
               setSelectedId(null);
-              notify('Draft dikembalikan ke struktur resmi ITPLN beserta pemetaan PIC.');
+              pushRealtimeStructureNow(defaults, 'Draft dikembalikan ke struktur resmi ITPLN beserta pemetaan PIC.');
             }}
           >
             <RotateCcw size={15} /> Reset Default
+          </button>
+          <button
+            type="button"
+            disabled={hasBlockingError}
+            onClick={handleSyncStructureRealtime}
+            title="Perbarui baris & struktur pada formulir aktif seluruh unit secara instan tanpa menghapus draf/submission unit"
+          >
+            <Radio size={15} /> Sinkronkan Baris Realtime
           </button>
           <button type="button" className="primary" disabled={sending || hasBlockingError || !periodString.trim()} onClick={distribute}>
             <Send size={15} /> {sending ? 'Mengirim...' : 'Kirim ke Unit Kerja'}
@@ -480,7 +549,7 @@ export default function KPITableDesigner() {
       <div className="designer-toolbar">
         <span className="designer-stats">
           <Table2 size={14} /> <strong>{totalRows}</strong> indikator · <strong>{normalized.length}</strong> bagian ·
-          {' '}Total skor simulasi <strong>{formatIndonesianNumber(totalScore)}</strong>
+          {' '}<strong>{activeUnitCount}</strong> unit terhubung · Total skor simulasi <strong>{formatIndonesianNumber(totalScore)}</strong>
         </span>
         <span className={`designer-weight ${Math.abs(validation.totalDiff) > 0.0001 ? 'warn' : 'ok'}`} title="Total bobot baris seluruh bagian non-penalti">
           Bobot capaian <strong>{formatIndonesianNumber(validation.positiveTotal, 4)}</strong> / {formatIndonesianNumber(targetTotal, 2)}
@@ -488,7 +557,7 @@ export default function KPITableDesigner() {
           {validation.penaltyTotal > 0 && <> · Penalti maks -{formatIndonesianNumber(validation.penaltyTotal, 4)}</>}
         </span>
         <div className="designer-actions">
-          <label className="designer-check">
+          <label className="designer-check" title="Saat aktif, penambahan atau perubahan baris otomatis muncul di form unit secara realtime">
             <input
               type="checkbox"
               checked={liveSync}
@@ -496,7 +565,7 @@ export default function KPITableDesigner() {
                 setLiveSync(event.target.checked);
                 localStorage.setItem(KPI_LIVE_SYNC_KEY, String(event.target.checked));
               }}
-            /> Live sync
+            /> Live sync ke unit
           </label>
           <button type="button" onClick={() => setSimValues({})}><RotateCcw size={14} /> Kosongkan simulasi</button>
           <button type="button" aria-pressed={showPreview} onClick={() => setShowPreview((value) => !value)}>
@@ -504,7 +573,7 @@ export default function KPITableDesigner() {
           </button>
           <button type="button" aria-pressed={showPanel} onClick={() => setShowPanel((value) => !value)} className={errorCount ? 'has-error' : ''}>
             {showPanel ? <PanelRightClose size={14} /> : <Settings2 size={14} />}
-            Validasi & Aturan PRP
+            Validasi &amp; Aturan PRP
             {errorCount > 0 && <span className="badge" title={`${errorCount} error (memblokir kirim)`}>{errorCount}</span>}
             {warnCount > 0 && <span className="badge warn" title={`${warnCount} peringatan`}>{warnCount}</span>}
           </button>
@@ -739,7 +808,14 @@ export default function KPITableDesigner() {
                             <label className="designer-check">
                               <input type="checkbox" checked={section.isPenaltySection} onChange={(event) => updateSection(si, { isPenaltySection: event.target.checked })} /> Penalti
                             </label>
-                            <button type="button" className="ghost" onClick={() => insertRow(si, section.items.length - 1)}><Plus size={13} /> Indikator</button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              data-add-row-section={section.code}
+                              onClick={() => insertRow(si, section.items.length - 1)}
+                            >
+                              <Plus size={13} /> Indikator
+                            </button>
                             <button
                               type="button"
                               className="ghost danger"
@@ -988,7 +1064,16 @@ export default function KPITableDesigner() {
                                             { icon: Copy, label: 'Duplikat baris', run: () => insertRow(si, ii, true) },
                                             { icon: ArrowUp, label: 'Pindah ke atas', run: () => editItems(si, (items) => move(items, ii, -1)), disabled: ii === 0 },
                                             { icon: ArrowDown, label: 'Pindah ke bawah', run: () => editItems(si, (items) => move(items, ii, 1)), disabled: ii === section.items.length - 1 },
-                                            { icon: Trash2, label: 'Hapus baris', danger: true, run: () => editItems(si, (items) => items.filter((_, index) => index !== ii)) },
+                                            {
+                                              icon: Trash2,
+                                              label: 'Hapus baris',
+                                              danger: true,
+                                              run: () => editItems(
+                                                si,
+                                                (items) => items.filter((_, index) => index !== ii),
+                                                `Baris ${section.code}.${item.no} dihapus dan disinkronkan ke form seluruh unit.`,
+                                              ),
+                                            },
                                           ].map(({ icon: Icon, label, run, disabled, danger }) => (
                                             <button
                                               key={label}
@@ -1173,9 +1258,10 @@ export default function KPITableDesigner() {
                       title={`Pulihkan v${snapshot.version} ke draft`}
                       disabled={!snapshot.sections}
                       onClick={() => {
-                        setSections(migrate(clone(snapshot.sections)));
+                        const restored = migrate(clone(snapshot.sections));
+                        setSections(restored);
                         setSimValues({});
-                        notify(`v${snapshot.version} dipulihkan ke draft, belum dikirim.`);
+                        pushRealtimeStructureNow(restored, `v${snapshot.version} dipulihkan dan disinkronkan ke seluruh unit.`);
                       }}
                     >
                       <RotateCcw size={14} />

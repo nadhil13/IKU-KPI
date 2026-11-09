@@ -1,8 +1,10 @@
 /**
  * Mesin Sinkronisasi Realtime Terpadu & Siaran Instruksi Pusat (Broadcast)
  * Menghubungkan Frontend React dengan Backend SQLite WAL (/api/v1/*),
- * Server-Sent Events (SSE /api/v1/realtime/stream), serta BroadcastChannel lintas tab.
+ * Server-Sent Events (SSE /api/v1/realtime/stream), BroadcastChannel lintas tab,
+ * serta Notifikasi Sistem Layar Kunci (OS Push Notification).
  */
+import { dispatchOsNotification } from './pwaNotifications';
 
 const TOKEN_STORAGE_KEY = 'performa_access_token';
 const BROADCAST_STORAGE_KEY = 'prp_broadcasts_v1';
@@ -414,6 +416,14 @@ export async function sendRealtimeBroadcast(payload, senderUser) {
       if (data.ok && data.broadcast) {
         const existing = readLocalBroadcastsCache().filter((b) => b.id !== data.broadcast.id);
         saveLocalBroadcastsCache([data.broadcast, ...existing], true);
+        dispatchOsNotification({
+          id: data.broadcast.id,
+          title: `Siaran PRP: ${data.broadcast.title}`,
+          body: data.broadcast.message,
+          priority: data.broadcast.priority || 'IMPORTANT',
+          url: data.broadcast.actionUrl || '/internal',
+          actionLabel: data.broadcast.actionLabel || 'Buka Lembar Kerja',
+        });
         return data.broadcast;
       }
     }
@@ -433,6 +443,14 @@ export async function sendRealtimeBroadcast(payload, senderUser) {
   };
   const existing = readLocalBroadcastsCache();
   saveLocalBroadcastsCache([fallbackBroadcast, ...existing], true);
+  dispatchOsNotification({
+    id: fallbackBroadcast.id,
+    title: `Siaran PRP: ${fallbackBroadcast.title}`,
+    body: fallbackBroadcast.message,
+    priority: fallbackBroadcast.priority || 'IMPORTANT',
+    url: fallbackBroadcast.actionUrl || '/internal',
+    actionLabel: fallbackBroadcast.actionLabel || 'Buka Lembar Kerja',
+  });
   return fallbackBroadcast;
 }
 
@@ -519,8 +537,30 @@ export function connectRealtimeEngine() {
         if (!msg || msg.originClientId === clientId) return;
         if (msg.type === 'state:updated' && msg.stores) {
           applyRemoteStoresToLocal(msg.stores);
+          const user = getCurrentUserFromStorage();
+          if (user && (msg.stores.prp_kpi_config || msg.stores.prp_kpi_distribution_v1)) {
+            dispatchOsNotification({
+              id: `kpi-sync-${msg.at || Date.now()}`,
+              title: 'Pembaruan Tabel KPI Realtime',
+              body: 'Struktur baris atau status evaluasi KPI telah diperbarui secara realtime.',
+              priority: 'IMPORTANT',
+              url: '/internal',
+            });
+          }
         } else if (msg.type === 'broadcast:sync' && Array.isArray(msg.broadcasts)) {
           saveLocalBroadcastsCache(msg.broadcasts, false);
+          const user = getCurrentUserFromStorage();
+          const newest = msg.broadcasts[0];
+          if (user && newest && doesBroadcastTargetUserClient(newest, user)) {
+            dispatchOsNotification({
+              id: newest.id,
+              title: `Siaran PRP: ${newest.title}`,
+              body: newest.message,
+              priority: newest.priority || 'IMPORTANT',
+              url: newest.actionUrl || '/internal',
+              actionLabel: newest.actionLabel || 'Buka Lembar Kerja',
+            });
+          }
         }
       };
     } catch {
@@ -577,6 +617,17 @@ export function connectRealtimeEngine() {
         const data = JSON.parse(event.data);
         if (data.originClientId === clientId) return;
         applyRemoteStoresToLocal(data.stores, data.users, data.audit);
+        const user = getCurrentUserFromStorage();
+        const keys = Array.isArray(data.updatedKeys) ? data.updatedKeys : Object.keys(data.stores || {});
+        if (user && (keys.includes('prp_kpi_config') || keys.includes('prp_kpi_distribution_v1'))) {
+          dispatchOsNotification({
+            id: `sse-kpi-${data.at || Date.now()}`,
+            title: 'Sinkronisasi KPI Realtime (PRP)',
+            body: `Perubahan baris atau evaluasi KPI oleh ${data.actor?.name || 'Admin PRP'} telah masuk ke lembar kerja Anda.`,
+            priority: 'IMPORTANT',
+            url: '/internal',
+          });
+        }
       } catch {
         // Abaikan paket tidak valid
       }
@@ -589,6 +640,17 @@ export function connectRealtimeEngine() {
         const current = readLocalBroadcastsCache().filter((b) => b.id !== data.broadcast.id);
         saveLocalBroadcastsCache([data.broadcast, ...current], false);
         window.dispatchEvent(new CustomEvent('prp-broadcast-incoming-toast', { detail: data.broadcast }));
+        const user = getCurrentUserFromStorage();
+        if (user && doesBroadcastTargetUserClient(data.broadcast, user)) {
+          dispatchOsNotification({
+            id: data.broadcast.id,
+            title: `Siaran PRP: ${data.broadcast.title}`,
+            body: data.broadcast.message,
+            priority: data.broadcast.priority || 'IMPORTANT',
+            url: data.broadcast.actionUrl || '/internal',
+            actionLabel: data.broadcast.actionLabel || 'Buka Lembar Kerja',
+          });
+        }
       } catch {
         // Abaikan
       }

@@ -1,34 +1,14 @@
-# Backend IKU & KPI
+# Arsitektur Backend PERFORMA ITPLN (Node.js + SQLite WAL + SSE Realtime)
 
-Folder ini disiapkan sebagai tempat backend aplikasi IKU/KPI kampus.
-
-Backend belum diaktifkan dan belum memiliki dependency. Struktur ini hanya menjadi fondasi agar kode backend tidak bercampur dengan frontend React.
-
-## Rencana teknologi
-
-- Framework: Laravel API
-- Database: PostgreSQL
-- Autentikasi: Laravel Sanctum atau SSO kampus
-- Otorisasi: role dan permission di sisi server
-- Dokumentasi API: OpenAPI/Swagger
-
-## Struktur modul
-
-- `app/Http/Controllers/Api/Auth`: login, logout, session, MFA
-- `app/Http/Controllers/Api/Users`: pengguna, role, permission, unit kerja
-- `app/Http/Controllers/Api/Iku`: indikator kinerja utama
-- `app/Http/Controllers/Api/Kpi`: KPI unit/fakultas dan input realisasi
-- `app/Models`: model data dan relasi database
-- `app/Policies`: aturan akses per resource
-- `routes/api.php`: endpoint API
-- `database`: migration dan seed data
-- `tests`: pengujian backend
-
-Folder `src/` yang ada saat ini hanya placeholder rancangan modular. Implementasi backend Laravel nantinya menggunakan folder `app/`, `routes/`, dan `database/` di atas.
-
-## Catatan keamanan
-
-- Jangan menyimpan password, token, atau secret di repository.
-- Gunakan `.env` hanya ketika backend mulai dikonfigurasi.
-- Validasi hak akses wajib dilakukan di backend, bukan hanya di React.
-- Database dan dokumen privat tidak boleh diakses langsung dari internet.
+Backend sistem manajemen kinerja terpadu Institut Teknologi PLN (ITPLN) yang menangani:
+- **Autentikasi & Sesi Kriptografis**: PBKDF2-HMAC-SHA512 + Token HMAC-SHA256 + pencabutan sesi (`jti`).
+- **Perisai Keamanan & Anti-Overload**: Rate Limiter Token Bucket per IP, Brute-Force Login Shield, Sanitasi XSS & Prototype Pollution, serta Rantai Hash Audit Trail (`SHA-256`).
+- **Pemisahan Modul Domain**:
+  - `src/modules/kpi/`: Otorisasi ketat per baris indikator berbasis kode PIC (`kpiAccessPolicy.js`) dan sinkronisasi struktur baris secara realtime ke formulir seluruh unit.
+  - `src/modules/iku/`: Isolasi kepemilikan pengajuan 8 Indikator Kinerja Utama PTN (`ikuAccessPolicy.js`).
+  - `src/modules/auth/`: Kredensial, sesi token, dan verifikasi identitas.
+  - `src/modules/users/`: Sinkronisasi direktori akun dan pemetaan PIC unit kerja.
+  - `src/modules/reports/`: Siaran instruksi terpusat (Broadcast Realtime) dan rantai log audit.
+- **Mode Deployment**:
+  - **Standalone Node Server**: `npm run start:prod` (`backend/src/server.js`)
+  - **Vercel Serverless Hosting**: `api/v1/[...route].js`
