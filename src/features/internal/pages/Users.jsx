@@ -296,7 +296,7 @@ export default function Users() {
           <span className="users-result-count">{filteredUsers.length.toString().padStart(2, '0')} AKUN</span>
         </div>
 
-        <div className="users-table-wrap" data-lenis-prevent>
+        <div className="users-table-wrap">
           <table className="users-table">
             <thead>
               <tr>

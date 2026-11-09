@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Search,
   CornerDownLeft,
+  Radio,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -27,6 +28,8 @@ import { readKpiWorkflow } from '../features/kpi/kpiWorkflowStore';
 import { listIkuSubmissions } from '../features/iku/ikuWorkflowStore';
 import { readAudit } from '../features/internal/adminStore';
 import { mountSmoothScroll, getLenis } from '../lib/smoothScroll';
+import { ActiveBroadcastBanner, BroadcastComposerModal } from '../features/internal/components/BroadcastCenter';
+import { getRealtimeStatus, subscribeRealtimeStatus } from '../lib/realtimeSync';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -43,7 +46,11 @@ export default function InternalLayout() {
   const [cmdIdx, setCmdIdx] = useState(0);
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [blockedModalInfo, setBlockedModalInfo] = useState(null);
+  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [rtStatus, setRtStatus] = useState(() => getRealtimeStatus());
   const [telemetryTick, setTelemetryTick] = useState(0);
+
+  useEffect(() => subscribeRealtimeStatus(setRtStatus), []);
 
   const layoutRef = useRef(null);
   const navScrollRef = useRef(null);
@@ -1418,8 +1425,65 @@ export default function InternalLayout() {
             </div>
           </div>
 
-          {/* Right: Activity Bell + User Session Identity */}
+          {/* Right: Realtime Status + Broadcast Button + Activity Bell + User Session Identity */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            {windowWidth > 768 && (
+              <div
+                title={rtStatus.mode === 'server-sse' ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif)' : 'Sinkronisasi Realtime Lintas Sesi Aktif'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  height: '32px',
+                  padding: '0 0.65rem',
+                  borderRadius: '99px',
+                  background: '#F0FDF4',
+                  border: '1px solid #86EFAC',
+                  color: '#14532D',
+                  fontFamily: 'var(--ent-mono)',
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#16A34A',
+                  }}
+                />
+                <span>REALTIME</span>
+              </div>
+            )}
+
+            {isSuperadminPrp && (
+              <button
+                type="button"
+                onClick={() => setBroadcastModalOpen(true)}
+                aria-label="Kirim Siaran Instruksi Realtime"
+                style={{
+                  height: isMobile ? '44px' : '38px',
+                  padding: isMobile && windowWidth <= 600 ? '0 0.65rem' : '0 0.85rem',
+                  borderRadius: '8px',
+                  background: '#094E68',
+                  border: '1px solid #094E68',
+                  color: '#FFFFFF',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <Radio size={14} />
+                {windowWidth > 540 && <span>Siaran Realtime</span>}
+              </button>
+            )}
+
             <div ref={notifRef} style={{ position: 'relative' }}>
               <button
                 type="button"
@@ -1660,10 +1724,13 @@ export default function InternalLayout() {
           ref={scrollWrapperRef}
         >
           <div ref={scrollContentRef} style={{ maxWidth: '1420px', margin: '0 auto', width: '100%' }}>
+            <ActiveBroadcastBanner onOpenManager={() => setBroadcastModalOpen(true)} />
             <Outlet />
           </div>
         </div>
       </main>
+
+      <BroadcastComposerModal open={broadcastModalOpen} onClose={() => setBroadcastModalOpen(false)} />
 
       {/* Dialog navigasi cepat (Ctrl+K). */}
       {cmdOpen && (

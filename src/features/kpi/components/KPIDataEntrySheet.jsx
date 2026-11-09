@@ -3408,7 +3408,7 @@ ${sectionSummaryHtml}
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }} data-lenis-prevent>
+          <div style={{ overflowX: 'auto', overflowY: 'visible', WebkitOverflowScrolling: 'touch' }}>
             <table className="clean-editorial-table" style={{ minWidth: '1440px' }}>
               <colgroup>
                 <col style={{ width: '50px' }} />

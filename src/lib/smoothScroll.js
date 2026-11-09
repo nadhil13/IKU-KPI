@@ -14,6 +14,31 @@ export const getLenis = () => activeLenis;
 export const getWindowLenis = () => activeWindowLenis;
 
 /**
+ * Menentukan apakah event wheel harus dikecualikan dari Lenis.
+ * Hanya mengecualikan dialog/modal atau kontainer dengan data-lenis-prevent yang benar-benar
+ * memiliki overflow vertikal aktif, sehingga tabel/form lebar (overflow-x: auto) tetap bisa
+ * di-scroll vertikal dengan mulus saat kursor berada di atas form/input.
+ */
+function shouldPreventLenis(node) {
+  let el = node instanceof Element ? node : null;
+  while (el && el !== document.body && el !== document.documentElement) {
+    if (el.classList?.contains('internal-main-scroll')) return false;
+    if (el.getAttribute?.('role') === 'dialog' || el.getAttribute?.('aria-modal') === 'true') {
+      return true;
+    }
+    if (el.hasAttribute?.('data-lenis-prevent')) {
+      const style = window.getComputedStyle(el);
+      const canScrollY =
+        (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+        el.scrollHeight > el.clientHeight + 2;
+      if (canScrollY) return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/**
  * Memasang smooth scroll Lenis pada container scroll internal dan
  * menyinkronkannya dengan ticker GSAP sehingga ScrollTrigger bergerak mulus.
  */
@@ -30,10 +55,24 @@ export function mountSmoothScroll(wrapper, content) {
     touchMultiplier: 1.4,
     smoothWheel: true,
     syncTouch: false,
-    allowNestedScroll: true,
-    // Elemen yang punya scroll sendiri (dropdown, modal, panel) tetap scroll natif.
-    prevent: (node) => Boolean(node?.closest?.('[data-lenis-prevent]')),
+    allowNestedScroll: false,
+    gestureOrientation: 'vertical',
+    prevent: shouldPreventLenis,
   });
+
+  // Sinkronkan posisi scroll aktual (mis. setelah fokus input form) dan lepas fokus input[type="number"]
+  // pada fase capture sebelum Lenis memproses wheel event.
+  const handleFormWheelCapture = (event) => {
+    const active = document.activeElement;
+    if (active && active.tagName === 'INPUT' && active.type === 'number' && wrapper.contains(event.target)) {
+      active.blur();
+    }
+    if (lenis.isScrolling !== 'smooth' && Math.abs(wrapper.scrollTop - lenis.animatedScroll) > 1) {
+      lenis.animatedScroll = wrapper.scrollTop;
+      lenis.targetScroll = wrapper.scrollTop;
+    }
+  };
+  wrapper.addEventListener('wheel', handleFormWheelCapture, { passive: true, capture: true });
 
   const onTick = (time) => lenis.raf(time * 1000);
   lenis.on('scroll', ScrollTrigger.update);
@@ -53,6 +92,7 @@ export function mountSmoothScroll(wrapper, content) {
   return () => {
     clearTimeout(refreshTimer);
     resizeObserver.disconnect();
+    wrapper.removeEventListener('wheel', handleFormWheelCapture, { capture: true });
     gsap.ticker.remove(onTick);
     lenis.destroy();
     if (activeLenis === lenis) activeLenis = null;
@@ -74,7 +114,9 @@ export function mountWindowSmoothScroll() {
     touchMultiplier: 1.35,
     smoothWheel: true,
     syncTouch: false,
-    prevent: (node) => Boolean(node?.closest?.('[data-lenis-prevent]')),
+    allowNestedScroll: false,
+    gestureOrientation: 'vertical',
+    prevent: shouldPreventLenis,
   });
 
   const onTick = (time) => lenis.raf(time * 1000);

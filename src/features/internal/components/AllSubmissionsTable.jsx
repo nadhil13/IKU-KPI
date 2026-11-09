@@ -150,7 +150,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
         </select>
       </div>
 
-      <div style={{ overflowX: 'auto' }} data-lenis-prevent>
+      <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
           <thead>
             <tr style={{ textAlign: 'left', color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>

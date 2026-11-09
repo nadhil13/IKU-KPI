@@ -428,7 +428,7 @@ export default function TeamPIC() {
           <span className="tp-toolbar-count">{visible.length} dari {rows.length} entitas</span>
         </div>
 
-        <div className="tp-table-scroll" data-lenis-prevent>
+        <div className="tp-table-scroll">
           <table>
             <thead>
               <tr>

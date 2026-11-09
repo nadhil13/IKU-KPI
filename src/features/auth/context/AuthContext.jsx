@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { minimumPasswordLength, notifyAdminUpdated, readSystemConfig, writeAudit } from '../../internal/adminStore';
+import { connectRealtimeEngine, loginViaBackend, logoutViaBackend, getAccessToken } from '../../../lib/realtimeSync';
 
 /**
  * Akun resmi pengujian operasional:
@@ -448,6 +449,9 @@ export function AuthProvider({ children }) {
     }
     setCurrentUser(matchedUser);
     writeAudit('LOGIN_BERHASIL', 'Login berhasil', cleanEmail);
+    loginViaBackend(cleanEmail, cleanPass).then(() => {
+      connectRealtimeEngine();
+    });
 
     if (matchedUser.role === 'iku_only') {
       setCurrentUser(matchedUser);
@@ -525,7 +529,23 @@ export function AuthProvider({ children }) {
     writeAudit('PROFIL_DIPERBARUI', 'Profil diperbarui', next.email);
   };
 
+  useEffect(() => {
+    if (!currentUser?.email) return undefined;
+    let cleanup = () => {};
+    if (!getAccessToken()) {
+      loginViaBackend(currentUser.email, currentUser.password || 'password').then(() => {
+        cleanup = connectRealtimeEngine();
+      });
+    } else {
+      cleanup = connectRealtimeEngine();
+    }
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, [currentUser?.email, currentUser?.password]);
+
   const logout = () => {
+    logoutViaBackend();
     setCurrentUser(null);
     setActiveWorkspace('iku');
     setActiveContext('iku');

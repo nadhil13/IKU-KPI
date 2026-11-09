@@ -303,7 +303,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </h3>
               <span className="ent-badge">{f.units.length} akun unit/PIC terdaftar</span>
             </div>
-            <div style={{ overflowX: 'auto' }} data-lenis-prevent>
+            <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
               <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
                 <thead>
                   <tr style={{ color: '#475569', background: '#FFFFFF', borderBottom: '1px solid #D8E4EA' }}>
@@ -422,7 +422,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
         {kpiAuditEntries.length === 0 ? (
           <div className="gov-placeholder">Belum ada rekaman aktivitas workflow KPI pada sesi ini.</div>
         ) : (
-          <div style={{ overflowX: 'auto' }} data-lenis-prevent>
+          <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
             <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
               <thead>
                 <tr style={{ color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
