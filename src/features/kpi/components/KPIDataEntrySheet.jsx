@@ -1771,7 +1771,8 @@ function KPIEntryContent({
   };
 
   const handleReset = () => {
-    if (readOnly || workflow.status === 'LOCKED') return;
+    if (readOnly) return;
+    if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED || workflow.status === 'LOCKED') return;
     if (isUnitMode) {
       const cleared = { ...values };
       editableSubKeys.forEach((k) => { cleared[k] = ''; });
@@ -1780,15 +1781,18 @@ function KPIEntryContent({
       setValues(cleared);
       setNotes(clearedNotes);
       if (unitForm && unitUser) {
-        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true, resetSubmission: true });
+        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true });
       }
     } else {
+      if (isAdminPrp && activeForm?.id) {
+        const confirmed = typeof window === 'undefined'
+          || window.confirm('Reset seluruh data isian, submission unit, evidence, dan override pada periode ini kembali ke kondisi awal (0,00)?');
+        if (!confirmed) return;
+        resetAllFormKpiData(activeForm.id, unitUser);
+      }
       setValues(emptyDefaults);
       setNotes({});
       setLocalEvidenceList([]);
-      if (isAdminPrp && activeForm?.id) {
-        resetAllFormKpiData(activeForm.id, unitUser);
-      }
     }
     try {
       localStorage.removeItem(valuesKey);
@@ -1797,14 +1801,12 @@ function KPIEntryContent({
     } catch {
       // Abaikan kegagalan hapus penyimpanan lokal
     }
-    setWorkflow({
-      status: WORKFLOW_STATUS.NOT_STARTED,
-      submittedAt: null,
-      submittedBy: unitUser?.name || 'PIC KPI Unit',
-      revisionNote: '',
-      history: [],
-    });
-    showToast('Seluruh isian, keterangan, dan bukti uji coba telah dihapus dan dikembalikan ke kondisi semula (0,00 / Belum Diisi).');
+    setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
+    showToast(
+      isAdminPrp && !isUnitMode
+        ? 'Seluruh data periode telah direset oleh Admin PRP kembali ke kondisi semula (0,00).'
+        : 'Draf isian, keterangan, dan lampiran belum terkirim telah dikosongkan.',
+    );
   };
 
   const handleSubmit = () => {
@@ -3049,9 +3051,9 @@ ${sectionSummaryHtml}
                 <span>{isUnitMode ? 'Simulasi PIC' : 'Isi Simulasi'}</span>
               </button>
 
-              <button type="button" onClick={handleReset} className="clean-btn" disabled={readOnly || workflow.status === 'LOCKED'}>
+              <button type="button" onClick={handleReset} className="clean-btn" disabled={isLocked}>
                 <RotateCcw size={13} />
-                <span>{workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED ? 'Reset ke Semula' : 'Kosongkan'}</span>
+                <span>{isAdminPrp && !isUnitMode ? 'Reset Data Periode' : 'Kosongkan Draf'}</span>
               </button>
             </>
           )}

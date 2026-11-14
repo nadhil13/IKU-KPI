@@ -15,6 +15,7 @@ import {
   readUnitEvidence,
   reviewUnitKpi,
   reviewUnitEvidence,
+  resetUnitKpiByAdmin,
   subscribeKpiWorkflow,
   readIntegratedKpiBoard,
   ensureDefaultKpiDistribution,
@@ -602,6 +603,22 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         {actionLabel(record.status, status)}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      className="ent-btn"
+                      style={{ minHeight: '44px', borderColor: '#FCA5A5', color: '#991B1B', background: '#FEF2F2' }}
+                      onClick={() => {
+                        const ok = typeof window === 'undefined'
+                          || window.confirm(`Hapus & reset data submission uji coba milik ${record.unit} (${record.email}) kembali ke Belum Diisi (0,00)?`);
+                        if (!ok) return;
+                        mutate(() => {
+                          resetUnitKpiByAdmin(form.id, record.email, currentUser);
+                          updateSelected(null);
+                        });
+                      }}
+                    >
+                      Reset Data Unit ke Semula
+                    </button>
                   </div>
 
                   {record.notes && Object.keys(record.notes).length > 0 && (

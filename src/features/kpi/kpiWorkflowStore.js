@@ -1087,24 +1087,17 @@ export function saveKpiRevisionComment(formId, actor, {
   };
 }
 
-export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false, resetSubmission = false } = {}) {
+export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false } = {}) {
   const state = readKpiWorkflow();
   const form = state.forms.find((entry) => entry.id === formId);
   if (!form || !user?.email) return;
   const key = submissionKey(formId, user.email);
   const previous = state.submissions[key];
-  if (previous && previous.status === 'LOCKED') return;
-  if (previous && !resetSubmission && !['NEEDS_REVISION'].includes(previous.status)) return;
+  if (previous && !['NEEDS_REVISION'].includes(previous.status)) return;
   const nextDrafts = { ...(state.drafts || {}) };
   delete nextDrafts[key];
-  const nextSubmissions = { ...(state.submissions || {}) };
-  if (resetSubmission && previous) {
-    delete nextSubmissions[key];
-  }
   const nextEvidence = { ...(state.evidence || {}) };
-  if (resetSubmission) {
-    delete nextEvidence[key];
-  } else if (clearPendingEvidence && Array.isArray(nextEvidence[key])) {
+  if (clearPendingEvidence && Array.isArray(nextEvidence[key])) {
     const remaining = nextEvidence[key].filter((ev) => ev.status === 'VERIFIED');
     if (remaining.length > 0) {
       nextEvidence[key] = remaining;
@@ -1116,11 +1109,28 @@ export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false, 
     {
       ...state,
       drafts: nextDrafts,
-      submissions: nextSubmissions,
       evidence: nextEvidence,
     },
     { skipAudit: true },
   );
+}
+
+export function resetUnitKpiByAdmin(formId, targetEmail, actor = null) {
+  reviewer(actor);
+  const state = readKpiWorkflow();
+  const key = submissionKey(formId, targetEmail);
+  const nextDrafts = { ...(state.drafts || {}) };
+  const nextSubmissions = { ...(state.submissions || {}) };
+  const nextEvidence = { ...(state.evidence || {}) };
+  delete nextDrafts[key];
+  delete nextSubmissions[key];
+  delete nextEvidence[key];
+  write({
+    ...state,
+    drafts: nextDrafts,
+    submissions: nextSubmissions,
+    evidence: nextEvidence,
+  });
 }
 
 export function resetAllFormKpiData(formId, actor = null) {

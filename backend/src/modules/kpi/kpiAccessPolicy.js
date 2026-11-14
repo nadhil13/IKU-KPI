@@ -171,37 +171,44 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
     }
 
     // 2. Validasi Evidence Unit per Baris
+    const prevSubForUnit = base.submissions?.[unitKey];
+    const isUnitSubmissionLocked = prevSubForUnit && ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(prevSubForUnit.status);
+
     if (incoming.evidence && Object.prototype.hasOwnProperty.call(incoming.evidence, unitKey)) {
-      const rawEvList = Array.isArray(incoming.evidence[unitKey]) ? incoming.evidence[unitKey] : [];
-      const prevEvById = new Map(((base.evidence && base.evidence[unitKey]) || []).map((e) => [e.id, e]));
-      const cleanEvList = rawEvList.map((ev) => {
-        if (!editableItemIds.has(ev.indicatorId)) {
-          appendAuditLog(
-            'SECURITY_VIOLATION',
-            `Percobaan unggah bukti pada indikator ${ev.indicatorId} milik PIC lain oleh ${callerEmail}`,
-            callerEmail,
-            ip,
-          );
-          throw Object.assign(
-            new Error(`Akses ditolak: Indikator ${ev.indicatorId} bukan tanggung jawab PIC akun Anda.`),
-            { status: 403 },
-          );
-        }
-        const prevEv = prevEvById.get(ev.id);
-        return {
-          ...ev,
-          owner: callerEmail,
-          ownerUnit: callerUser.unit || callerUser.name,
-          picCodes: callerUser.picCodes || [],
-          status: prevEv?.status === 'VERIFIED' ? 'VERIFIED' : 'PENDING',
-        };
-      });
-      if (cleanEvList.length > 0) {
-        nextEvidence[unitKey] = cleanEvList;
+      if (isUnitSubmissionLocked) {
+        nextEvidence[unitKey] = base.evidence?.[unitKey] || [];
       } else {
-        delete nextEvidence[unitKey];
+        const rawEvList = Array.isArray(incoming.evidence[unitKey]) ? incoming.evidence[unitKey] : [];
+        const prevEvById = new Map(((base.evidence && base.evidence[unitKey]) || []).map((e) => [e.id, e]));
+        const cleanEvList = rawEvList.map((ev) => {
+          if (!editableItemIds.has(ev.indicatorId)) {
+            appendAuditLog(
+              'SECURITY_VIOLATION',
+              `Percobaan unggah bukti pada indikator ${ev.indicatorId} milik PIC lain oleh ${callerEmail}`,
+              callerEmail,
+              ip,
+            );
+            throw Object.assign(
+              new Error(`Akses ditolak: Indikator ${ev.indicatorId} bukan tanggung jawab PIC akun Anda.`),
+              { status: 403 },
+            );
+          }
+          const prevEv = prevEvById.get(ev.id);
+          return {
+            ...ev,
+            owner: callerEmail,
+            ownerUnit: callerUser.unit || callerUser.name,
+            picCodes: callerUser.picCodes || [],
+            status: prevEv?.status === 'VERIFIED' ? 'VERIFIED' : 'PENDING',
+          };
+        });
+        if (cleanEvList.length > 0) {
+          nextEvidence[unitKey] = cleanEvList;
+        } else {
+          delete nextEvidence[unitKey];
+        }
       }
-    } else if (incoming.evidence && !Object.prototype.hasOwnProperty.call(incoming.evidence, unitKey)) {
+    } else if (incoming.evidence && !Object.prototype.hasOwnProperty.call(incoming.evidence, unitKey) && !isUnitSubmissionLocked) {
       delete nextEvidence[unitKey];
     }
 
@@ -210,7 +217,7 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
       const rawSub = incoming.submissions[unitKey];
       const prevSub = base.submissions?.[unitKey];
       if (!rawSub) {
-        if (prevSub?.status !== 'LOCKED') {
+        if (!isUnitSubmissionLocked) {
           delete nextSubmissions[unitKey];
         }
       } else {
@@ -245,11 +252,6 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
           email: callerEmail,
           picCodes: callerUser.picCodes || [],
         };
-      }
-    } else if (incoming.submissions && !Object.prototype.hasOwnProperty.call(incoming.submissions, unitKey)) {
-      const prevSub = base.submissions?.[unitKey];
-      if (prevSub?.status !== 'LOCKED') {
-        delete nextSubmissions[unitKey];
       }
     }
   }
