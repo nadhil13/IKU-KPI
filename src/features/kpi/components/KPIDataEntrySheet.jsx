@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   RotateCcw, FileSpreadsheet, Printer, SlidersHorizontal, Send, LockKeyhole,
   CheckCircle2, AlertTriangle, Clock3, History, RefreshCcw, ShieldCheck,
@@ -253,7 +254,7 @@ export function EvidencePreviewModal({ evidence, onClose }) {
   const isPdf = evidence.mimeType === 'application/pdf' || /^data:application\/pdf/i.test(evidence.dataUrl || '');
   const isImage = /^image\//i.test(evidence.mimeType || '') || /^data:image\//i.test(evidence.dataUrl || '');
 
-  return (
+  const dialogNode = (
     <div
       role="dialog"
       aria-modal="true"
@@ -265,7 +266,7 @@ export function EvidencePreviewModal({ evidence, onClose }) {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1200,
+        zIndex: 1450,
         background: 'rgba(6, 44, 61, 0.62)',
         display: 'flex',
         alignItems: 'center',
@@ -371,6 +372,8 @@ export function EvidencePreviewModal({ evidence, onClose }) {
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(dialogNode, document.body) : dialogNode;
 }
 
 function RowEvidenceAndNotesCell({

@@ -64,33 +64,43 @@ function PeriodRow({ period, globalDeadline, onUpdate }) {
 
   return (
     <div className="gov-period-row">
-      <input
-        aria-label={`Nama periode ${period.label}`}
-        value={labelVal}
-        onChange={(event) => setDraft((prev) => ({ ...prev, label: event.target.value }))}
-        onBlur={() => commit('label', labelVal, labelVal.trim())}
-      />
-      <input
-        aria-label={`Tanggal mulai ${period.label}`}
-        type="date"
-        value={startVal}
-        onChange={(event) => {
-          const val = event.target.value;
-          setDraft((prev) => ({ ...prev, start: val }));
-          commit('start', val);
-        }}
-      />
-      <input
-        aria-label={`Tanggal akhir ${period.label}`}
-        type="date"
-        value={endVal}
-        onChange={(event) => {
-          const val = event.target.value;
-          setDraft((prev) => ({ ...prev, end: val }));
-          commit('end', val);
-        }}
-      />
-      <div>
+      <div className="gov-period-cell">
+        <span className="gov-period-field-label">Nama Periode</span>
+        <input
+          aria-label={`Nama periode ${period.label}`}
+          value={labelVal}
+          onChange={(event) => setDraft((prev) => ({ ...prev, label: event.target.value }))}
+          onBlur={() => commit('label', labelVal, labelVal.trim())}
+        />
+      </div>
+      <div className="gov-period-cell">
+        <span className="gov-period-field-label">Tanggal Mulai</span>
+        <input
+          aria-label={`Tanggal mulai ${period.label}`}
+          type="date"
+          value={startVal}
+          onChange={(event) => {
+            const val = event.target.value;
+            setDraft((prev) => ({ ...prev, start: val }));
+            commit('start', val);
+          }}
+        />
+      </div>
+      <div className="gov-period-cell">
+        <span className="gov-period-field-label">Tanggal Akhir</span>
+        <input
+          aria-label={`Tanggal akhir ${period.label}`}
+          type="date"
+          value={endVal}
+          onChange={(event) => {
+            const val = event.target.value;
+            setDraft((prev) => ({ ...prev, end: val }));
+            commit('end', val);
+          }}
+        />
+      </div>
+      <div className="gov-period-cell">
+        <span className="gov-period-field-label">Tenggat Pengisian</span>
         <input
           aria-label={`Tenggat periode opsional ${period.label}`}
           type="datetime-local"
@@ -105,23 +115,29 @@ function PeriodRow({ period, globalDeadline, onUpdate }) {
           Tenggat global: {globalDeadline || 'Belum diatur'}
         </small>
       </div>
-      <select
-        aria-label={`Status periode ${period.label}`}
-        value={period.status}
-        onChange={(event) => onUpdate(period.id, 'status', event.target.value)}
-      >
-        <option>Active</option>
-        <option>Draft</option>
-        <option>Archived</option>
-      </select>
-      <label>
-        <input
-          type="checkbox"
-          checked={period.inputOpen !== false}
-          onChange={(event) => onUpdate(period.id, 'inputOpen', event.target.checked)}
-        />
-        Input dibuka
-      </label>
+      <div className="gov-period-cell">
+        <span className="gov-period-field-label">Status Siklus</span>
+        <select
+          aria-label={`Status periode ${period.label}`}
+          value={period.status}
+          onChange={(event) => onUpdate(period.id, 'status', event.target.value)}
+        >
+          <option>Active</option>
+          <option>Draft</option>
+          <option>Archived</option>
+        </select>
+      </div>
+      <div className="gov-period-cell gov-period-check-cell">
+        <span className="gov-period-field-label">Akses Unit</span>
+        <label>
+          <input
+            type="checkbox"
+            checked={period.inputOpen !== false}
+            onChange={(event) => onUpdate(period.id, 'inputOpen', event.target.checked)}
+          />
+          <span>Input dibuka</span>
+        </label>
+      </div>
     </div>
   );
 }
@@ -641,13 +657,27 @@ export default function PRPGovernance() {
         }
         .gov-period-row {
           display: grid;
-          grid-template-columns: minmax(170px, 1.2fr) 145px 145px minmax(200px, 1.2fr) 120px 130px;
+          grid-template-columns: minmax(170px, 1.3fr) minmax(130px, 0.9fr) minmax(130px, 0.9fr) minmax(185px, 1.2fr) minmax(115px, 0.75fr) auto;
           gap: 0.75rem;
-          align-items: center;
+          align-items: start;
           padding: 0.95rem 1.25rem;
           border-bottom: 1px solid #D8E4EA;
           font-size: 0.78rem;
           transition: background-color 0.18s ease;
+        }
+        .gov-period-cell {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 0.28rem;
+        }
+        .gov-period-field-label {
+          font-family: var(--ent-mono);
+          font-size: 0.62rem;
+          font-weight: 700;
+          color: #475569;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
         }
         .gov-period-row:hover {
           background: #F7FAFB;
@@ -658,6 +688,7 @@ export default function PRPGovernance() {
         .gov-period-row input:not([type="checkbox"]),
         .gov-period-row select {
           width: 100%;
+          min-width: 0;
           min-height: 40px;
           box-sizing: border-box;
           padding: 0.48rem 0.65rem;
@@ -681,16 +712,21 @@ export default function PRPGovernance() {
           color: #072534;
           font-weight: 600;
           cursor: pointer;
+          white-space: nowrap;
         }
         .gov-audit-row {
           display: grid;
-          grid-template-columns: 205px 1fr 175px;
+          grid-template-columns: minmax(160px, 205px) minmax(0, 1fr) minmax(140px, 175px);
           gap: 1rem;
           align-items: center;
           padding: 0.9rem 1.25rem;
           border-bottom: 1px solid #D8E4EA;
           font-size: 0.78rem;
           transition: background-color 0.18s ease;
+        }
+        .gov-audit-row > * {
+          min-width: 0;
+          overflow-wrap: anywhere;
         }
         .gov-audit-row:hover {
           background: #F7FAFB;
@@ -717,16 +753,23 @@ export default function PRPGovernance() {
           font-size: 0.8rem;
           font-weight: 600;
         }
-        @media (max-width: 1024px) {
+        @media (max-width: 1360px) {
           .gov-period-row {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
+        }
+        @media (max-width: 1120px) {
           .gov-audit-row {
             grid-template-columns: 1fr;
             gap: 0.35rem;
           }
           .gov-audit-time {
             text-align: left !important;
+          }
+        }
+        @media (max-width: 900px) {
+          .gov-period-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
         @media (max-width: 768px) {
@@ -738,7 +781,7 @@ export default function PRPGovernance() {
             min-height: 44px;
           }
         }
-        @media (max-width: 640px) {
+        @media (max-width: 600px) {
           .gov-period-row {
             grid-template-columns: 1fr;
           }

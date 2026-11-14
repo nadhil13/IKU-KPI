@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   CheckCircle2,
@@ -291,7 +292,7 @@ export default function IKUSubmissions() {
         }
         .iku-cards-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
           gap: 1px;
           background: #D8E4EA;
           border: 1px solid #D8E4EA;
@@ -305,6 +306,7 @@ export default function IKUSubmissions() {
           display: flex;
           flex-direction: column;
           gap: 0.95rem;
+          min-width: 0;
           transition: background-color 0.2s ease;
         }
         .iku-ind-card::before {
@@ -911,7 +913,7 @@ export default function IKUSubmissions() {
         </div>
       )}
 
-      {confirmUnlockOpen && record && (
+      {confirmUnlockOpen && record && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -919,7 +921,7 @@ export default function IKUSubmissions() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 90,
+            zIndex: 1350,
             background: 'rgba(6, 44, 61, 0.56)',
             display: 'grid',
             placeItems: 'center',
@@ -964,7 +966,8 @@ export default function IKUSubmissions() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );

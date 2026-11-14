@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   Radio,
@@ -172,7 +173,7 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '1.15rem' }}>
-      {incomingToast && (
+      {incomingToast && createPortal(
         <div
           role="alert"
           aria-live="assertive"
@@ -180,7 +181,7 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
             position: 'fixed',
             bottom: '1.25rem',
             right: '1.25rem',
-            zIndex: 1300,
+            zIndex: 1400,
             maxWidth: '420px',
             width: 'calc(100vw - 2.5rem)',
             background: '#072534',
@@ -230,7 +231,8 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
           <div style={{ fontSize: '0.78rem', color: '#E2E8F0', marginTop: '0.25rem', lineHeight: 1.45 }}>
             {incomingToast.message}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {unacknowledged.slice(0, 3).map((b) => {
@@ -512,7 +514,7 @@ export function BroadcastComposerModal({ open, onClose }) {
     }
   };
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -523,7 +525,7 @@ export function BroadcastComposerModal({ open, onClose }) {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1250,
+        zIndex: 1350,
         background: 'rgba(6, 44, 61, 0.6)',
         display: 'flex',
         alignItems: 'center',
@@ -1066,6 +1068,7 @@ export function BroadcastComposerModal({ open, onClose }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

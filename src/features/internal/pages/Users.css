@@ -445,7 +445,7 @@
   clip: rect(0, 0, 0, 0);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .users-stats {
     grid-template-columns: repeat(2, 1fr);
   }

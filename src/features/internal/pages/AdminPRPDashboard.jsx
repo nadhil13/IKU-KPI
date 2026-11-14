@@ -363,12 +363,16 @@ export default function AdminPRPDashboard() {
         .prp-audit-row {
           position: relative;
           display: grid;
-          grid-template-columns: 112px 1fr auto;
+          grid-template-columns: 112px minmax(0, 1fr) auto;
           gap: 1rem;
           align-items: center;
           padding: 0.95rem 0.7rem;
           border-bottom: 1px solid #D8E4EA;
           transition: background-color 0.18s ease;
+        }
+        .prp-audit-row > * {
+          min-width: 0;
+          overflow-wrap: anywhere;
         }
         .prp-mod-row {
           display: flex;
@@ -418,7 +422,7 @@ export default function AdminPRPDashboard() {
             color: #ffffff;
           }
         }
-        @media (max-width: 1060px) {
+        @media (max-width: 1240px) {
           .prp-ledger-grid {
             grid-template-columns: repeat(2, 1fr);
           }

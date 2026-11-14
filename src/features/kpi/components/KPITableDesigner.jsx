@@ -5,6 +5,7 @@
  * serta konfigurasi aturan validasi struktur oleh Admin PRP.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowDown, ArrowUp, Check, CircleCheck, Copy, Ellipsis, Eye, GitMerge, History, Lock, LockOpen, MousePointerClick,
   PanelRightClose, Plus, Radio, RotateCcw, Send, Settings2, Sigma, Split, Table2, Trash2, TriangleAlert, Users, X,
@@ -1628,76 +1629,79 @@ export default function KPITableDesigner() {
         </div>
       )}
 
-      {confirmState && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="kpi-designer-confirm-title"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setConfirmState(null);
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1300,
-            background: 'rgba(6, 44, 61, 0.56)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-          }}
-        >
+      {confirmState && (() => {
+        const confirmNode = (
           <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="kpi-designer-confirm-title"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setConfirmState(null);
+            }}
             style={{
-              width: 'min(440px, 100%)',
-              background: '#FFFFFF',
-              borderRadius: '10px',
-              border: '1px solid #D8E4EA',
-              boxShadow: '0 24px 48px rgba(7, 37, 52, 0.22)',
-              padding: '1.35rem',
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1450,
+              background: 'rgba(6, 44, 61, 0.56)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
             }}
           >
-            <h3
-              id="kpi-designer-confirm-title"
-              style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
+            <div
+              style={{
+                width: 'min(440px, 100%)',
+                background: '#FFFFFF',
+                borderRadius: '10px',
+                border: '1px solid #D8E4EA',
+                boxShadow: '0 24px 48px rgba(7, 37, 52, 0.22)',
+                padding: '1.35rem',
+              }}
             >
-              {confirmState.title}
-            </h3>
-            <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
-              {confirmState.message}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="ghost"
-                style={{ minHeight: '44px', padding: '0.45rem 0.9rem', border: '1px solid #B8CAD4', borderRadius: '6px' }}
-                onClick={() => setConfirmState(null)}
+              <h3
+                id="kpi-designer-confirm-title"
+                style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
               >
-                Batal
-              </button>
-              <button
-                type="button"
-                className="primary"
-                style={{
-                  minHeight: '44px',
-                  padding: '0.45rem 0.95rem',
-                  borderRadius: '6px',
-                  background: confirmState.danger ? '#991B1B' : '#094E68',
-                  borderColor: confirmState.danger ? '#991B1B' : '#094E68',
-                  color: '#FFFFFF',
-                }}
-                onClick={() => {
-                  const fn = confirmState.onConfirm;
-                  setConfirmState(null);
-                  fn?.();
-                }}
-              >
-                {confirmState.confirmLabel}
-              </button>
+                {confirmState.title}
+              </h3>
+              <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
+                {confirmState.message}
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="ghost"
+                  style={{ minHeight: '44px', padding: '0.45rem 0.9rem', border: '1px solid #B8CAD4', borderRadius: '6px' }}
+                  onClick={() => setConfirmState(null)}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  style={{
+                    minHeight: '44px',
+                    padding: '0.45rem 0.95rem',
+                    borderRadius: '6px',
+                    background: confirmState.danger ? '#991B1B' : '#094E68',
+                    borderColor: confirmState.danger ? '#991B1B' : '#094E68',
+                    color: '#FFFFFF',
+                  }}
+                  onClick={() => {
+                    const fn = confirmState.onConfirm;
+                    setConfirmState(null);
+                    fn?.();
+                  }}
+                >
+                  {confirmState.confirmLabel}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+        return typeof document !== 'undefined' ? createPortal(confirmNode, document.body) : confirmNode;
+      })()}
     </div>
   );
 }

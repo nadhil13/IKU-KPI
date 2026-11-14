@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus, Search, SlidersHorizontal, ShieldCheck, Pencil, Trash2, X, Check, KeyRound, Copy
 } from 'lucide-react';
@@ -531,7 +532,7 @@ export default function Users() {
         </footer>
       </div>
 
-      {editing && (
+      {editing && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -546,7 +547,7 @@ export default function Users() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 120,
+            zIndex: 1350,
             background: 'rgba(6, 44, 61, 0.56)',
             display: 'grid',
             placeItems: 'center',
@@ -558,6 +559,8 @@ export default function Users() {
             ref={modalRef}
             style={{
               width: 'min(580px, 100%)',
+              maxHeight: '92dvh',
+              overflowY: 'auto',
               background: '#FFFFFF',
               border: '1px solid #B8CAD4',
               borderRadius: '8px',
@@ -802,10 +805,11 @@ export default function Users() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {confirmAction && (
+      {confirmAction && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -813,7 +817,7 @@ export default function Users() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 130,
+            zIndex: 1400,
             background: 'rgba(6, 44, 61, 0.56)',
             display: 'grid',
             placeItems: 'center',
@@ -843,10 +847,11 @@ export default function Users() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {resetResult && (
+      {resetResult && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -854,7 +859,7 @@ export default function Users() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 130,
+            zIndex: 1400,
             background: 'rgba(6, 44, 61, 0.56)',
             display: 'grid',
             placeItems: 'center',
@@ -894,7 +899,8 @@ export default function Users() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Building2, Database, GitBranch, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
@@ -541,7 +542,7 @@ export default function TeamPIC() {
         )}
       </div>
 
-      {pendingDelete && (
+      {pendingDelete && createPortal(
         <div
           role="alertdialog"
           aria-modal="true"
@@ -552,7 +553,7 @@ export default function TeamPIC() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 1200,
+            zIndex: 1350,
             background: 'rgba(6, 44, 61, 0.56)',
             display: 'flex',
             alignItems: 'center',
@@ -593,7 +594,8 @@ export default function TeamPIC() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );

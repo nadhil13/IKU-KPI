@@ -201,7 +201,7 @@ export default function InternalLayout() {
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
-      if (window.innerWidth > 920) {
+      if (window.innerWidth > 1024) {
         setSidebarOpen(false);
       }
     };
@@ -551,7 +551,7 @@ export default function InternalLayout() {
   ];
 
   const closeMobileSidebar = () => {
-    if (windowWidth <= 920) setSidebarOpen(false);
+    if (windowWidth <= 1024) setSidebarOpen(false);
   };
 
   const handleSelectWorkspaceMenu = useCallback(
@@ -559,7 +559,7 @@ export default function InternalLayout() {
       if (isDual) {
         switchWorkspace(targetWorkspace);
       }
-      if (windowWidth <= 920) setSidebarOpen(false);
+      if (windowWidth <= 1024) setSidebarOpen(false);
       if (location.pathname !== '/internal') {
         navigate('/internal');
       }
@@ -569,7 +569,7 @@ export default function InternalLayout() {
 
   const handleSelectPRP = useCallback(() => {
     enterPRP();
-    if (windowWidth <= 920) setSidebarOpen(false);
+    if (windowWidth <= 1024) setSidebarOpen(false);
     navigate('/internal/admin');
   }, [enterPRP, windowWidth, navigate]);
 
@@ -686,7 +686,7 @@ export default function InternalLayout() {
     }
   };
 
-  const isMobile = windowWidth <= 920;
+  const isMobile = windowWidth <= 1024;
 
   return (
     <div
@@ -714,7 +714,7 @@ export default function InternalLayout() {
             position: 'fixed',
             inset: 0,
             background: 'rgba(6, 44, 61, 0.48)',
-            zIndex: 40,
+            zIndex: 90,
           }}
         />
       )}
@@ -724,9 +724,9 @@ export default function InternalLayout() {
         aria-label="Navigasi ruang kerja internal"
         className={`corp-sidebar ${sidebarOpen ? 'open' : ''}`}
         style={{
-          width: '284px',
-          minWidth: '284px',
-          maxWidth: '284px',
+          width: isMobile ? 'min(284px, 86vw)' : '264px',
+          minWidth: isMobile ? 'min(284px, 86vw)' : '264px',
+          maxWidth: isMobile ? 'min(284px, 86vw)' : '264px',
           flexShrink: 0,
           background: '#F7FAFB',
           borderRight: '1px solid #D8E4EA',
@@ -737,7 +737,7 @@ export default function InternalLayout() {
           left: 0,
           bottom: 0,
           height: '100dvh',
-          zIndex: 50,
+          zIndex: isMobile ? 95 : 20,
           overflow: 'hidden',
           transform: isMobile ? (sidebarOpen ? 'translateX(0)' : 'translateX(-100%)') : 'none',
           transition: 'transform 0.34s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -1387,7 +1387,7 @@ export default function InternalLayout() {
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
-          zIndex: 10,
+          zIndex: 'auto',
           overflow: 'hidden',
           background: '#ffffff',
         }}
@@ -1938,16 +1938,17 @@ export default function InternalLayout() {
           style={{
             flex: 1,
             minHeight: 0,
+            minWidth: 0,
             height: 'calc(100dvh - 60px)',
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: 'clamp(1.25rem, 3vw, 2.5rem)',
+            padding: 'clamp(0.85rem, 2.2vw, 2.25rem)',
             overscrollBehavior: 'contain',
             background: '#ffffff',
           }}
           ref={scrollWrapperRef}
         >
-          <div ref={scrollContentRef} style={{ maxWidth: '1420px', margin: '0 auto', width: '100%' }}>
+          <div ref={scrollContentRef} style={{ maxWidth: '1480px', margin: '0 auto', width: '100%', minWidth: 0 }}>
             <ActiveBroadcastBanner onOpenManager={() => setBroadcastModalOpen(true)} />
             <Outlet />
           </div>

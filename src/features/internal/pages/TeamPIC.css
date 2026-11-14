@@ -482,7 +482,7 @@
   margin: 0;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .tp-stats {
     grid-template-columns: repeat(2, 1fr);
   }

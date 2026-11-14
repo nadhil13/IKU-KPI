@@ -532,8 +532,8 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
   };
 
   (Array.isArray(rawPeriods) ? rawPeriods : []).forEach((p) => {
-    const ymAll = String(p.id || p.label || p.end || p.start || '').match(/\b(20\d{2})\b/g);
-    const yearKey = ymAll && ymAll.length ? ymAll[ymAll.length - 1] : String(p.id || p.label || '2026');
+    const ymAll = String(p.id || p.start || p.label || p.end || '').match(/\b(20\d{2})\b/g);
+    const yearKey = ymAll && ymAll.length ? ymAll[0] : String(p.id || p.label || '2026');
     const prev = byYear.get(yearKey);
     const evaluated = evaluateStatus(p, yearKey);
     if (!prev || (!prev.inputOpen && evaluated.inputOpen)) {
