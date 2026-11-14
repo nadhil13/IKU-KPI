@@ -1087,17 +1087,24 @@ export function saveKpiRevisionComment(formId, actor, {
   };
 }
 
-export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false } = {}) {
+export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false, resetSubmission = false } = {}) {
   const state = readKpiWorkflow();
   const form = state.forms.find((entry) => entry.id === formId);
   if (!form || !user?.email) return;
   const key = submissionKey(formId, user.email);
   const previous = state.submissions[key];
-  if (previous && !['NEEDS_REVISION'].includes(previous.status)) return;
+  if (previous && previous.status === 'LOCKED') return;
+  if (previous && !resetSubmission && !['NEEDS_REVISION'].includes(previous.status)) return;
   const nextDrafts = { ...(state.drafts || {}) };
   delete nextDrafts[key];
+  const nextSubmissions = { ...(state.submissions || {}) };
+  if (resetSubmission && previous) {
+    delete nextSubmissions[key];
+  }
   const nextEvidence = { ...(state.evidence || {}) };
-  if (clearPendingEvidence && Array.isArray(nextEvidence[key])) {
+  if (resetSubmission) {
+    delete nextEvidence[key];
+  } else if (clearPendingEvidence && Array.isArray(nextEvidence[key])) {
     const remaining = nextEvidence[key].filter((ev) => ev.status === 'VERIFIED');
     if (remaining.length > 0) {
       nextEvidence[key] = remaining;
@@ -1109,10 +1116,34 @@ export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false }
     {
       ...state,
       drafts: nextDrafts,
+      submissions: nextSubmissions,
       evidence: nextEvidence,
     },
     { skipAudit: true },
   );
+}
+
+export function resetAllFormKpiData(formId, actor = null) {
+  reviewer(actor);
+  const state = readKpiWorkflow();
+  const targetId = formId || state.forms[state.forms.length - 1]?.id;
+  if (!targetId) return;
+  const prefix = `${targetId}:`;
+  const nextDrafts = Object.fromEntries(Object.entries(state.drafts || {}).filter(([k]) => !k.startsWith(prefix)));
+  const nextSubmissions = Object.fromEntries(Object.entries(state.submissions || {}).filter(([k]) => !k.startsWith(prefix)));
+  const nextEvidence = Object.fromEntries(Object.entries(state.evidence || {}).filter(([k]) => !k.startsWith(prefix)));
+  const nextOverrides = { ...(state.adminOverrides || {}) };
+  delete nextOverrides[targetId];
+  const nextRevisions = { ...(state.revisions || {}) };
+  delete nextRevisions[targetId];
+  write({
+    ...state,
+    drafts: nextDrafts,
+    submissions: nextSubmissions,
+    evidence: nextEvidence,
+    adminOverrides: nextOverrides,
+    revisions: nextRevisions,
+  });
 }
 
 export function saveUnitKpiDraft(formId, user, { values = {}, notes = {} } = {}) {

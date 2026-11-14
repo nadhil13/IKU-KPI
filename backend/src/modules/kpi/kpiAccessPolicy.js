@@ -196,14 +196,24 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
           status: prevEv?.status === 'VERIFIED' ? 'VERIFIED' : 'PENDING',
         };
       });
-      nextEvidence[unitKey] = cleanEvList;
+      if (cleanEvList.length > 0) {
+        nextEvidence[unitKey] = cleanEvList;
+      } else {
+        delete nextEvidence[unitKey];
+      }
+    } else if (incoming.evidence && !Object.prototype.hasOwnProperty.call(incoming.evidence, unitKey)) {
+      delete nextEvidence[unitKey];
     }
 
     // 3. Validasi Submission Unit
     if (incoming.submissions && Object.prototype.hasOwnProperty.call(incoming.submissions, unitKey)) {
       const rawSub = incoming.submissions[unitKey];
       const prevSub = base.submissions?.[unitKey];
-      if (rawSub) {
+      if (!rawSub) {
+        if (prevSub?.status !== 'LOCKED') {
+          delete nextSubmissions[unitKey];
+        }
+      } else {
         if (['APPROVED', 'LOCKED'].includes(rawSub.status) && prevSub?.status !== rawSub.status) {
           appendAuditLog(
             'SECURITY_VIOLATION',
@@ -235,6 +245,11 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
           email: callerEmail,
           picCodes: callerUser.picCodes || [],
         };
+      }
+    } else if (incoming.submissions && !Object.prototype.hasOwnProperty.call(incoming.submissions, unitKey)) {
+      const prevSub = base.submissions?.[unitKey];
+      if (prevSub?.status !== 'LOCKED') {
+        delete nextSubmissions[unitKey];
       }
     }
   }

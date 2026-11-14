@@ -17,6 +17,7 @@ import {
   readUnitDraft,
   saveUnitKpiDraft,
   clearUnitKpiDraft,
+  resetAllFormKpiData,
   subscribeKpiWorkflow,
   submitUnitKpi,
   readUnitEvidence,
@@ -1770,8 +1771,7 @@ function KPIEntryContent({
   };
 
   const handleReset = () => {
-    if (readOnly) return;
-    if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
+    if (readOnly || workflow.status === 'LOCKED') return;
     if (isUnitMode) {
       const cleared = { ...values };
       editableSubKeys.forEach((k) => { cleared[k] = ''; });
@@ -1780,21 +1780,31 @@ function KPIEntryContent({
       setValues(cleared);
       setNotes(clearedNotes);
       if (unitForm && unitUser) {
-        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true });
+        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true, resetSubmission: true });
       }
     } else {
       setValues(emptyDefaults);
       setNotes({});
       setLocalEvidenceList([]);
+      if (isAdminPrp && activeForm?.id) {
+        resetAllFormKpiData(activeForm.id, unitUser);
+      }
     }
     try {
       localStorage.removeItem(valuesKey);
       localStorage.removeItem(notesKey);
+      localStorage.removeItem(workflowKey);
     } catch {
       // Abaikan kegagalan hapus penyimpanan lokal
     }
-    setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
-    showToast('Isian, keterangan draf, dan lampiran simulasi telah dikosongkan.');
+    setWorkflow({
+      status: WORKFLOW_STATUS.NOT_STARTED,
+      submittedAt: null,
+      submittedBy: unitUser?.name || 'PIC KPI Unit',
+      revisionNote: '',
+      history: [],
+    });
+    showToast('Seluruh isian, keterangan, dan bukti uji coba telah dihapus dan dikembalikan ke kondisi semula (0,00 / Belum Diisi).');
   };
 
   const handleSubmit = () => {
@@ -3039,9 +3049,9 @@ ${sectionSummaryHtml}
                 <span>{isUnitMode ? 'Simulasi PIC' : 'Isi Simulasi'}</span>
               </button>
 
-              <button type="button" onClick={handleReset} className="clean-btn" disabled={isLocked}>
+              <button type="button" onClick={handleReset} className="clean-btn" disabled={readOnly || workflow.status === 'LOCKED'}>
                 <RotateCcw size={13} />
-                <span>Kosongkan</span>
+                <span>{workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED ? 'Reset ke Semula' : 'Kosongkan'}</span>
               </button>
             </>
           )}
