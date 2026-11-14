@@ -15,7 +15,8 @@ import { useAuth } from '../../auth/hooks/useAuth';
 gsap.registerPlugin(ScrollTrigger);
 
 const DEFAULT_PERIODS = [
-  { id: '2025/2026', label: 'Tahun Akademik 2025/2026', start: '2025-08-01', end: '2026-07-31', status: 'Active', inputOpen: true },
+  { id: '2026', label: 'Tahun Akademik 2026/2027', start: '2026-01-01', end: '2027-12-31', status: 'Active', inputOpen: true },
+  { id: '2025/2026', label: 'Tahun Akademik 2025/2026', start: '2025-08-01', end: '2026-12-31', status: 'Archived', inputOpen: false },
   { id: '2024/2025', label: 'Tahun Akademik 2024/2025', start: '2024-08-01', end: '2025-07-31', status: 'Archived', inputOpen: false },
 ];
 
@@ -339,15 +340,28 @@ export default function PRPGovernance() {
     }
   };
 
-  const updatePeriod = (id, field, value) =>
-    savePeriods(
+  const updatePeriod = (id, field, value) => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const defaultYearEnd = `${new Date().getFullYear()}-12-31`;
+    return savePeriods(
       periods.map((period) => {
-        if (period.id === id) return { ...period, [field]: value };
+        if (period.id === id) {
+          const updated = { ...period, [field]: value };
+          if (
+            ((field === 'inputOpen' && value === true) || (field === 'status' && value === 'Active')) &&
+            updated.end &&
+            updated.end < todayIso
+          ) {
+            updated.end = defaultYearEnd > updated.start ? defaultYearEnd : todayIso;
+          }
+          return updated;
+        }
         if (field === 'status' && value === 'Active') return { ...period, status: 'Archived' };
         return period;
       }),
       `Periode ${id}: ${field} -> ${String(value)}${field === 'status' && value === 'Active' ? '; periode aktif lainnya diarsipkan' : ''}`
     );
+  };
 
   const addPeriod = () =>
     savePeriods([

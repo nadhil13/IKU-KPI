@@ -998,6 +998,15 @@ function KPIEntryContent({
     if (submission) return { ...submission, history: submission.history || [] };
     if (unitDraft) return { status: WORKFLOW_STATUS.DRAFT, submittedAt: null, submittedBy: unitUser?.name || 'PIC Unit', revisionNote: '', history: [] };
     if (!persist) return { status: WORKFLOW_STATUS.NOT_STARTED, submittedAt: null, submittedBy: 'Preview PRP', revisionNote: '', history: [] };
+    if (isUnitMode) {
+      return {
+        status: WORKFLOW_STATUS.NOT_STARTED,
+        submittedAt: null,
+        submittedBy: unitUser?.name || 'PIC KPI Unit',
+        revisionNote: '',
+        history: [],
+      };
+    }
     try {
       return JSON.parse(localStorage.getItem(workflowKey)) || {
         status: WORKFLOW_STATUS.NOT_STARTED,

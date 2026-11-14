@@ -110,10 +110,10 @@ export default function Dashboard() {
   const [ikuTick, setIkuTick] = useState(0);
 
   const activePeriod = useMemo(
-    () => periods.find((period) => period.isOpenForInput) || periods.find((period) => period.status === 'Active') || periods[0],
+    () => periods.find((period) => Boolean(period.inputOpen ?? period.isOpenForInput)) || periods.find((period) => period.status === 'Active') || periods[0],
     [periods]
   );
-  const [selectedYear, setSelectedYear] = useState(() => activePeriod?.id || '2026');
+  const [selectedYear, setSelectedYear] = useState(() => activePeriod?.year || activePeriod?.id || '2026');
   const [kpiLiveMetrics, setKpiLiveMetrics] = useState({
     totalBobot: 100,
     totalScore: 0,
@@ -143,11 +143,11 @@ export default function Dashboard() {
   const isSpiAuditor = currentUser?.role === 'spi';
   const isDual = ['dual', 'superadmin_prp'].includes(currentUser?.role);
   const effectiveYear =
-    periods.length && !periods.some((period) => String(period.id) === String(selectedYear))
-      ? activePeriod?.id || selectedYear
+    periods.length && !periods.some((period) => String(period.year) === String(selectedYear) || String(period.id) === String(selectedYear))
+      ? activePeriod?.year || activePeriod?.id || selectedYear
       : selectedYear;
-  const selectedPeriod = periods.find((period) => String(period.id) === String(effectiveYear)) || activePeriod;
-  const isPeriodOpen = selectedPeriod ? Boolean(selectedPeriod.isOpenForInput) : true;
+  const selectedPeriod = periods.find((period) => String(period.year) === String(effectiveYear) || String(period.id) === String(effectiveYear)) || activePeriod;
+  const isPeriodOpen = selectedPeriod ? Boolean(selectedPeriod.inputOpen ?? selectedPeriod.isOpenForInput) : true;
 
   useEffect(() => {
     const refreshPeriods = () => {
@@ -474,11 +474,14 @@ export default function Dashboard() {
               onChange={(e) => setSelectedYear(e.target.value)}
             >
               {periods.length ? (
-                periods.map((period) => (
-                  <option key={period.id} value={period.id}>
-                    {period.label || `Periode ${period.id}`} [{period.isOpenForInput ? 'AKTIF • Terbuka untuk Diisi' : 'TERKUNCI • Nonaktif / Arsip'}]
-                  </option>
-                ))
+                periods.map((period) => {
+                  const openFlag = Boolean(period.inputOpen ?? period.isOpenForInput);
+                  return (
+                    <option key={period.id || period.year} value={period.year || period.id}>
+                      {period.label || `Periode ${period.year || period.id}`} [{openFlag ? 'AKTIF • Terbuka untuk Diisi' : 'TERKUNCI • Nonaktif / Arsip'}]
+                    </option>
+                  );
+                })
               ) : (
                 <option value="2026">Tahun Akademik 2025/2026 [AKTIF • Terbuka untuk Diisi]</option>
               )}
@@ -981,7 +984,7 @@ export default function Dashboard() {
         <KPIDataEntrySheet
           period={effectiveYear}
           onMetricsUpdate={setKpiLiveMetrics}
-          readOnly={!isPeriodOpen || isSpiAuditor}
+          readOnly={isSpiAuditor || (!isPeriodOpen && currentUser?.role !== 'superadmin_prp')}
         />
       )}
     </div>

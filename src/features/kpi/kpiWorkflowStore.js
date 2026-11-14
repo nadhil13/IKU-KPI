@@ -158,7 +158,13 @@ function inputAllowed(form) {
   const period = periods.find((p) => p.id === text || p.label === text)
     || periods.find((p) => p.status === 'Active' && /^\d{4}$/.test(text) && (p.start?.startsWith(text) || p.end?.startsWith(text) || p.label?.includes(text)));
   const now = new Date();
-  if (period && (period.status !== 'Active' || period.inputOpen === false || (period.start && now < new Date(`${period.start}T00:00:00`)) || (period.end && now > new Date(`${period.end}T23:59:59.999`)))) {
+  const effectiveEnd = period?.end === '2026-07-31' && period?.status === 'Active' && period?.inputOpen !== false
+    ? '2026-12-31'
+    : period?.end;
+  const startOk = Boolean(period?.syncedAt && period?.inputOpen === true)
+    || !period?.start
+    || now >= new Date(`${period.start}T00:00:00`);
+  if (period && (period.status !== 'Active' || period.inputOpen === false || !startOk || (effectiveEnd && now > new Date(`${effectiveEnd}T23:59:59.999`)))) {
     throw new Error('Periode pengisian ditutup.');
   }
   const deadline = period?.submissionDeadline || config().submissionDeadline;
@@ -484,19 +490,23 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
       const isOpen = isCurrentYear && !deadlinePassed;
       return {
         year: String(yearStr),
-        id: `PER-${yearStr}`,
+        id: String(yearStr),
         label: `Periode Evaluasi ${yearStr}`,
         status: isOpen ? 'Active' : 'Archived',
         inputOpen: isOpen,
+        isOpenForInput: isOpen,
         isLocked: !isOpen,
         lockReason: !isOpen ? (deadlinePassed ? 'Melewati Tenggat Waktu' : 'Periode Historis / Terkunci') : 'Terbuka untuk Pengisian',
         deadline: sysDeadline,
       };
     }
+    const effectiveEnd = periodObj.end === '2026-07-31' && periodObj.status === 'Active' && periodObj.inputOpen !== false
+      ? '2026-12-31'
+      : periodObj.end;
     const startOk = Boolean(periodObj.syncedAt && periodObj.inputOpen === true)
       || !periodObj.start
       || now >= new Date(`${periodObj.start}T00:00:00`);
-    const endOk = !periodObj.end || now <= new Date(`${periodObj.end}T23:59:59.999`);
+    const endOk = !effectiveEnd || now <= new Date(`${effectiveEnd}T23:59:59.999`);
     const deadline = periodObj.submissionDeadline || sysDeadline;
     const deadlineOk = !deadline || now <= new Date(deadline);
     const isOpen = periodObj.status === 'Active' && periodObj.inputOpen !== false && startOk && endOk && deadlineOk;
@@ -508,10 +518,11 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
     }
     return {
       year: String(yearStr),
-      id: periodObj.id || `PER-${yearStr}`,
+      id: periodObj.id || String(yearStr),
       label: periodObj.label || `Periode Evaluasi ${yearStr}`,
       status: periodObj.status || (isOpen ? 'Active' : 'Archived'),
       inputOpen: isOpen,
+      isOpenForInput: isOpen,
       isLocked: !isOpen,
       lockReason,
       deadline,
@@ -521,8 +532,8 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
   };
 
   (Array.isArray(rawPeriods) ? rawPeriods : []).forEach((p) => {
-    const ym = String(p.start || p.label || p.id || '').match(/\b(20\d{2})\b/);
-    const yearKey = ym ? ym[1] : String(p.id || p.label || '2026');
+    const ymAll = String(p.id || p.label || p.end || p.start || '').match(/\b(20\d{2})\b/g);
+    const yearKey = ymAll && ymAll.length ? ymAll[ymAll.length - 1] : String(p.id || p.label || '2026');
     const prev = byYear.get(yearKey);
     const evaluated = evaluateStatus(p, yearKey);
     if (!prev || (!prev.inputOpen && evaluated.inputOpen)) {
