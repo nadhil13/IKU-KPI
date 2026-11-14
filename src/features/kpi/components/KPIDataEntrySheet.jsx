@@ -2,14 +2,17 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   RotateCcw, FileSpreadsheet, Printer, SlidersHorizontal, Send, LockKeyhole,
   CheckCircle2, AlertTriangle, Clock3, History, RefreshCcw, ShieldCheck,
-  Upload, Link2, Eye, Trash2, X, ExternalLink, FileText, Image as ImageIcon, Download
+  Upload, Link2, Eye, Trash2, X, ExternalLink, FileText, Image as ImageIcon, Download,
+  MessageSquareWarning, MailCheck, Save
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../../auth/context/AuthContext';
+import { useAuth } from '../../auth/hooks/useAuth';
 import {
   getUnitKpiForm,
+  getFormForPeriod,
+  listKpiPeriodsWithStatus,
   readUnitSubmission,
   readUnitDraft,
   saveUnitKpiDraft,
@@ -22,794 +25,22 @@ import {
   ensureDefaultKpiDistribution,
   readIntegratedKpiBoard,
   readKpiWorkflow,
+  saveAdminKpiOverride,
+  saveKpiRevisionComment,
   MAX_EVIDENCE_FILE_BYTES,
   ALLOWED_EVIDENCE_MIME_TYPES,
 } from '../kpiWorkflowStore';
 import { describeKpiFormula } from '../formulaEngine';
 
 import {
-  parseIndonesianNumber, parseFlexibleDate, formatIndonesianNumber,
+  formatIndonesianNumber,
   computeKpiItem, subscribeKpiConfig, readPublishedKpiConfig, normalizeKpiSections, buildKpiCellDirectory,
   canUserEditKpiItem, getUserPicCodes, formatPicDisplay, normalizePicCodes, readKpiValidationRules, createId,
 } from '../kpiSchema';
 
 gsap.registerPlugin(ScrollTrigger);
 
-export { parseIndonesianNumber, parseFlexibleDate, formatIndonesianNumber };
-
-// Struktur master KPI ITPLN: Bagian A bobot 25, B 26, C 49, D -12,5 beserta PIC per baris.
-export const KPI_SECTIONS_CONFIG = [
-  {
-    code: 'A',
-    title: 'PERSPEKTIF KEBERLANJUTAN',
-    totalWeight: 25,
-    weightDisplay: '25',
-    isPenaltySection: false,
-    items: [
-      {
-        id: 'A_1a',
-        no: '1a',
-        excelNo: '1a',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Pendapatan Vertikal (Mahasiswa)',
-        indikatorRowSpan: 4,
-        hideIndikatorCell: false,
-        formula: 'Jumlah realisasi mahasiswa baru T.A 2026/2027 / Target Mahasiswa Baru',
-        pics: ['PPA'],
-        picDisplay: 'PPA',
-        bobot: 10,
-        bobotDisplay: '10',
-        targetDisplay: '2.000',
-        targetNum: 2000,
-        satuan: 'Mahasiswa',
-        calcType: 'ratio_two',
-        subrows: [
-          { key: 'a_1a_num', label: 'Jumlah realisasi mahasiswa baru T.A 2026/2027' },
-          { key: 'a_1a_den', label: 'Target Mahasiswa Baru' },
-        ],
-      },
-      {
-        id: 'A_1b',
-        no: '1b',
-        excelNo: '1b',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Pendapatan Vertikal (Mahasiswa)',
-        indikatorRowSpan: 0,
-        hideIndikatorCell: true,
-        formula: 'Realisasi Pendapatan Mahasiswa / Target RKA',
-        pics: ['BAKT', 'BAG'],
-        picDisplay: 'BAKT, BAG',
-        bobot: 10,
-        bobotDisplay: '10',
-        targetDisplay: '100',
-        targetNum: 100,
-        satuan: 'Milyar Rupiah',
-        calcType: 'ratio_two',
-        subrows: [
-          { key: 'a_1b_num', label: 'Realisasi Pendapatan Mahasiswa' },
-          { key: 'a_1b_den', label: 'Target RKA' },
-        ],
-      },
-      {
-        id: 'A_2',
-        no: '2',
-        excelNo: '2',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Pendapatan Horisontal (Non-mahasiswa)',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula: 'Realisasi Pendapatan Non Mahasiswa / Target RKA',
-        pics: ['BAKT', 'BAG'],
-        picDisplay: 'BAKT, BAG',
-        bobot: 5,
-        bobotDisplay: '5',
-        targetDisplay: '80',
-        targetNum: 80,
-        satuan: 'Milyar Rupiah',
-        calcType: 'ratio_two',
-        subrows: [
-          { key: 'a_2_num', label: 'Realisasi Pendapatan Non Mahasiswa' },
-          { key: 'a_2_den', label: 'Target RKA' },
-        ],
-      },
-      {
-        id: 'A_3',
-        no: '3',
-        excelNo: '3',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Efisiensi Biaya Penyelenggaraan Institut',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula: 'Realisasi Biaya Operasi / Realisasi Pendapatan x 100%',
-        pics: ['BAKT', 'BAG'],
-        picDisplay: 'BAKT, BAG',
-        bobot: 3,
-        bobotDisplay: '3',
-        targetDisplay: '90',
-        targetNum: 90,
-        satuan: '%',
-        calcType: 'ratio_two',
-        subrows: [
-          { key: 'a_3_num', label: 'Realisasi Biaya Operasi' },
-          { key: 'a_3_den', label: 'Realisasi Pendapatan' },
-        ],
-      },
-      {
-        id: 'A_4',
-        no: '4',
-        excelNo: '4',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Efisiensi Biaya Adm & Umum',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula: 'Realisasi Biaya Adm & Umum / Realisasi Pendapatan x 100%',
-        pics: ['BAKT', 'BAG'],
-        picDisplay: 'BAKT, BAG',
-        bobot: 2,
-        bobotDisplay: '2',
-        targetDisplay: '25',
-        targetNum: 25,
-        satuan: '%',
-        calcType: 'ratio_two',
-        subrows: [
-          { key: 'a_4_num', label: 'Realisasi Biaya Adm & Umum' },
-          { key: 'a_4_den', label: 'Realisasi Pendapatan' },
-        ],
-      },
-      {
-        id: 'A_5',
-        no: '5',
-        excelNo: '5',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Kesehatan Arus Kas dari Aktivitas Operasi',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula: 'Arus Kas Pengeluaran Aktivitas Operasi / Arus Kas Penerimaan Aktivitas Operasi x100 %',
-        pics: ['BKU'],
-        picDisplay: 'BKU',
-        bobot: 2,
-        bobotDisplay: '2',
-        targetDisplay: '89',
-        targetNum: 89,
-        satuan: '%',
-        calcType: 'ratio_two',
-        subrows: [
-          { key: 'a_5_num', label: 'Arus Kas Pengeluaran Aktivitas Operasi' },
-          { key: 'a_5_den', label: 'Arus Kas Penerimaan Aktivitas Operasi' },
-        ],
-      },
-      {
-        id: 'A_6',
-        no: '6',
-        excelNo: '6',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Perbaikan Tata Kelola',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula: 'Jumlah SOP Probis yang direncanakan terimplementasikan',
-        pics: ['PJM', 'PRP'],
-        picDisplay: 'PJM dan PRP',
-        bobot: 3,
-        bobotDisplay: '3',
-        targetDisplay: '100',
-        targetNum: 100,
-        satuan: '%',
-        calcType: 'ratio_two',
-        subrows: [
-          { key: 'a_6_num', label: 'Jumlah SOP Probis yang direncanakan terimplementasikan' },
-          { key: 'a_6_den', label: 'Jumlah SOP Probis yang direncanakan' },
-        ],
-      },
-    ],
-  },
-
-  {
-    code: 'B',
-    title: 'PERSPEKTIF MAHASISWA',
-    totalWeight: 26,
-    weightDisplay: '26',
-    isPenaltySection: false,
-    items: [
-      {
-        id: 'B_1a',
-        no: '1a',
-        excelNo: '1',
-        excelNoRowSpan: 8,
-        hideExcelNo: false,
-        indikator: 'a. Tracer Study',
-        indikatorRowSpan: 7,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah lulusan S1 dan D3 di tahun 2025 yang berhasil menjadi wirausaha, diterima kerja, atau melanjutkan studi dengan masa tunggu <= 6 bulan (pakai formula akreditasi) / Jumlah responden x 100%',
-        pics: ['BPKA'],
-        picDisplay: 'BPKA',
-        bobot: 3,
-        bobotDisplay: '3',
-        targetDisplay: '65',
-        targetNum: 65,
-        satuan: '%',
-        calcType: 'tracer_study',
-        subrows: [
-          { key: 'b_1a_1', label: 'masa tunggu < 6 bulan dan gaji > 1,2x UMP' },
-          { key: 'b_1a_2', label: '6 bulan > masa tunggu dan gaji > 1,2x UMP' },
-          { key: 'b_1a_3', label: 'masa tunggu < 6 bulan dan gaji < 1,2x UMP' },
-          { key: 'b_1a_4', label: '6 bulan > masa tunggu dan gaji < 1,2x UMP' },
-          { key: 'b_1a_5', label: 'Melanjutkan studi' },
-          { key: 'b_1a_6', label: 'Wirausaha' },
-          { key: 'b_1a_resp', label: 'Jumlah Responden', isDenominator: true },
-        ],
-      },
-      {
-        id: 'B_1b',
-        no: '1b',
-        excelNo: '',
-        excelNoRowSpan: 0,
-        hideExcelNo: true,
-        indikator: 'b. Penerimaan Lulusan pada Dunia Kerja melalui program kerjasama offtaker',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah lulusan S1 dan D3 yang diterima di dunia kerja melalui program kerjasama offtaker dengan Industri di Tahun 2026',
-        pics: ['BPKA'],
-        picDisplay: 'BPKA',
-        bobot: 5,
-        bobotDisplay: '5',
-        targetDisplay: '100*)',
-        targetNum: 100,
-        satuan: 'Lulusan',
-        calcType: 'single_target',
-        subrows: [{ key: 'b_1b_val', label: 'Jumlah lulusan S1 dan D3' }],
-      },
-      {
-        id: 'B_2',
-        no: '2',
-        excelNo: '2',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator: 'Mahasiswa berprestasi',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Jumlah Mahasiswa yang berprestasi nasional & Internasional',
-        pics: ['BKK'],
-        picDisplay: 'BKK',
-        bobot: 3,
-        bobotDisplay: '3',
-        targetDisplay: '120',
-        targetNum: 120,
-        satuan: 'Mahasiswa',
-        calcType: 'single_target',
-        subrows: [
-          { key: 'b_2_val', label: 'Jumlah Mahasiswa yang berprestasi nasional dan Internasional' },
-        ],
-      },
-      {
-        id: 'B_3',
-        no: '3',
-        excelNo: '3',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator: 'Tingkat Kepuasan Mahasiswa terhadap pengajaran (EDOM)',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Survey Kepuasan Akademik dan Administrasi dengan indeks 1-4 (Periode Februari dan Agustus)',
-        pics: ['PJM', 'PRP'],
-        picDisplay: 'PJM dan PRP',
-        bobot: 3,
-        bobotDisplay: '3',
-        targetDisplay: '3,5',
-        targetNum: 3.5,
-        satuan: 'indeks',
-        calcType: 'single_target',
-        subrows: [
-          { key: 'b_3_val', label: 'Survey Kepuasan Akademik dan Administrasi dengan indeks' },
-        ],
-      },
-      {
-        id: 'B_4',
-        no: '4',
-        excelNo: '4',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator: 'Tingkat Kepuasan Mahasiswa terhadap layanan kampus',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Survey kepuasan layanan dan fasilitas dengan indeks 1 - 5',
-        pics: ['PJM', 'PRP'],
-        picDisplay: 'PJM dan PRP',
-        bobot: 3,
-        bobotDisplay: '3',
-        targetDisplay: '3,5',
-        targetNum: 3.5,
-        satuan: 'indeks',
-        calcType: 'single_target',
-        subrows: [{ key: 'b_4_val', label: 'Survey kepuasan layanan dan fasilitas' }],
-      },
-      {
-        id: 'B_5',
-        no: '5',
-        excelNo: '5',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator:
-          'Kerjasama Internasional Program dengan Perguruan Tinggi luar negeri seperti: Sandwich Program, E-Mobility, International student',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Terkirim mahasiswa dalam Internasional Program',
-        pics: ['BKAI'],
-        picDisplay: 'BKAI',
-        bobot: 5,
-        bobotDisplay: '5',
-        targetDisplay: '2',
-        targetNum: 2,
-        satuan: 'jumlah',
-        calcType: 'single_target',
-        subrows: [{ key: 'b_5_val', label: 'Jumlah orang' }],
-      },
-      {
-        id: 'B_6',
-        no: '6',
-        excelNo: '6',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator:
-          'Efektivitas penjaringan calon mahasiswa dari Sekolah Unggulan dan seleksi Industri / Pemerintah Daerah',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah mahasiswa baru yang berasal dari Ikker, SMA Unggulan dan seleksi Industri / Pemerintah Daerah',
-        pics: ['BPIK', 'BKM', 'BSAR', 'BPAD'],
-        picDisplay: 'BPIK, BKM, BSAR, BPAD',
-        bobot: 4,
-        bobotDisplay: '4',
-        targetDisplay: '300',
-        targetNum: 300,
-        satuan: 'jumlah',
-        calcType: 'primary_with_meta',
-        subrows: [
-          { key: 'b_6_orang', label: 'jumlah orang' },
-          { key: 'b_6_pemda', label: 'Jumlah Pemerintah Daerah' },
-        ],
-      },
-    ],
-  },
-
-  {
-    code: 'C',
-    title: 'PERSPEKTIF BISNIS INTERNAL, LEARNING & DEVELOPMENT',
-    totalWeight: 49,
-    weightDisplay: '49',
-    isPenaltySection: false,
-    items: [
-      {
-        id: 'C_1',
-        no: '1',
-        excelNo: '1',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator: 'Penerapan Kurikulum berbasis Outcome Based Education (OBE)',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula:
-          'Persentase Jumlah Mata Kuliah Prodi S1 dan D3 pada semester 1 dan 2 yang sudah menerapkan kurikulum berbasis OBE',
-        pics: ['FAK', 'PJM'],
-        picDisplay: 'FAK DAN PJM',
-        bobot: 4,
-        bobotDisplay: '4',
-        targetDisplay: '100',
-        targetNum: 100,
-        satuan: '%',
-        calcType: 'single_target',
-        subrows: [
-          {
-            key: 'c_1_val',
-            label:
-              'Persentase Jumlah Mata Kuliah Prodi S1 dan D3 pada semester 1 dan 2 yang sudah menerapkan kurikulum berbasis OBE',
-          },
-        ],
-      },
-      {
-        id: 'C_2a',
-        no: '2a',
-        excelNo: '2',
-        excelNoRowSpan: 9,
-        hideExcelNo: false,
-        groupBannerTitle: 'Klasterisasi Perguruan Tinggi Menuju Mandiri',
-        indikator: 'a. Penelitian',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Jumlah Kegiatan Penelitian yang didanai dari Hibah Internal & Eksternal',
-        pics: ['LPPM', 'FAK'],
-        picDisplay: 'LPPM, FAK',
-        bobot: 7,
-        bobotDisplay: '7',
-        targetDisplay: '135',
-        targetNum: 135,
-        satuan: 'Penelitian',
-        calcType: 'single_target',
-        subrows: [
-          {
-            key: 'c_2a_val',
-            label: 'Jumlah Kegiatan Penelitian yang didanai dari Hibah Internal & Eksternal',
-          },
-        ],
-      },
-      {
-        id: 'C_2b',
-        no: '2b',
-        excelNo: '',
-        excelNoRowSpan: 0,
-        hideExcelNo: true,
-        indikator: 'b. Publikasi ilmiah',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah karya dosen di jurnal ilmiah atau Prosiding Bereputasi Nasional maupun SCOPUS (Submitted)',
-        pics: ['LPPM', 'FAK'],
-        picDisplay: 'LPPM, FAK',
-        bobot: 6,
-        bobotDisplay: '6',
-        targetDisplay: '245',
-        targetNum: 245,
-        satuan: 'Artikel Ilmiah',
-        calcType: 'single_target',
-        subrows: [
-          {
-            key: 'c_2b_val',
-            label:
-              'Jumlah karya dosen di jurnal ilmiah atau Prosiding Bereputasi Nasional maupun SCOPUS (Submitted)',
-          },
-        ],
-      },
-      {
-        id: 'C_2c',
-        no: '2c',
-        excelNo: '',
-        excelNoRowSpan: 0,
-        hideExcelNo: true,
-        indikator: 'c. Sitasi',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula:
-          '(Jumlah artikel ilmiah di Jurnal atau Prosiding terakreditasi di nasional dan internasional yang tersitasi pada artikel ilmiah lain) / (Jumlah seluruh artikel ilmiah di Jurnal atau Prosiding terakreditasi di nasional dan internasional ) x 100%',
-        pics: ['LPPM'],
-        picDisplay: 'LPPM',
-        bobot: 6,
-        bobotDisplay: '6',
-        targetDisplay: '28',
-        targetNum: 28,
-        satuan: '%',
-        calcType: 'ratio_target_pct',
-        subrows: [
-          {
-            key: 'c_2c_num',
-            label:
-              '(Jumlah artikel ilmiah di Jurnal atau Prosiding terakreditasi di nasional dan internasional yang tersitasi pada artikel ilmiah lain) /',
-          },
-          {
-            key: 'c_2c_den',
-            label:
-              '(Jumlah seluruh artikel ilmiah di Jurnal atau Prosiding terakreditasi di nasional dan internasional ) x 100%',
-            isDenominator: true,
-          },
-        ],
-      },
-      {
-        id: 'C_2d',
-        no: '2d',
-        excelNo: '',
-        excelNoRowSpan: 0,
-        hideExcelNo: true,
-        indikator: 'd. PKM',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Jumlah Pengabdian Masyarakat (Internal Institusi dan atau Eksternal)',
-        pics: ['LPPM', 'FAK'],
-        picDisplay: 'LPPM, FAK',
-        bobot: 4,
-        bobotDisplay: '4',
-        targetDisplay: '55',
-        targetNum: 55,
-        satuan: 'Kegiatan',
-        calcType: 'single_target',
-        subrows: [
-          {
-            key: 'c_2d_val',
-            label: 'Jumlah Pengabdian Masyarakat (Internal Institusi dan atau Eksternal)',
-          },
-        ],
-      },
-      {
-        id: 'C_2e',
-        no: '2e',
-        excelNo: '',
-        excelNoRowSpan: 0,
-        hideExcelNo: true,
-        indikator: 'e. HKI',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Jumlah HKI (Hak Cipta & Paten)',
-        pics: ['LPPM', 'FAK'],
-        picDisplay: 'LPPM, FAK',
-        bobot: 4,
-        bobotDisplay: '4',
-        targetDisplay: '60',
-        targetNum: 60,
-        satuan: 'HKI',
-        calcType: 'single_target',
-        subrows: [{ key: 'c_2e_val', label: 'Jumlah HKI (Hak Cipta & Paten)' }],
-      },
-      {
-        id: 'C_2f',
-        no: '2f',
-        excelNo: '',
-        excelNoRowSpan: 0,
-        hideExcelNo: true,
-        indikator: 'f. Kapasitas Dosen',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Jumlah Dosen yang menjadi Reviewer Jurnal Nasional / Internasional',
-        pics: ['LPPM', 'FAK'],
-        picDisplay: 'LPPM, FAK',
-        bobot: 3,
-        bobotDisplay: '3',
-        targetDisplay: '70',
-        targetNum: 70,
-        satuan: 'Dosen',
-        calcType: 'single_target',
-        subrows: [
-          {
-            key: 'c_2f_val',
-            label: 'Jumlah Dosen yang menjadi Reviewer Jurnal Nasional / Internasional',
-          },
-        ],
-      },
-      {
-        id: 'C_2g',
-        no: '2g',
-        excelNo: '',
-        excelNoRowSpan: 0,
-        hideExcelNo: true,
-        indikator: 'g. Akreditasi Program',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah Prodi yang sudah meningkatkan rekomendasi improvement dari hasil self assesment untuk tercapai akreditasi unggul',
-        pics: ['FAK', 'PJM'],
-        picDisplay: 'FAK, PJM',
-        bobot: 4,
-        bobotDisplay: '4',
-        targetDisplay: '2',
-        targetNum: 2,
-        satuan: 'Prodi',
-        calcType: 'single_target',
-        subrows: [
-          {
-            key: 'c_2g_val',
-            label:
-              'Jumlah Prodi yang sudah meningkatkan rekomendasi improvement dari hasil self assesment untuk tercapai akreditasi unggul',
-          },
-        ],
-      },
-      {
-        id: 'C_3',
-        no: '3',
-        excelNo: '3',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Peningkatan kualitas Dosen',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah dosen dengan jabatan fungsional dosen (Lektor, Lektor Kepala, Guru Besar) / Jumlah dosen tetap Ber-NIDN ITPLN (diluar Dosen PLN) x 100%',
-        pics: ['SDM'],
-        picDisplay: 'SDM',
-        bobot: 6,
-        bobotDisplay: '6',
-        targetDisplay: '60',
-        targetNum: 60,
-        satuan: '%',
-        calcType: 'ratio_target_pct',
-        subrows: [
-          { key: 'c_3_num', label: 'Jumlah Dosen dg JF Lektor, Lektor Kepala dan GB' },
-          {
-            key: 'c_3_den',
-            label: 'Jumlah Dosen Tetap (Diluar DOSEN PLN)',
-            isDenominator: true,
-          },
-        ],
-      },
-      {
-        id: 'C_4',
-        no: '4',
-        excelNo: '4',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator:
-          'Kerjasama Akademik dengan Industri dan atau Perguruan Tinggi terkait dengan Penelitian, Magang, Pengabdian Kepada Masyarakat dan guest lecture',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah kerjasama akademik dengan Industri atau Perguruan Tinggi pada program studi S1 dan D3',
-        pics: ['BKAN'],
-        picDisplay: 'BKAN',
-        bobot: 5,
-        bobotDisplay: '5',
-        targetDisplay: '65',
-        targetNum: 65,
-        satuan: 'Jumlah',
-        calcType: 'sum_two_target',
-        subrows: [
-          { key: 'c_4_bkan', label: 'BKAN =' },
-          { key: 'c_4_bpkl', label: 'BPKL =' },
-        ],
-      },
-    ],
-  },
-
-  {
-    code: 'D',
-    title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)',
-    totalWeight: -12.5,
-    weightDisplay: '-12,5',
-    isPenaltySection: true,
-    items: [
-      {
-        id: 'D_1',
-        no: '1',
-        excelNo: '1',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator: 'Ketepatan Waktu Penyampaian Dokumen RKA 2027',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Dokumen RKA 2027 diterima YPK PLN paling Lambat pada Tanggal Target',
-        pics: ['BAG'],
-        picDisplay: 'BAG',
-        bobot: -2.5,
-        bobotDisplay: '-2,5',
-        targetDisplay: '01-Dec-26',
-        deadlineISO: '2026-12-01',
-        satuan: '-',
-        calcType: 'compliance_date_single',
-        subrows: [
-          {
-            key: 'd_1_date',
-            label: 'Tanggal Kirim Dokumen',
-            placeholder: 'Contoh: 28-Nov-26',
-            isTextInput: true,
-          },
-        ],
-      },
-      {
-        id: 'D_2',
-        no: '2',
-        excelNo: '2',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator: 'Ketepatan Waktu Penyampaian Dokumen LK 2025',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Dokumen LK Audited 2025 diterima YPK PLN paling Lambat pada Tanggal Target',
-        pics: ['BAKT'],
-        picDisplay: 'BAKT',
-        bobot: -2.5,
-        bobotDisplay: '-2,5',
-        targetDisplay: '31-Mar-26',
-        deadlineISO: '2026-03-31',
-        satuan: '-',
-        calcType: 'compliance_date_single',
-        subrows: [
-          {
-            key: 'd_2_date',
-            label: 'Tanggal Kirim Dokumen',
-            placeholder: 'Contoh: 25-Mar-26',
-            isTextInput: true,
-          },
-        ],
-      },
-      {
-        id: 'D_3',
-        no: '3',
-        excelNo: '3',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Ketepatan waktu pelaporan manajemen',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula: 'Dokumen LM diterima YPK PLN paling Lambat pada Tanggal Target (Semesteran)',
-        pics: ['PRP'],
-        picDisplay: 'PRP',
-        bobot: -2.5,
-        bobotDisplay: '-2,5',
-        targetDisplay: 'Juli 2026, / Januari 2027',
-        subrowTargets: ['Juli 2026,', 'Januari 2027'],
-        deadlinesISO: ['2026-07-31', '2027-01-31'],
-        satuan: '-',
-        calcType: 'compliance_date_dual',
-        subrows: [
-          {
-            key: 'd_3_sem1',
-            label: 'Tanggal Kirim Dokumen',
-            placeholder: 'Contoh: 20-Jul-26',
-            isTextInput: true,
-          },
-          {
-            key: 'd_3_sem2',
-            label: 'Tanggal Kirim Dokumen',
-            placeholder: 'Contoh: 22-Jan-27',
-            isTextInput: true,
-          },
-        ],
-      },
-      {
-        id: 'D_4',
-        no: '4',
-        excelNo: '4',
-        excelNoRowSpan: 1,
-        hideExcelNo: false,
-        indikator: 'Integrasi Siakad & SimKug',
-        indikatorRowSpan: 1,
-        hideIndikatorCell: false,
-        formula: 'Siakad & SimKug terintegrasi penuh',
-        pics: ['BPTI', 'BSDM'],
-        picDisplay: 'BPTI, BSDM',
-        bobot: -2.5,
-        bobotDisplay: '-2,5',
-        targetDisplay: '100',
-        targetNum: 100,
-        satuan: '%',
-        calcType: 'compliance_integration_pct',
-        subrows: [
-          {
-            key: 'd_4_val',
-            label: 'Siakad & SimKug terintegrasi penuh',
-            placeholder: '0 - 100',
-          },
-        ],
-      },
-      {
-        id: 'D_5',
-        no: '5',
-        excelNo: '5',
-        excelNoRowSpan: 2,
-        hideExcelNo: false,
-        indikator: 'Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS)',
-        indikatorRowSpan: 2,
-        hideIndikatorCell: false,
-        formula:
-          'Jumlah Rekomendasi Audit atau Temuan yg belum Ditindaklanjuti / Jumlah Rekomendasi * Bobot',
-        pics: ['SPI', 'PJM', 'Akuntansi', 'WBS'],
-        picDisplay: 'SPI, PJM, Akuntansi, WBS',
-        bobot: -2.5,
-        bobotDisplay: '-2,5',
-        targetDisplay: '0',
-        targetNum: 0,
-        satuan: '%',
-        calcType: 'compliance_audit_ratio',
-        subrows: [
-          {
-            key: 'd_5_un',
-            label: 'Jumlah Rekomendasi Audit atau Temuan yg belum Ditindaklanjuti',
-            placeholder: '0',
-          },
-          {
-            key: 'd_5_tot',
-            label: 'Jumlah Rekomendasi',
-            placeholder: '0',
-            isDenominator: true,
-          },
-        ],
-      },
-    ],
-  },
-];
+import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
 
 const DEFAULT_PIC_BY_ITEM_ID = new Map(
   KPI_SECTIONS_CONFIG.flatMap((sec) =>
@@ -889,10 +120,20 @@ export default function KPIDataEntrySheet(props) {
   const [revision, setRevision] = useState(0);
   useEffect(() => subscribeKpiWorkflow(() => setRevision((value) => value + 1)), []);
 
+  const urlPeriod = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return new URLSearchParams(window.location.search).get('period');
+    } catch {
+      return null;
+    }
+  }, []);
+  const requestedPeriod = props.period || urlPeriod || null;
+
   const shouldEnsureDefault = props.persist !== false
     && !props.sectionsOverride
     && Boolean(currentUser)
-    && (currentUser.role === 'kpi_only' || currentUser.role === 'superadmin_prp');
+    && (currentUser.role === 'kpi_only' || currentUser.role === 'dual' || currentUser.role === 'superadmin_prp' || currentUser.role === 'spi');
 
   useEffect(() => {
     if (!shouldEnsureDefault) return;
@@ -910,24 +151,56 @@ export default function KPIDataEntrySheet(props) {
     return readKpiWorkflow();
   }, [revision, shouldEnsureDefault]);
 
-  const isUnit = currentUser?.role === 'kpi_only' && !props.sectionsOverride;
-  const activeForm = isUnit
-    ? getUnitKpiForm(currentUser?.email, workflowState)
-    : workflowState.forms[workflowState.forms.length - 1] || null;
+  const isUnit = (currentUser?.role === 'kpi_only' || currentUser?.role === 'dual') && !props.sectionsOverride;
+  const isSpiMode = currentUser?.role === 'spi';
+  const isAdminPrp = currentUser?.role === 'superadmin_prp';
+
+  const activeForm = useMemo(() => {
+    if (isUnit) {
+      return getUnitKpiForm(currentUser?.email, workflowState, requestedPeriod);
+    }
+    if (requestedPeriod) {
+      return getFormForPeriod(requestedPeriod, workflowState, { fallbackToLatest: true });
+    }
+    return workflowState.forms[workflowState.forms.length - 1] || null;
+  }, [isUnit, currentUser?.email, workflowState, requestedPeriod]);
+
+  const periodStatusMeta = useMemo(() => {
+    void revision;
+    const allPeriods = listKpiPeriodsWithStatus(workflowState);
+    const targetYr = requestedPeriod || activeForm?.period || '2026';
+    const ym = String(targetYr).match(/\b(20\d{2})\b/);
+    const yearKey = ym ? ym[1] : String(targetYr);
+    return allPeriods.find((p) => String(p.year) === yearKey || String(p.id) === String(targetYr)) || {
+      year: yearKey,
+      label: `Periode Evaluasi ${yearKey}`,
+      status: 'Active',
+      inputOpen: true,
+      isLocked: false,
+      lockReason: 'Terbuka untuk Pengisian',
+    };
+  }, [workflowState, requestedPeriod, activeForm?.period, revision]);
 
   const resolvedSectionsOverride = useMemo(() => {
     void revision;
-    if (!isUnit) return props.sectionsOverride;
-    const published = readPublishedKpiConfig();
-    if (published?.sections?.length) {
-      const pubTime = Date.parse(published.publishedAt || '') || 0;
-      const formTime = Date.parse(activeForm?.updatedAt || activeForm?.sentAt || '') || 0;
-      if (pubTime >= formTime) {
-        return hydrateSectionsWithDefaultPics(published.sections);
+    if (props.sectionsOverride) return props.sectionsOverride;
+    if (activeForm?.sections?.length) {
+      const isCurrentYearForm = !requestedPeriod || String(activeForm.period || '').includes(String(requestedPeriod));
+      if (!isCurrentYearForm) {
+        return hydrateSectionsWithDefaultPics(activeForm.sections);
       }
+      const published = readPublishedKpiConfig();
+      if (published?.sections?.length && String(activeForm.period || '2026').includes('2026')) {
+        const pubTime = Date.parse(published.publishedAt || '') || 0;
+        const formTime = Date.parse(activeForm?.syncedAt || activeForm?.updatedAt || activeForm?.sentAt || '') || 0;
+        if (pubTime > formTime) {
+          return hydrateSectionsWithDefaultPics(published.sections);
+        }
+      }
+      return hydrateSectionsWithDefaultPics(activeForm.sections);
     }
-    return activeForm?.sections ? hydrateSectionsWithDefaultPics(activeForm.sections) : props.sectionsOverride;
-  }, [isUnit, activeForm, props.sectionsOverride, revision]);
+    return props.sectionsOverride;
+  }, [activeForm, props.sectionsOverride, requestedPeriod, revision]);
 
   if (isUnit && !activeForm) {
     return (
@@ -943,12 +216,19 @@ export default function KPIDataEntrySheet(props) {
     ? readIntegratedKpiBoard(activeForm.id, workflowState)
     : null;
 
+  const effectiveReadOnly = Boolean(props.readOnly) || isSpiMode || (isUnit && periodStatusMeta.isLocked);
+
   return (
     <KPIEntryContent
-      key={isUnit ? `${activeForm.id}:${currentUser.email}:${record?.status || 'DRAFT'}` : `sheet:${Boolean(props.sectionsOverride)}`}
+      key={isUnit ? `${activeForm.id}:${currentUser.email}:${record?.status || 'DRAFT'}` : `sheet:${activeForm?.id || 'default'}:${Boolean(props.sectionsOverride)}`}
       {...props}
+      readOnly={effectiveReadOnly}
       sectionsOverride={resolvedSectionsOverride}
       unitForm={isUnit ? activeForm : null}
+      activeForm={activeForm}
+      periodStatusMeta={periodStatusMeta}
+      isSpiMode={isSpiMode}
+      isAdminPrp={isAdminPrp}
       unitUser={currentUser}
       submission={record}
       unitDraft={unitDraft}
@@ -1097,31 +377,39 @@ function RowEvidenceAndNotesCell({
   item,
   canEditRow,
   isLocked,
+  isUnitMode = false,
+  isAdminPrp = false,
   ownEvidence,
   sharedEvidence,
   noteValue,
   sharedNoteValue,
   contributor,
+  itemRevision = null,
   onNoteChange,
   onAddEvidence,
   onRemoveEvidence,
   onPreviewEvidence,
+  onSaveItemRevision,
 }) {
   const [composerMode, setComposerMode] = useState(null);
   const [label, setLabel] = useState('');
   const [url, setUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [rowError, setRowError] = useState('');
+  const [revComposerOpen, setRevComposerOpen] = useState(false);
+  const [revText, setRevText] = useState(itemRevision?.comment || '');
   const fileInputRef = useRef(null);
 
   const visibleEvidence = useMemo(() => {
     const byId = new Map();
     (ownEvidence || []).forEach((ev) => byId.set(ev.id, { ...ev, isOwn: true }));
-    (sharedEvidence || []).forEach((ev) => {
-      if (!byId.has(ev.id)) byId.set(ev.id, { ...ev, isOwn: false });
-    });
+    if (!isUnitMode || canEditRow) {
+      (sharedEvidence || []).forEach((ev) => {
+        if (!byId.has(ev.id)) byId.set(ev.id, { ...ev, isOwn: false });
+      });
+    }
     return [...byId.values()];
-  }, [ownEvidence, sharedEvidence]);
+  }, [ownEvidence, sharedEvidence, isUnitMode, canEditRow]);
 
   const handleFilePick = (event) => {
     const file = event.target.files?.[0];
@@ -1186,10 +474,34 @@ function RowEvidenceAndNotesCell({
     }
   };
 
-  const displayNote = canEditRow ? noteValue : (sharedNoteValue || noteValue || '');
+  const displayNote = canEditRow ? (noteValue || sharedNoteValue || '') : (sharedNoteValue || noteValue || '');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+      {itemRevision?.comment && (
+        <div
+          style={{
+            padding: '0.45rem 0.6rem',
+            borderRadius: '6px',
+            background: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            color: '#78350F',
+            fontSize: '0.7rem',
+            lineHeight: 1.4,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem', fontWeight: 800, marginBottom: '0.15rem' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <MessageSquareWarning size={12} /> CATATAN REVISI PRP
+            </span>
+            <span style={{ fontSize: '0.6rem', color: '#92400E', fontFamily: 'JetBrains Mono, monospace' }}>
+              <MailCheck size={10} style={{ verticalAlign: 'middle' }} /> Email Terkirim
+            </span>
+          </div>
+          <div style={{ fontWeight: 600 }}>{itemRevision.comment}</div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
         {visibleEvidence.length > 0 ? (
           visibleEvidence.map((ev) => {
@@ -1254,14 +566,27 @@ function RowEvidenceAndNotesCell({
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
                   {isFile ? (
-                    <button
-                      type="button"
-                      className="clean-mini-btn"
-                      onClick={() => onPreviewEvidence(ev)}
-                    >
-                      <Eye size={12} />
-                      <span>Pratinjau</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="clean-mini-btn"
+                        onClick={() => onPreviewEvidence(ev)}
+                      >
+                        <Eye size={12} />
+                        <span>Pratinjau</span>
+                      </button>
+                      {ev.dataUrl && (
+                        <a
+                          href={ev.dataUrl}
+                          download={ev.fileName || `${ev.label}.pdf`}
+                          className="clean-mini-btn"
+                          style={{ textDecoration: 'none' }}
+                        >
+                          <Download size={12} />
+                          <span>Unduh</span>
+                        </a>
+                      )}
+                    </>
                   ) : (
                     <a
                       href={ev.url}
@@ -1451,12 +776,79 @@ function RowEvidenceAndNotesCell({
             </div>
           )}
         </label>
-        {!canEditRow && contributor && (
+        {contributor && (
           <div style={{ fontSize: '0.65rem', color: '#094E68', fontWeight: 600, marginTop: '0.2rem' }}>
             Sumber data: {contributor.unit} ({contributor.status === 'APPROVED' ? 'Disetujui PRP' : contributor.status === 'SUBMITTED' ? 'Sudah Submit' : 'Draft PIC'})
           </div>
         )}
       </div>
+
+      {isAdminPrp && onSaveItemRevision && (
+        <div style={{ borderTop: '1px dashed #D8E4EA', paddingTop: '0.45rem' }}>
+          {!revComposerOpen ? (
+            <button
+              type="button"
+              className="clean-mini-btn"
+              style={{ width: '100%', justifyContent: 'center', borderColor: itemRevision?.comment ? '#F59E0B' : '#B8CAD4', color: itemRevision?.comment ? '#92400E' : '#094E68', background: itemRevision?.comment ? '#FFFBEB' : '#FFFFFF' }}
+              onClick={() => {
+                setRevText(itemRevision?.comment || '');
+                setRevComposerOpen(true);
+              }}
+            >
+              <MessageSquareWarning size={12} />
+              <span>{itemRevision?.comment ? 'Ubah / Selesaikan Revisi Baris' : `Catatan Revisi Baris ${sectionCode}.${item.no}`}</span>
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '6px', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#78350F' }}>
+                Komentar Revisi PRP ({sectionCode}.{item.no})
+              </div>
+              <textarea
+                rows={2}
+                className="clean-row-textarea"
+                placeholder={`Tulis instruksi perbaikan untuk PIC ${formatPicDisplay(item.pics, item.picDisplay) || 'Unit'}...`}
+                value={revText}
+                onChange={(e) => setRevText(e.target.value)}
+              />
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="clean-mini-btn"
+                  style={{ background: '#094E68', color: '#FFFFFF', borderColor: '#094E68', flex: 1 }}
+                  onClick={() => {
+                    onSaveItemRevision(item.id, revText, false);
+                    setRevComposerOpen(false);
+                  }}
+                >
+                  <Send size={11} />
+                  <span>Kirim Revisi + Email</span>
+                </button>
+                {itemRevision?.comment && (
+                  <button
+                    type="button"
+                    className="clean-mini-btn"
+                    style={{ background: '#F0FDF4', color: '#14532D', borderColor: '#86EFAC' }}
+                    onClick={() => {
+                      onSaveItemRevision(item.id, '', true);
+                      setRevText('');
+                      setRevComposerOpen(false);
+                    }}
+                  >
+                    Selesai
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="clean-mini-btn"
+                  onClick={() => setRevComposerOpen(false)}
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1467,6 +859,10 @@ function KPIEntryContent({
   sectionsOverride = null,
   persist = true,
   unitForm = null,
+  activeForm = null,
+  periodStatusMeta = null,
+  isSpiMode = false,
+  isAdminPrp = false,
   unitUser = null,
   submission = null,
   unitDraft = null,
@@ -1478,11 +874,12 @@ function KPIEntryContent({
   contributorMapOverride = null,
   highlightPicCodes = null,
 }) {
-  const isUnitMode = Boolean(unitForm && unitUser?.role === 'kpi_only');
-  const valuesKey = unitForm ? `${STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : STORAGE_KEY;
-  const notesKey = unitForm ? `${NOTES_STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : NOTES_STORAGE_KEY;
-  const localEvidenceKey = `${LOCAL_EVIDENCE_STORAGE_KEY}:global`;
-  const workflowKey = unitForm ? `${WORKFLOW_KEY}:${unitForm.id}:${unitUser.email}` : WORKFLOW_KEY;
+  const isUnitMode = Boolean(unitForm && (unitUser?.role === 'kpi_only' || unitUser?.role === 'dual'));
+  const targetFormId = unitForm?.id || activeForm?.id || 'global';
+  const valuesKey = unitForm ? `${STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : `${STORAGE_KEY}:${targetFormId}`;
+  const notesKey = unitForm ? `${NOTES_STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : `${NOTES_STORAGE_KEY}:${targetFormId}`;
+  const localEvidenceKey = `${LOCAL_EVIDENCE_STORAGE_KEY}:${targetFormId}`;
+  const workflowKey = unitForm ? `${WORKFLOW_KEY}:${unitForm.id}:${unitUser.email}` : `${WORKFLOW_KEY}:${targetFormId}`;
   const containerRef = useRef(null);
   const inputRefs = useRef({});
   const fillProgressRef = useRef(null);
@@ -1490,8 +887,9 @@ function KPIEntryContent({
   const tabPillRef = useRef(null);
   const [governanceRevision, setGovernanceRevision] = useState(0);
   const [previewEvidence, setPreviewEvidence] = useState(null);
-  const [rowScopeFilter, setRowScopeFilter] = useState('ALL');
-  const isPreview = Boolean(sectionsOverride) && !isUnitMode;
+  const [rowScopeFilter, setRowScopeFilter] = useState(() => (isUnitMode ? 'MY_PIC' : 'ALL'));
+  const [sectionRevComposer, setSectionRevComposer] = useState({ code: null, text: '' });
+  const isPreview = Boolean(sectionsOverride) && !isUnitMode && !activeForm;
 
   const governedSections = useMemo(
     () => (sectionsOverride ? normalizeKpiSections(hydrateSectionsWithDefaultPics(sectionsOverride)) : getGovernedKpiSections()),
@@ -1630,7 +1028,10 @@ function KPIEntryContent({
   const [values, setValues] = useState(() => {
     if (valuesOverride) return { ...emptyDefaults, ...valuesOverride };
     if (submission && submission.status !== WORKFLOW_STATUS.NEEDS_REVISION) return { ...emptyDefaults, ...submission.values };
-    if (unitDraft?.values && Object.keys(unitDraft.values).length > 0) {
+    const draftTime = Date.parse(unitDraft?.updatedAt || '') || 0;
+    const subTime = Date.parse(submission?.updatedAt || '') || 0;
+    const draftIsNewer = !submission || draftTime >= subTime;
+    if (draftIsNewer && unitDraft?.values && Object.keys(unitDraft.values).length > 0) {
       return { ...emptyDefaults, ...(submission?.values || {}), ...unitDraft.values };
     }
     if (!persist) return emptyDefaults;
@@ -1649,7 +1050,10 @@ function KPIEntryContent({
   const [notes, setNotes] = useState(() => {
     if (notesOverride) return { ...notesOverride };
     if (submission && submission.status !== WORKFLOW_STATUS.NEEDS_REVISION) return { ...(submission.notes || {}) };
-    if (unitDraft?.notes && Object.keys(unitDraft.notes).length > 0) {
+    const draftTime = Date.parse(unitDraft?.updatedAt || '') || 0;
+    const subTime = Date.parse(submission?.updatedAt || '') || 0;
+    const draftIsNewer = !submission || draftTime >= subTime;
+    if (draftIsNewer && unitDraft?.notes && Object.keys(unitDraft.notes).length > 0) {
       return { ...(submission?.notes || {}), ...unitDraft.notes };
     }
     if (!persist) return {};
@@ -1759,15 +1163,121 @@ function KPIEntryContent({
         const editable = editableItemIds.has(item.id);
         item.subrows.forEach((sub) => {
           if (editable) {
-            merged[sub.key] = values[sub.key] ?? '';
+            const ownVal = values[sub.key];
+            if (String(ownVal ?? '').trim() !== '') {
+              merged[sub.key] = ownVal;
+            } else if (integratedBoard?.contributorsByItem?.[item.id]?.isAdminOverride) {
+              merged[sub.key] = integratedBoard?.values?.[sub.key] ?? '';
+            } else {
+              merged[sub.key] = '';
+            }
           } else {
-            merged[sub.key] = integratedBoard?.values?.[sub.key] ?? '';
+            merged[sub.key] = '';
           }
         });
       });
     });
     return merged;
   }, [valuesOverride, emptyDefaults, integratedBoard, isUnitMode, values, governedSections, editableItemIds]);
+
+  useEffect(() => {
+    if (!persist || !isAdminPrp || isUnitMode || readOnly || !activeForm?.id) return undefined;
+    const hasOverrideValues = Object.values(values || {}).some((v) => String(v ?? '').trim() !== '')
+      || Object.values(notes || {}).some((v) => String(v ?? '').trim() !== '');
+    if (!hasOverrideValues) return undefined;
+    const timer = setTimeout(() => {
+      try {
+        saveAdminKpiOverride(activeForm.id, unitUser, { values, notes });
+      } catch {
+        // Abaikan jika gagal simpan otomatis override
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [values, notes, persist, isAdminPrp, isUnitMode, readOnly, activeForm?.id, unitUser]);
+
+  const handleSaveAdminOverrideManual = () => {
+    if (!isAdminPrp || !activeForm?.id) return;
+    try {
+      saveAdminKpiOverride(activeForm.id, unitUser, { values, notes });
+      showToast(`Override nilai & keterangan Admin PRP berhasil disimpan pada periode ${activeForm.period || 'aktif'}.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal menyimpan override Admin PRP.');
+    }
+  };
+
+  const handleSaveItemRevision = (itemId, comment, resolved = false) => {
+    const fId = activeForm?.id || unitForm?.id;
+    if (!isAdminPrp || !fId) return;
+    try {
+      const res = saveKpiRevisionComment(fId, unitUser, {
+        scope: 'ITEM',
+        targetId: itemId,
+        comment,
+        resolved,
+      });
+      if (resolved || !String(comment || '').trim()) {
+        showToast('Catatan revisi baris indikator ditandai selesai.');
+      } else {
+        const recipientsText = res.notifiedEmails?.length ? res.notifiedEmails.join(', ') : 'akun PIC terkait';
+        showToast(`Catatan revisi disimpan & dikirim via Notifikasi Web + Email Audit ke ${recipientsText}.`);
+      }
+    } catch (err) {
+      showToast(err.message || 'Gagal menyimpan catatan revisi baris.');
+    }
+  };
+
+  const handleSaveSectionRevision = (sectionCode, comment, resolved = false) => {
+    const fId = activeForm?.id || unitForm?.id;
+    if (!isAdminPrp || !fId) return;
+    try {
+      const res = saveKpiRevisionComment(fId, unitUser, {
+        scope: 'SECTION',
+        targetId: sectionCode,
+        comment,
+        resolved,
+      });
+      setSectionRevComposer({ code: null, text: '' });
+      if (resolved || !String(comment || '').trim()) {
+        showToast(`Catatan revisi Bagian ${sectionCode} ditandai selesai.`);
+      } else {
+        const recipientsText = res.notifiedEmails?.length ? res.notifiedEmails.join(', ') : 'akun PIC terkait';
+        showToast(`Catatan revisi Bagian ${sectionCode} dikirim via Notifikasi Web + Email Audit ke ${recipientsText}.`);
+      }
+    } catch (err) {
+      showToast(err.message || 'Gagal menyimpan catatan revisi bagian.');
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !containerRef.current) return undefined;
+    let params;
+    try {
+      params = new URLSearchParams(window.location.search);
+    } catch {
+      return undefined;
+    }
+    const focusItem = params.get('focusItem');
+    const focusSection = params.get('focusSection');
+    if (!focusItem && !focusSection) return undefined;
+
+    const timer = setTimeout(() => {
+      const selector = focusItem
+        ? `[data-kpi-row-id="${focusItem}"]`
+        : `[data-kpi-section-code="${focusSection}"]`;
+      const targetEl = containerRef.current?.querySelector(selector);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+          gsap.fromTo(
+            targetEl,
+            { backgroundColor: '#FEF3C7' },
+            { backgroundColor: '#FFFFFF', duration: 1.8, ease: 'power2.out', clearProps: 'backgroundColor' },
+          );
+        }
+      }
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [governedSections]);
 
   const calculated = useMemo(() => {
     let totalFilledInputs = 0;
@@ -1876,15 +1386,34 @@ function KPIEntryContent({
       const secB = calculated.sections[1];
       const secC = calculated.sections[2];
       const secD = calculated.sections[3];
+      const sourceSections = isUnitMode
+        ? calculated.sections
+            .map((sec) => {
+              const unitItems = sec.items.filter((it) => it.canEditRow);
+              const unitWeight = unitItems.reduce((sum, it) => sum + (Number(it.bobot) || 0), 0);
+              return {
+                ...sec,
+                totalWeight: unitWeight,
+                weightDisplay: formatIndonesianNumber(unitWeight, 2),
+                secScore: unitItems.reduce((sum, it) => sum + (it.weightedScore || 0), 0),
+                secCompleted: unitItems.filter((it) => it.ratioPercent !== null).length,
+                secTotalItems: unitItems.length,
+              };
+            })
+            .filter((sec) => sec.secTotalItems > 0)
+        : calculated.sections;
+
       const payload = {
-        totalBobot: 100,
-        totalScore: calculated.netTotalScore,
+        totalBobot: isUnitMode
+          ? sourceSections.reduce((sum, sec) => sum + Math.max(0, Number(sec.totalWeight) || 0), 0)
+          : 100,
+        totalScore: isUnitMode ? calculated.picNetScore : calculated.netTotalScore,
         positiveScoreABC: calculated.positiveScoreABC,
         penaltyScoreD: calculated.penaltyScoreD,
-        filledCount: calculated.totalCompletedIndicators,
-        totalCount: calculated.totalIndicatorsCount,
-        filledInputsCount: calculated.totalFilledInputs,
-        totalInputsCount: calculated.totalInputsCount,
+        filledCount: isUnitMode ? calculated.picCompletedIndicators : calculated.totalCompletedIndicators,
+        totalCount: isUnitMode ? calculated.picTotalIndicators : calculated.totalIndicatorsCount,
+        filledInputsCount: isUnitMode ? calculated.picFilledInputs : calculated.totalFilledInputs,
+        totalInputsCount: isUnitMode ? calculated.picTotalInputs : calculated.totalInputsCount,
         picTotalIndicators: calculated.picTotalIndicators,
         picCompletedIndicators: calculated.picCompletedIndicators,
         picNetScore: calculated.picNetScore,
@@ -1892,7 +1421,7 @@ function KPIEntryContent({
         scoreB: secB?.secScore || 0,
         scoreC: secC?.secScore || 0,
         scoreD: secD?.secScore || 0,
-        sectionScores: calculated.sections.map((sec) => ({
+        sectionScores: sourceSections.map((sec) => ({
           code: sec.code,
           title: sec.title,
           weight: Number(sec.totalWeight) || 0,
@@ -1909,7 +1438,7 @@ function KPIEntryContent({
         onMetricsUpdate(payload);
       }
     }
-  }, [calculated, onMetricsUpdate]);
+  }, [calculated, onMetricsUpdate, isUnitMode]);
 
   const sectionsStructureKey = useMemo(
     () => governedSections.map((sec) => `${sec.code}:${sec.items.map((item) => item.id).join(',')}`).join('|'),
@@ -2343,41 +1872,100 @@ function KPIEntryContent({
   }[workflow.status] || { color: '#094E68', background: '#F7FAFB', border: '#D8E4EA', icon: History };
   const WorkflowIcon = workflowStatusTone.icon;
 
-  const getItemNotesAndEvidenceForExport = (item) => {
+  const getItemNotesAndEvidenceForExport = (item, isExcel = false) => {
+    const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;',
+    }[ch]));
     const ownEv = ownEvidenceByItem[item.id] || [];
-    const sharedEv = integratedBoard?.evidenceByItem?.[item.id] || [];
+    const sharedEv = !isUnitMode ? (integratedBoard?.evidenceByItem?.[item.id] || []) : [];
     const byId = new Map();
     ownEv.forEach((e) => byId.set(e.id, e));
     sharedEv.forEach((e) => { if (!byId.has(e.id)) byId.set(e.id, e); });
-    const evSummary = [...byId.values()]
-      .map((e) => `${e.label} (${e.kind === 'file' ? e.fileName || 'Dokumen' : e.url})`)
+    const evList = [...byId.values()];
+
+    const evSummaryPlain = evList
+      .map((e) => `${e.label} (${e.kind === 'file' ? e.fileName || 'Dokumen Terunggah' : e.url})`)
       .join('; ');
-    const noteText = (editableItemIds.has(item.id) ? notes[item.id] : (integratedBoard?.notes?.[item.id] || notes[item.id])) || '';
+
+    const evSummaryHtml = evList
+      .map((e) => {
+        if (e.kind !== 'file' && e.url) {
+          return `<a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer" style="color:#094E68; font-weight:bold; text-decoration:underline;">${esc(e.label)} (${esc(e.url)})</a>`;
+        }
+        return `${esc(e.label)} [Berkas: ${esc(e.fileName || 'Dokumen')}]`;
+      })
+      .join('<br/>');
+
+    const noteText = (isUnitMode ? notes[item.id] : (integratedBoard?.notes?.[item.id] || notes[item.id])) || '';
+    const itemRev = integratedBoard?.revisions?.items?.[item.id]?.comment || '';
+
+    const partsPlain = [
+      evSummaryPlain ? `Bukti: ${evSummaryPlain}` : '',
+      noteText ? `Ket: ${noteText}` : '',
+      itemRev ? `Revisi PRP: ${itemRev}` : '',
+    ].filter(Boolean).join(' | ') || '-';
+
+    const partsHtml = [
+      evSummaryHtml ? `<div><strong>Bukti:</strong> ${evSummaryHtml}</div>` : '',
+      noteText ? `<div><strong>Ket:</strong> ${esc(noteText)}</div>` : '',
+      itemRev ? `<div style="color:#92400E;"><strong>Revisi PRP:</strong> ${esc(itemRev)}</div>` : '',
+    ].filter(Boolean).join('') || '-';
+
     return {
       picText: formatPicDisplay(item.pics, item.picDisplay) || '-',
-      evAndNoteText: [evSummary ? `Bukti: ${evSummary}` : '', noteText ? `Ket: ${noteText}` : ''].filter(Boolean).join(' | ') || '-',
+      evAndNoteText: partsPlain,
+      evAndNoteHtml: isExcel ? partsHtml : esc(partsPlain),
     };
   };
+
+  const exportableSections = useMemo(() => {
+    if (!isUnitMode) return calculated.sections;
+    return calculated.sections
+      .map((sec) => {
+        const items = sec.items.filter((item) => item.canEditRow);
+        const secScore = items.reduce((sum, it) => sum + (it.weightedScore || 0), 0);
+        return {
+          ...sec,
+          items,
+          secScore,
+          secCompleted: items.filter((it) => it.ratioPercent !== null).length,
+          secTotalItems: items.length,
+        };
+      })
+      .filter((sec) => sec.items.length > 0);
+  }, [calculated.sections, isUnitMode]);
 
   const buildDocumentRowsHtml = (isExcel = true) => {
     let html = '';
 
-    calculated.sections.forEach((sec) => {
+    const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;',
+    }[ch]));
+
+    exportableSections.forEach((sec) => {
       if (isExcel) {
         html += `
           <tr style="background-color: #EDF3F6; font-weight: bold; color: #072534;">
-            <td style="border:1px solid #CBD5E1; text-align:center; padding:8px;">${sec.code}</td>
-            <td colspan="4" style="border:1px solid #CBD5E1; padding:8px;">${sec.title}</td>
-            <td style="border:1px solid #CBD5E1; text-align:center; padding:8px;">${sec.weightDisplay}</td>
+            <td style="border:1px solid #CBD5E1; text-align:center; padding:8px;">${esc(sec.code)}</td>
+            <td colspan="4" style="border:1px solid #CBD5E1; padding:8px;">${esc(sec.title)}</td>
+            <td style="border:1px solid #CBD5E1; text-align:center; padding:8px;">${esc(sec.weightDisplay)}</td>
             <td colspan="6" style="border:1px solid #CBD5E1; padding:8px;"></td>
           </tr>
         `;
       } else {
         html += `
           <tr class="cat-row">
-            <td class="center">${sec.code}</td>
-            <td colspan="4">${sec.title}</td>
-            <td class="center">${sec.weightDisplay}</td>
+            <td class="center">${esc(sec.code)}</td>
+            <td colspan="4">${esc(sec.title)}</td>
+            <td class="center">${esc(sec.weightDisplay)}</td>
             <td colspan="6"></td>
           </tr>
         `;
@@ -2397,25 +1985,29 @@ function KPIEntryContent({
             : isExcel
               ? ''
               : '-';
-        const { picText, evAndNoteText } = getItemNotesAndEvidenceForExport(item);
+        const { picText, evAndNoteHtml } = getItemNotesAndEvidenceForExport(item, isExcel);
 
-        const hasGroupBanner = Boolean(item.groupBannerTitle);
+        const hasGroupBanner = !isUnitMode && Boolean(item.groupBannerTitle);
         const hasSplitTargets = Array.isArray(item.subrowTargets);
+        const effExcelNoRowSpan = isUnitMode ? subCount : (item.excelNoRowSpan || subCount);
+        const effIndikatorRowSpan = isUnitMode ? subCount : (item.indikatorRowSpan || subCount);
+        const effHideExcelNo = isUnitMode ? false : Boolean(item.hideExcelNo);
+        const effHideIndikatorCell = isUnitMode ? false : Boolean(item.hideIndikatorCell);
 
         if (hasGroupBanner) {
           if (isExcel) {
             html += `
               <tr>
-                <td rowspan="${item.excelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${item.excelNo}</td>
-                <td style="border:1px solid #CBD5E1; padding:7px; font-weight:bold; text-decoration:underline; color:#072534;">${item.groupBannerTitle}</td>
+                <td rowspan="${effExcelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(item.excelNo)}</td>
+                <td style="border:1px solid #CBD5E1; padding:7px; font-weight:bold; text-decoration:underline; color:#072534;">${esc(item.groupBannerTitle)}</td>
                 <td colspan="10" style="border:1px solid #CBD5E1;"></td>
               </tr>
             `;
           } else {
             html += `
               <tr>
-                <td rowspan="${item.excelNoRowSpan}" class="center bold">${item.excelNo}</td>
-                <td class="bold" style="text-decoration: underline;">${item.groupBannerTitle}</td>
+                <td rowspan="${effExcelNoRowSpan}" class="center bold">${esc(item.excelNo)}</td>
+                <td class="bold" style="text-decoration: underline;">${esc(item.groupBannerTitle)}</td>
                 <td colspan="10"></td>
               </tr>
             `;
@@ -2432,71 +2024,71 @@ function KPIEntryContent({
             if (isExcel) {
               html += `
                 <tr>
-                  ${!item.hideExcelNo && !hasGroupBanner
-                  ? `<td rowspan="${item.excelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${item.excelNo}</td>`
+                  ${!effHideExcelNo && !hasGroupBanner
+                  ? `<td rowspan="${effExcelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(item.excelNo || item.no)}</td>`
                   : ''
                 }
-                  ${!item.hideIndikatorCell
-                  ? `<td rowspan="${item.indikatorRowSpan}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; font-weight:600; color:#072534;">${item.indikator}</td>`
+                  ${!effHideIndikatorCell
+                  ? `<td rowspan="${effIndikatorRowSpan}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; font-weight:600; color:#072534;">${esc(item.indikator)}</td>`
                   : ''
                 }
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; color:#334155;">${item.formula}</td>
-                  <td style="border:1px solid #CBD5E1; padding:7px; color:#334155;">${sub.label}</td>
-                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#072534;">${sub.raw || ''}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${item.bobotDisplay}</td>
-                  <td rowspan="${targetRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#072534;">${firstTargetText}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#475569;">${item.satuan}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:600; color:#094E68;">${picText}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${capStr}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${skorStr}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; color:#334155;">${evAndNoteText}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; color:#334155;">${esc(item.formula)}</td>
+                  <td style="border:1px solid #CBD5E1; padding:7px; color:#334155;">${esc(sub.label)}</td>
+                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#072534;">${esc(sub.raw || '')}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(item.bobotDisplay)}</td>
+                  <td rowspan="${targetRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#072534;">${esc(firstTargetText)}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#475569;">${esc(item.satuan)}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:600; color:#094E68;">${esc(picText)}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(capStr)}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(skorStr)}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; color:#334155;">${evAndNoteHtml}</td>
                 </tr>
               `;
             } else {
               html += `
                 <tr>
-                  ${!item.hideExcelNo && !hasGroupBanner
-                  ? `<td rowspan="${item.excelNoRowSpan}" class="center bold">${item.excelNo}</td>`
+                  ${!effHideExcelNo && !hasGroupBanner
+                  ? `<td rowspan="${effExcelNoRowSpan}" class="center bold">${esc(item.excelNo || item.no)}</td>`
                   : ''
                 }
-                  ${!item.hideIndikatorCell
-                  ? `<td rowspan="${item.indikatorRowSpan}" class="bold">${item.indikator}</td>`
+                  ${!effHideIndikatorCell
+                  ? `<td rowspan="${effIndikatorRowSpan}" class="bold">${esc(item.indikator)}</td>`
                   : ''
                 }
-                  <td rowspan="${subCount}">${item.formula}</td>
-                  <td>${sub.label}</td>
-                  <td class="right bold">${sub.raw || '-'}</td>
-                  <td rowspan="${subCount}" class="center bold">${item.bobotDisplay}</td>
-                  <td rowspan="${targetRowSpan}" class="center">${firstTargetText}</td>
-                  <td rowspan="${subCount}" class="center">${item.satuan}</td>
-                  <td rowspan="${subCount}" class="center bold">${picText}</td>
-                  <td rowspan="${subCount}" class="center bold">${capStr}</td>
-                  <td rowspan="${subCount}" class="center bold">${skorStr}</td>
-                  <td rowspan="${subCount}">${evAndNoteText}</td>
+                  <td rowspan="${subCount}">${esc(item.formula)}</td>
+                  <td>${esc(sub.label)}</td>
+                  <td class="right bold">${esc(sub.raw || '-')}</td>
+                  <td rowspan="${subCount}" class="center bold">${esc(item.bobotDisplay)}</td>
+                  <td rowspan="${targetRowSpan}" class="center">${esc(firstTargetText)}</td>
+                  <td rowspan="${subCount}" class="center">${esc(item.satuan)}</td>
+                  <td rowspan="${subCount}" class="center bold">${esc(picText)}</td>
+                  <td rowspan="${subCount}" class="center bold">${esc(capStr)}</td>
+                  <td rowspan="${subCount}" class="center bold">${esc(skorStr)}</td>
+                  <td rowspan="${subCount}">${evAndNoteHtml}</td>
                 </tr>
               `;
             }
           } else {
             const subTargetCellExcel = hasSplitTargets
-              ? `<td style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#072534;">${item.subrowTargets[sIdx] || ''}</td>`
+              ? `<td style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#072534;">${esc(item.subrowTargets[sIdx] || '')}</td>`
               : '';
             const subTargetCellPdf = hasSplitTargets
-              ? `<td class="center">${item.subrowTargets[sIdx] || ''}</td>`
+              ? `<td class="center">${esc(item.subrowTargets[sIdx] || '')}</td>`
               : '';
 
             if (isExcel) {
               html += `
                 <tr>
-                  <td style="border:1px solid #CBD5E1; padding:7px; color:#334155;">${sub.label}</td>
-                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#072534;">${sub.raw || ''}</td>
+                  <td style="border:1px solid #CBD5E1; padding:7px; color:#334155;">${esc(sub.label)}</td>
+                  <td style="border:1px solid #CBD5E1; text-align:right; padding:7px; font-weight:bold; color:#072534;">${esc(sub.raw || '')}</td>
                   ${subTargetCellExcel}
                 </tr>
               `;
             } else {
               html += `
                 <tr>
-                  <td>${sub.label}</td>
-                  <td class="right bold">${sub.raw || '-'}</td>
+                  <td>${esc(sub.label)}</td>
+                  <td class="right bold">${esc(sub.raw || '-')}</td>
                   ${subTargetCellPdf}
                 </tr>
               `;
@@ -2506,17 +2098,20 @@ function KPIEntryContent({
       });
     });
 
-    const netFormatted = formatIndonesianNumber(calculated.netTotalScore, 2);
+    const netFormatted = formatIndonesianNumber(isUnitMode ? calculated.picNetScore : calculated.netTotalScore, 2);
     const posFormatted = formatIndonesianNumber(calculated.positiveScoreABC, 2);
     const penFormatted = formatIndonesianNumber(calculated.penaltyScoreD, 2);
+    const footerLabel = isUnitMode
+      ? `TOTAL SKOR CAPAIAN KHUSUS UNIT (${userPicCodes.join(', ') || 'PIC'}):`
+      : `SKOR AKHIR KPI BERSIH: CAPAIAN (A+B+C: ${posFormatted}) + KEPATUHAN (D: ${penFormatted}):`;
 
     if (isExcel) {
       html += `
         <tr style="background-color: #F7FAFB; font-weight: bold; color: #072534;">
           <td colspan="5" style="border:1px solid #CBD5E1; text-align:right; padding:9px;">
-            SKOR AKHIR KPI BERSIH: CAPAIAN (A+B+C: ${posFormatted}) + KEPATUHAN (D: ${penFormatted}):
+            ${footerLabel}
           </td>
-          <td style="border:1px solid #CBD5E1; text-align:center; padding:9px;">100</td>
+          <td style="border:1px solid #CBD5E1; text-align:center; padding:9px;">${isUnitMode ? '-' : '100'}</td>
           <td colspan="4" style="border:1px solid #CBD5E1;"></td>
           <td style="border:1px solid #CBD5E1; text-align:center; padding:9px;">${netFormatted}</td>
           <td style="border:1px solid #CBD5E1;"></td>
@@ -2526,9 +2121,9 @@ function KPIEntryContent({
       html += `
         <tr class="cat-row">
           <td colspan="5" class="right">
-            SKOR AKHIR KPI BERSIH: CAPAIAN (A+B+C: ${posFormatted}) + KEPATUHAN (D: ${penFormatted}):
+            ${footerLabel}
           </td>
-          <td class="center">100</td>
+          <td class="center">${isUnitMode ? '-' : '100'}</td>
           <td colspan="4"></td>
           <td class="center">${netFormatted}</td>
           <td></td>
@@ -2541,6 +2136,7 @@ function KPIEntryContent({
 
   const handleExportExcel = () => {
     const tableRowsHtml = buildDocumentRowsHtml(true);
+    const periodTag = periodStatusMeta?.year || activeForm?.period || '2026';
 
     const excelTemplate = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -2551,7 +2147,7 @@ function KPIEntryContent({
           <x:ExcelWorkbook>
             <x:ExcelWorksheets>
               <x:ExcelWorksheet>
-                <x:Name>KPI A B C D ITPLN</x:Name>
+                <x:Name>KPI ITPLN ${periodTag}</x:Name>
                 <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
               </x:ExcelWorksheet>
             </x:ExcelWorksheets>
@@ -2574,7 +2170,7 @@ function KPIEntryContent({
               <th style="border:1px solid #CBD5E1; padding:10px; width:130px;">PENANGGUNG JAWAB (PIC)</th>
               <th style="border:1px solid #CBD5E1; padding:10px; width:105px;">CAPAIAN (%)</th>
               <th style="border:1px solid #CBD5E1; padding:10px; width:95px;">SKOR</th>
-              <th style="border:1px solid #CBD5E1; padding:10px; width:240px;">BUKTI CAPAIAN &amp; KETERANGAN</th>
+              <th style="border:1px solid #CBD5E1; padding:10px; width:280px;">BUKTI CAPAIAN (TAUTAN AKTIF) &amp; KETERANGAN</th>
             </tr>
           </thead>
           <tbody>
@@ -2591,7 +2187,11 @@ function KPIEntryContent({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'Laporan_KPI_Lengkap_A_B_C_D_ITPLN_2026.xls';
+    link.download = isUnitMode
+      ? `Laporan_KPI_Unit_${(userPicCodes.join('_') || 'PIC')}_ITPLN_${periodTag}.xls`
+      : isSpiMode
+        ? `Laporan_Audit_SPI_KPI_ITPLN_${periodTag}.xls`
+        : `Laporan_KPI_Lengkap_A_B_C_D_ITPLN_${periodTag}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2601,7 +2201,7 @@ function KPIEntryContent({
   const handleExportPDF = () => {
     const printWin = window.open('', '_blank', 'width=1240,height=880');
     if (!printWin) {
-      alert('Mohon izinkan pop-up di browser Anda untuk mengunduh dokumen PDF.');
+      showToast('Pop-up diblokir browser. Izinkan pop-up pada bilah alamat untuk mengunduh dokumen PDF.');
       return;
     }
 
@@ -2613,18 +2213,19 @@ function KPIEntryContent({
 
     const rowsHtml = buildDocumentRowsHtml(false);
     const escapeHtml = (value) => String(value ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-    const sectionSummaryHtml = calculated.sections.map((sec) => `
+    const sectionSummaryHtml = exportableSections.map((sec) => `
           <div class="summary-box">
             <div class="summary-label">Bagian ${escapeHtml(sec.code)} • ${escapeHtml(sec.title)} (${escapeHtml(sec.weightDisplay ?? sec.totalWeight)})</div>
             <div class="summary-val">${formatIndonesianNumber(sec.secScore, 2)} Poin</div>
           </div>`).join('');
-    const sectionSubtitle = calculated.sections.map((sec) => `${escapeHtml(sec.title)} (${escapeHtml(sec.weightDisplay ?? sec.totalWeight)})`).join(' • ');
+    const sectionSubtitle = exportableSections.map((sec) => `${escapeHtml(sec.title)} (${escapeHtml(sec.weightDisplay ?? sec.totalWeight)})`).join(' • ');
+    const periodTag = periodStatusMeta?.year || activeForm?.period || '2026';
 
     printWin.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Dokumen_Evaluasi_KPI_Lengkap_A_B_C_D_ITPLN_2026</title>
+        <title>Dokumen_Evaluasi_KPI_${isUnitMode ? `Unit_${userPicCodes.join('_')}` : 'Lengkap'}_ITPLN_${periodTag}</title>
         <style>
           @page { size: A4 landscape; margin: 8mm; }
           body {
@@ -2722,20 +2323,20 @@ function KPIEntryContent({
       <body>
         <div class="doc-header">
           <div>
-            <div class="doc-title">LAPORAN EVALUASI CAPAIAN KPI: PERSPEKTIF ${calculated.sections.map((sec) => escapeHtml(sec.code)).join(', ')}</div>
-            <div class="doc-sub">Institut Teknologi Perusahaan Listrik Negara (ITPLN) • ${sectionSubtitle}</div>
+            <div class="doc-title">LAPORAN EVALUASI CAPAIAN KPI (${isUnitMode ? `KHUSUS UNIT PIC: ${escapeHtml(userPicCodes.join(', '))}` : `REKAPITULASI PENUH PERSPEKTIF ${exportableSections.map((sec) => escapeHtml(sec.code)).join(', ')}`})</div>
+            <div class="doc-sub">Institut Teknologi Perusahaan Listrik Negara (ITPLN) • Periode ${escapeHtml(periodTag)} • ${sectionSubtitle}</div>
           </div>
           <div style="text-align: right; font-size: 7.6pt; color: #475569;">
             <div><strong>Tanggal Cetak:</strong> ${dateStr}</div>
-            <div><strong>Status Dokumen:</strong> Rekapitulasi Terpusat</div>
+            <div><strong>Status Dokumen:</strong> ${isUnitMode ? 'Rekapitulasi Khusus Unit Kerja' : isSpiMode ? 'Salinan Audit SPI' : 'Rekapitulasi Terpusat PRP'}</div>
           </div>
         </div>
 
         <div class="summary-strip">
 ${sectionSummaryHtml}
           <div class="summary-box">
-            <div class="summary-label">Skor Akhir KPI Bersih</div>
-            <div class="summary-val">${formatIndonesianNumber(calculated.netTotalScore, 2)} / 100</div>
+            <div class="summary-label">${isUnitMode ? 'Total Skor Unit PIC' : 'Skor Akhir KPI Bersih'}</div>
+            <div class="summary-val">${formatIndonesianNumber(isUnitMode ? calculated.picNetScore : calculated.netTotalScore, 2)}${isUnitMode ? ' Poin' : ' / 100'}</div>
           </div>
         </div>
 
@@ -2784,12 +2385,25 @@ ${sectionSummaryHtml}
     printWin.document.close();
   };
 
+  const availableSectionsForTabs = useMemo(() => {
+    if (!isUnitMode) return governedSections;
+    return governedSections.filter((sec) => sec.items.some((item) => editableItemIds.has(item.id)));
+  }, [governedSections, isUnitMode, editableItemIds]);
+
   const visibleSections = useMemo(() => {
     const byTab = activeSectionTab === 'ALL'
       ? calculated.sections
       : calculated.sections.filter((sec) => sec.code === activeSectionTab);
     const base = byTab.length ? byTab : calculated.sections;
-    if (!isUnitMode || rowScopeFilter !== 'MY_PIC') return base;
+    if (isUnitMode) {
+      return base
+        .map((sec) => ({
+          ...sec,
+          items: sec.items.filter((item) => item.canEditRow),
+        }))
+        .filter((sec) => sec.items.length > 0);
+    }
+    if (rowScopeFilter !== 'MY_PIC') return base;
     return base
       .map((sec) => ({
         ...sec,
@@ -2946,7 +2560,7 @@ ${sectionSummaryHtml}
           border-color: #D8E4EA;
         }
         .clean-sheet-input::placeholder {
-          color: #64748B;
+          color: #475569;
           font-weight: 500;
           font-size: 0.75rem;
         }
@@ -3080,8 +2694,8 @@ ${sectionSummaryHtml}
           gap: '1rem',
           flexWrap: 'wrap',
           padding: '1rem 1.2rem',
-          background: workflowStatusTone.background,
-          border: `1px solid ${workflowStatusTone.border}`,
+          background: isSpiMode ? '#EDF3F6' : workflowStatusTone.background,
+          border: `1px solid ${isSpiMode ? '#94B8C7' : workflowStatusTone.border}`,
           borderRadius: '8px',
         }}
       >
@@ -3094,16 +2708,38 @@ ${sectionSummaryHtml}
               placeItems: 'center',
               borderRadius: '6px',
               background: '#FFFFFF',
-              border: `1px solid ${workflowStatusTone.border}`,
-              color: workflowStatusTone.color,
+              border: `1px solid ${isSpiMode ? '#94B8C7' : workflowStatusTone.border}`,
+              color: isSpiMode ? '#094E68' : workflowStatusTone.color,
               flexShrink: 0,
             }}
           >
-            <WorkflowIcon size={17} />
+            {isSpiMode ? <Eye size={17} /> : <WorkflowIcon size={17} />}
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-              <strong style={{ color: workflowStatusTone.color, fontSize: '0.86rem' }}>{workflowStatusLabel}</strong>
+              <strong style={{ color: isSpiMode ? '#072534' : workflowStatusTone.color, fontSize: '0.86rem' }}>
+                {isSpiMode ? 'Mode Audit SPI (Hanya Lihat & Unduh Bukti)' : isAdminPrp && !isUnitMode ? 'Kendali Penuh Admin PRP (Full Access & Override Edit)' : workflowStatusLabel}
+              </strong>
+              {periodStatusMeta && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: periodStatusMeta.isLocked ? '#FEF2F2' : '#F0FDF4',
+                    border: `1px solid ${periodStatusMeta.isLocked ? '#FCA5A5' : '#86EFAC'}`,
+                    color: periodStatusMeta.isLocked ? '#7F1D1D' : '#14532D',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                >
+                  {periodStatusMeta.isLocked ? <LockKeyhole size={11} /> : <CheckCircle2 size={11} />}
+                  PERIODE {periodStatusMeta.year}: {periodStatusMeta.isLocked ? 'TERKUNCI (NONAKTIF)' : 'AKTIF (TERBUKA)'}
+                </span>
+              )}
               {isUnitMode && (
                 <span
                   style={{
@@ -3120,18 +2756,20 @@ ${sectionSummaryHtml}
                   PIC: {userPicCodes.join(', ') || 'BELUM DITAUTKAN'}
                 </span>
               )}
-              {isLocked && (
+              {isLocked && !isSpiMode && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', color: '#475569' }}>
                   <LockKeyhole size={12} /> Data terkunci
                 </span>
               )}
             </div>
             <div style={{ color: '#334155', fontSize: '0.73rem', marginTop: '0.2rem', lineHeight: 1.45 }}>
-              {isLocked
-                ? `Terintegrasi ke sistem pusat ${workflow.submittedAt ? new Date(workflow.submittedAt).toLocaleString('id-ID') : 'pada sesi aktif'}`
-                : isUnitMode
-                  ? `Hak edit aktif pada ${calculated.picTotalIndicators} indikator PIC Anda (${calculated.picFilledInputs}/${calculated.picTotalInputs} isian terisi) · ${calculated.totalIndicatorsCount - calculated.picTotalIndicators} indikator unit lain berstatus View Only.`
-                  : `${calculated.totalFilledInputs} dari ${calculated.totalInputsCount} isian terpenuhi pada keseluruhan tabel institusi.`}
+              {isSpiMode
+                ? 'Akun SPI memiliki akses satu halaman tabel KPI terintegrasi (View-Only) beserta akses pratinjau/unduh seluruh dokumen evidence dan ekspor Excel dengan tautan bukti aktif.'
+                : isAdminPrp && !isUnitMode
+                  ? `Menampilkan seluruh ${calculated.totalIndicatorsCount} indikator dari semua unit kerja. Admin PRP dapat mengedit langsung nilai/keterangan (Override Edit) dan memberi catatan revisi per baris atau bagian.`
+                  : isLocked
+                    ? `Terintegrasi ke sistem pusat ${workflow.submittedAt ? new Date(workflow.submittedAt).toLocaleString('id-ID') : `(${periodStatusMeta?.lockReason || 'sesi aktif'})`}`
+                    : `Menampilkan khusus ${calculated.picTotalIndicators} indikator kinerja milik unit/PIC Anda (${calculated.picFilledInputs}/${calculated.picTotalInputs} isian terisi). Data antar-unit terisolasi secara penuh.`}
               {!isLocked && isUnitMode && calculated.missingEvidenceIndicators.length > 0 && (
                 <span style={{ display: 'block', color: '#78350F', fontWeight: 600, marginTop: '0.15rem' }}>
                   Bukti capaian wajib dilengkapi pada {calculated.missingEvidenceIndicators.length} baris PIC ({calculated.missingEvidenceIndicators.slice(0, 5).join(', ')}{calculated.missingEvidenceIndicators.length > 5 ? '...' : ''}).
@@ -3144,14 +2782,24 @@ ${sectionSummaryHtml}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' }}>
           <div style={{ minWidth: '150px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', fontSize: '0.66rem', fontWeight: 700, marginBottom: '0.3rem' }}>
-              <span>{isUnitMode ? 'KELENGKAPAN TUGAS PIC' : 'KELENGKAPAN'}</span>
+              <span>{isUnitMode ? 'KELENGKAPAN TUGAS PIC' : 'KELENGKAPAN TABEL'}</span>
               <span>{Math.round(calculated.completionRatio * 100)}%</span>
             </div>
-            <div style={{ height: '5px', background: '#D8E4EA', borderRadius: '99px', overflow: 'hidden' }}>
-              <div style={{ width: `${calculated.completionRatio * 100}%`, height: '100%', background: '#0E7480', borderRadius: '99px', transition: 'width 0.3s ease' }} />
+            <div style={{ height: '5px', background: '#D8E4EA', borderRadius: '3px', overflow: 'hidden' }}>
+              <div style={{ width: `${calculated.completionRatio * 100}%`, height: '100%', background: '#0E7480', borderRadius: '3px', transition: 'width 0.3s ease' }} />
             </div>
           </div>
-          {!isLocked && (
+          {isAdminPrp && !isUnitMode && !readOnly && activeForm?.id && (
+            <button
+              type="button"
+              onClick={handleSaveAdminOverrideManual}
+              className="clean-btn clean-btn-primary"
+            >
+              <Save size={14} />
+              <span>Simpan Override Admin PRP</span>
+            </button>
+          )}
+          {!isLocked && isUnitMode && (
             <button
               type="button"
               onClick={handleSubmit}
@@ -3159,10 +2807,21 @@ ${sectionSummaryHtml}
               style={!isReadyToSubmit ? { background: '#0E7480', borderColor: '#0E7480' } : undefined}
             >
               <Send size={14} />
-              <span>{isUnitMode ? 'Submit ke Sistem Pusat' : 'Submit Lembar Kerja'}</span>
+              <span>Submit ke Sistem Pusat</span>
             </button>
           )}
-          {isLocked && !readOnly && !unitForm && workflow.status !== WORKFLOW_STATUS.APPROVED && (
+          {!isLocked && !isUnitMode && !isAdminPrp && !isSpiMode && (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="clean-btn clean-btn-primary"
+              style={!isReadyToSubmit ? { background: '#0E7480', borderColor: '#0E7480' } : undefined}
+            >
+              <Send size={14} />
+              <span>Submit Lembar Kerja</span>
+            </button>
+          )}
+          {isLocked && !readOnly && !unitForm && !isSpiMode && workflow.status !== WORKFLOW_STATUS.APPROVED && (
             <button type="button" onClick={handleRequestRevision} className="clean-btn">
               <RefreshCcw size={14} />
               <span>Ajukan Pembukaan Revisi</span>
@@ -3226,12 +2885,12 @@ ${sectionSummaryHtml}
               style={{
                 position: 'relative',
                 display: 'grid',
-                gridTemplateColumns: `repeat(${governedSections.length + 1}, 1fr)`,
+                gridTemplateColumns: `repeat(${availableSectionsForTabs.length + 1}, 1fr)`,
                 background: '#EDF3F6',
                 padding: '3px',
                 borderRadius: '8px',
                 border: '1px solid #D8E4EA',
-                minWidth: `${Math.max(240, (governedSections.length + 1) * 116)}px`,
+                minWidth: `${Math.max(240, (availableSectionsForTabs.length + 1) * 116)}px`,
               }}
             >
               <div
@@ -3242,7 +2901,7 @@ ${sectionSummaryHtml}
                   top: '3px',
                   bottom: '3px',
                   left: '3px',
-                  width: `calc((100% - 6px) / ${governedSections.length + 1})`,
+                  width: `calc((100% - 6px) / ${availableSectionsForTabs.length + 1})`,
                   background: '#FFFFFF',
                   borderRadius: '6px',
                   boxShadow: '0 1px 3px rgba(7, 37, 52, 0.08)',
@@ -3251,8 +2910,8 @@ ${sectionSummaryHtml}
                 }}
               />
               {[
-                { id: 'ALL', label: 'Semua Bagian', sub: 'Lengkap' },
-                ...governedSections.map((sec) => ({
+                { id: 'ALL', label: isUnitMode ? 'Indikator Unit Saya' : 'Semua Bagian', sub: isUnitMode ? `${calculated.picTotalIndicators} Butir PIC` : 'Lengkap' },
+                ...availableSectionsForTabs.map((sec) => ({
                   id: sec.code,
                   label: `Bagian ${sec.code}`,
                   sub: sec.isPenaltySection
@@ -3294,10 +2953,10 @@ ${sectionSummaryHtml}
             </div>
           </div>
 
-          {isUnitMode && (
+          {!isUnitMode ? (
             <div
               role="group"
-              aria-label="Cakupan tampilan indikator PIC"
+              aria-label="Cakupan tampilan indikator seluruh unit"
               style={{
                 display: 'inline-flex',
                 background: '#EDF3F6',
@@ -3311,11 +2970,11 @@ ${sectionSummaryHtml}
                 type="button"
                 onClick={() => setRowScopeFilter('ALL')}
                 style={{
-                  minHeight: '38px',
-                  padding: '0.35rem 0.7rem',
+                  minHeight: '44px',
+                  padding: '0.35rem 0.75rem',
                   borderRadius: '6px',
-                  border: rowScopeFilter === 'ALL' ? '1px solid #D8E4EA' : '1px solid transparent',
-                  background: rowScopeFilter === 'ALL' ? '#FFFFFF' : 'transparent',
+                  border: '1px solid #D8E4EA',
+                  background: '#FFFFFF',
                   color: '#072534',
                   fontSize: '0.72rem',
                   fontWeight: 700,
@@ -3324,33 +2983,36 @@ ${sectionSummaryHtml}
               >
                 Semua Indikator ({calculated.totalIndicatorsCount})
               </button>
-              <button
-                type="button"
-                onClick={() => setRowScopeFilter('MY_PIC')}
-                style={{
-                  minHeight: '38px',
-                  padding: '0.35rem 0.7rem',
-                  borderRadius: '6px',
-                  border: rowScopeFilter === 'MY_PIC' ? '1px solid #D8E4EA' : '1px solid transparent',
-                  background: rowScopeFilter === 'MY_PIC' ? '#FFFFFF' : 'transparent',
-                  color: '#094E68',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Tugas PIC Saya ({calculated.picTotalIndicators})
-              </button>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.42rem 0.75rem',
+                borderRadius: '8px',
+                background: '#F0FDF4',
+                border: '1px solid #86EFAC',
+                color: '#14532D',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+            >
+              <ShieldCheck size={14} />
+              <span>Khusus Unit Anda ({calculated.picTotalIndicators} Indikator PIC)</span>
             </div>
           )}
 
-          <div style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
-            Tersimpan ({lastSaved})
-          </div>
+          {!isSpiMode && (
+            <div style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
+              Tersimpan ({lastSaved})
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-          {!readOnly && (
+          {!readOnly && !isSpiMode && (
             <>
               <button
                 type="button"
@@ -3377,12 +3039,12 @@ ${sectionSummaryHtml}
 
           <button type="button" onClick={handleExportExcel} className="clean-btn">
             <FileSpreadsheet size={14} />
-            <span>Export Excel (.xls)</span>
+            <span>{isUnitMode ? 'Export Excel Unit (.xls)' : 'Export Excel (.xls)'}</span>
           </button>
 
           <button type="button" onClick={handleExportPDF} className="clean-btn clean-btn-primary">
             <Printer size={14} />
-            <span>Export PDF Resmi</span>
+            <span>{isUnitMode ? 'Export PDF Unit' : 'Export PDF Resmi'}</span>
           </button>
         </div>
       </div>
@@ -3392,7 +3054,7 @@ ${sectionSummaryHtml}
           width: '100%',
           height: '2px',
           background: '#EDF3F6',
-          borderRadius: '99px',
+          borderRadius: '2px',
           overflow: 'hidden',
         }}
       >
@@ -3410,12 +3072,14 @@ ${sectionSummaryHtml}
 
       {visibleSections.length === 0 && (
         <div className="gov-placeholder">
-          Tidak ada baris indikator yang ditugaskan ke PIC ({userPicCodes.join(', ') || '-'}) pada filter bagian yang dipilih. Pilih &ldquo;Semua Indikator&rdquo; untuk melihat capaian unit lain secara transparan.
+          Tidak ada baris indikator yang ditugaskan ke PIC ({userPicCodes.join(', ') || '-'}) pada filter bagian yang dipilih.
         </div>
       )}
 
-      {visibleSections.map((sec) => (
-        <div key={sec.code} className="clean-ledger-card ledger-section-card">
+      {visibleSections.map((sec) => {
+        const secRevision = integratedBoard?.revisions?.sections?.[sec.code] || null;
+        return (
+        <div key={sec.code} data-kpi-section-code={sec.code} className="clean-ledger-card ledger-section-card">
           <div className="clean-section-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
               <div
@@ -3475,7 +3139,11 @@ ${sectionSummaryHtml}
               }}
             >
               <span>
-                Terisi Lintas Unit: <strong style={{ color: '#072534' }}>{sec.secCompleted} / {sec.secTotalItems}</strong> Butir
+                {isUnitMode ? 'Indikator Unit Anda:' : 'Terisi Lintas Unit:'}{' '}
+                <strong style={{ color: '#072534' }}>
+                  {isUnitMode ? `${sec.items.filter((i) => i.ratioPercent !== null).length} / ${sec.items.length}` : `${sec.secCompleted} / ${sec.secTotalItems}`}
+                </strong>{' '}
+                Butir
               </span>
               <span style={{ color: '#D8E4EA' }} aria-hidden="true">|</span>
               <span
@@ -3489,10 +3157,83 @@ ${sectionSummaryHtml}
                   fontFamily: 'Outfit, sans-serif',
                 }}
               >
-                Skor Bagian {sec.code}: {formatIndonesianNumber(sec.secScore, 2)} / {sec.weightDisplay}
+                Skor Bagian {sec.code}: {formatIndonesianNumber(isUnitMode ? sec.items.reduce((s, it) => s + (it.weightedScore || 0), 0) : sec.secScore, 2)} / {sec.weightDisplay}
               </span>
+              {isAdminPrp && (activeForm?.id || unitForm?.id) && (
+                <button
+                  type="button"
+                  className="clean-mini-btn"
+                  style={{
+                    minHeight: '34px',
+                    padding: '0.35rem 0.7rem',
+                    borderColor: secRevision?.comment ? '#F59E0B' : '#B8CAD4',
+                    background: secRevision?.comment ? '#FFFBEB' : '#FFFFFF',
+                    color: secRevision?.comment ? '#92400E' : '#094E68',
+                  }}
+                  onClick={() => setSectionRevComposer((prev) => (prev.code === sec.code ? { code: null, text: '' } : { code: sec.code, text: secRevision?.comment || '' }))}
+                >
+                  <MessageSquareWarning size={13} />
+                  <span>{secRevision?.comment ? `Edit Revisi Bagian ${sec.code}` : `Catatan Revisi Bagian ${sec.code}`}</span>
+                </button>
+              )}
             </div>
           </div>
+
+          {secRevision?.comment && (
+            <div style={{ padding: '0.7rem 1.4rem', background: '#FFFBEB', borderBottom: '1px solid #FCD34D', color: '#78350F', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div>
+                <strong><MessageSquareWarning size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> CATATAN REVISI ADMIN PRP (BAGIAN {sec.code}):</strong>{' '}
+                {secRevision.comment}
+              </div>
+              <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#92400E', fontFamily: 'JetBrains Mono, monospace' }}>
+                <MailCheck size={12} style={{ verticalAlign: 'middle' }} /> Notifikasi &amp; Email Terkirim ke PIC Bagian {sec.code}
+              </span>
+            </div>
+          )}
+
+          {isAdminPrp && sectionRevComposer.code === sec.code && (
+            <div style={{ padding: '0.85rem 1.4rem', background: '#FFFBEB', borderBottom: '1px solid #FCD34D', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#78350F' }}>
+                Kirim Catatan Revisi untuk Seluruh PIC pada Bagian {sec.code} ({sec.title})
+              </div>
+              <textarea
+                rows={2}
+                className="clean-row-textarea"
+                placeholder={`Tulis catatan evaluasi/revisi untuk Bagian ${sec.code}...`}
+                value={sectionRevComposer.text}
+                onChange={(e) => setSectionRevComposer((prev) => ({ ...prev, text: e.target.value }))}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="clean-btn clean-btn-primary"
+                  style={{ minHeight: '34px', padding: '0.35rem 0.8rem' }}
+                  onClick={() => handleSaveSectionRevision(sec.code, sectionRevComposer.text, false)}
+                >
+                  <Send size={13} />
+                  <span>Kirim Revisi Bagian {sec.code} + Email ke PIC</span>
+                </button>
+                {secRevision?.comment && (
+                  <button
+                    type="button"
+                    className="clean-btn"
+                    style={{ minHeight: '34px', padding: '0.35rem 0.8rem', background: '#F0FDF4', color: '#14532D', borderColor: '#86EFAC' }}
+                    onClick={() => handleSaveSectionRevision(sec.code, '', true)}
+                  >
+                    Tandai Selesai
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="clean-btn"
+                  style={{ minHeight: '34px', padding: '0.35rem 0.8rem' }}
+                  onClick={() => setSectionRevComposer({ code: null, text: '' })}
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
 
           <div style={{ overflowX: 'auto', overflowY: 'visible', WebkitOverflowScrolling: 'touch' }}>
             <table className="clean-editorial-table" style={{ minWidth: '1440px' }}>
@@ -3867,7 +3608,7 @@ ${sectionSummaryHtml}
                                     width: '100%',
                                     height: '3px',
                                     background: '#D8E4EA',
-                                    borderRadius: '99px',
+                                    borderRadius: '2px',
                                     overflow: 'hidden',
                                     margin: '0.35rem 0',
                                   }}
@@ -3905,6 +3646,10 @@ ${sectionSummaryHtml}
                                   item={item}
                                   canEditRow={canEditRow}
                                   isLocked={isLocked}
+                                  isUnitMode={isUnitMode}
+                                  isAdminPrp={isAdminPrp}
+                                  itemRevision={integratedBoard?.revisions?.items?.[item.id] || null}
+                                  onSaveItemRevision={handleSaveItemRevision}
                                   ownEvidence={ownEvidenceByItem[item.id] || []}
                                   sharedEvidence={integratedBoard?.evidenceByItem?.[item.id] || []}
                                   noteValue={notes[item.id] || ''}
@@ -3927,7 +3672,8 @@ ${sectionSummaryHtml}
             </table>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       <div
         style={{
@@ -3961,7 +3707,7 @@ ${sectionSummaryHtml}
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {calculated.sections.map((sec) => (
+          {(isUnitMode ? visibleSections : calculated.sections).map((sec) => (
             <React.Fragment key={sec.code}>
               <span>
                 {sec.code}{sec.isPenaltySection ? ' (Penalti)' : ''}: {formatIndonesianNumber(sec.secScore, 2)} / {sec.weightDisplay ?? formatIndonesianNumber(Number(sec.totalWeight) || 0, 2)}
@@ -3969,29 +3715,29 @@ ${sectionSummaryHtml}
               <span style={{ color: '#D8E4EA' }} aria-hidden="true">|</span>
             </React.Fragment>
           ))}
-          {isUnitMode && (
+          {isUnitMode ? (
             <span
               style={{
-                padding: '0.35rem 0.75rem',
+                padding: '0.35rem 0.85rem',
                 borderRadius: '6px',
-                background: '#EDF3F6',
-                border: '1px solid #B8CAD4',
-                color: '#094E68',
+                background: '#062C3D',
+                color: '#FFFFFF',
               }}
             >
-              Kontribusi PIC Anda: {formatIndonesianNumber(calculated.picNetScore, 2)} Poin
+              Total Skor Unit PIC Anda: {formatIndonesianNumber(calculated.picNetScore, 2)} Poin
+            </span>
+          ) : (
+            <span
+              style={{
+                padding: '0.35rem 0.85rem',
+                borderRadius: '6px',
+                background: '#062C3D',
+                color: '#FFFFFF',
+              }}
+            >
+              Skor Institusi Terpusat: {formatIndonesianNumber(calculated.netTotalScore, 2)} / 100 Poin
             </span>
           )}
-          <span
-            style={{
-              padding: '0.35rem 0.85rem',
-              borderRadius: '6px',
-              background: '#062C3D',
-              color: '#FFFFFF',
-            }}
-          >
-            Skor Institusi Terpusat: {formatIndonesianNumber(calculated.netTotalScore, 2)} / 100 Poin
-          </span>
         </div>
       </div>
 

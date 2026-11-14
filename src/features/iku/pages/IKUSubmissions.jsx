@@ -14,7 +14,7 @@ import {
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../../auth/context/AuthContext';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { readSystemConfig } from '../../internal/adminStore';
 import {
   IKU_INDICATORS,
@@ -86,6 +86,7 @@ export default function IKUSubmissions() {
   const [reason, setReason] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [checked, setChecked] = useState(false);
+  const [confirmUnlockOpen, setConfirmUnlockOpen] = useState(false);
 
   const records = listIkuSubmissions(currentUser).filter((r) => r.period === period);
   const record = admin ? records.find((r) => r.id === selected) : records[0];
@@ -135,9 +136,21 @@ export default function IKUSubmissions() {
     : null;
 
   const decide = (status) => {
-    if (record.status === 'LOCKED' && !window.confirm('Buka kembali submission yang sudah dikunci? Unit dapat mengubah data lagi.')) return;
+    if (record.status === 'LOCKED' && status === 'NEEDS_REVISION') {
+      setConfirmUnlockOpen(true);
+      return;
+    }
     run(() => reviewIkuSubmission(currentUser, record.id, status, reason), 'Keputusan PRP berhasil disimpan dan diaudit.');
   };
+
+  useEffect(() => {
+    if (!confirmUnlockOpen) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setConfirmUnlockOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [confirmUnlockOpen]);
 
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -345,6 +358,15 @@ export default function IKUSubmissions() {
             transform: scaleX(1);
           }
         }
+        @media (max-width: 768px) {
+          .iku-sub-hero button,
+          .iku-sub-hero select,
+          .iku-ind-card button,
+          .iku-ind-card input,
+          .ent-btn {
+            min-height: 44px;
+          }
+        }
         @media (max-width: 520px) {
           .iku-num-pair-grid {
             grid-template-columns: 1fr;
@@ -357,7 +379,7 @@ export default function IKUSubmissions() {
         <div>
           <div className="ent-eyebrow iku-sub-head">
             <ShieldCheck size={13} />{' '}
-            {admin ? '02 // REVIEW PRP: SUBMISSION 8 IKU' : '02 // RUANG KERJA UNIT: SUBMISSION 8 IKU'}
+            {admin ? 'REVIEW PRP: SUBMISSION 8 IKU' : 'RUANG KERJA UNIT: SUBMISSION 8 IKU'}
           </div>
           <h1 className="iku-sub-title">
             <span className="iku-mask-wrap">
@@ -886,6 +908,62 @@ export default function IKUSubmissions() {
               </pre>
             </details>
           ))}
+        </div>
+      )}
+
+      {confirmUnlockOpen && record && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="iku-unlock-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 90,
+            background: 'rgba(6, 44, 61, 0.56)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              border: '1px solid #D8E4EA',
+              borderRadius: '8px',
+              padding: '1.35rem',
+              width: 'min(440px, 100%)',
+              boxShadow: '0 20px 44px rgba(7, 37, 52, 0.2)',
+            }}
+          >
+            <h2 id="iku-unlock-title" style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
+              Buka Kembali Submission Terkunci?
+            </h2>
+            <p style={{ margin: '0 0 1.15rem', fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>
+              Membuka kunci akan mengembalikan status ke Perlu Revisi agar unit dapat memperbarui nilai dan bukti pendukung.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="ent-btn"
+                style={{ minHeight: '44px' }}
+                onClick={() => setConfirmUnlockOpen(false)}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="ent-btn ent-btn-teal"
+                style={{ minHeight: '44px' }}
+                onClick={() => {
+                  setConfirmUnlockOpen(false);
+                  run(() => reviewIkuSubmission(currentUser, record.id, 'NEEDS_REVISION', reason), 'Submission dibuka kembali untuk revisi.');
+                }}
+              >
+                Ya, Buka Kembali
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

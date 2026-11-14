@@ -39,6 +39,15 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
+  useEffect(() => {
     const handleScroll = () => {
       const ids = ['beranda', 'iku', 'kpi', 'arsitektur'];
       const scrollPos = window.scrollY + 200;

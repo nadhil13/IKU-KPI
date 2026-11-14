@@ -177,7 +177,7 @@ export default function Glossary() {
           font-family: inherit;
         }
         .glos-search-input::placeholder {
-          color: #64748b;
+          color: #475569;
         }
         .glos-search-input:focus {
           outline: none;
@@ -253,7 +253,7 @@ export default function Glossary() {
           <div className="glos-hero-grid">
             <div>
               <div className="glos-badge ent-eyebrow" style={{ marginBottom: '1.25rem' }}>
-                05 // DIREKTORI TERMINOLOGI TATA KELOLA
+                DIREKTORI TERMINOLOGI TATA KELOLA
               </div>
               <h1
                 className="glos-title"

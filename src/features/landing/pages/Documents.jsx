@@ -147,7 +147,7 @@ export default function Documents({ embedded = false }) {
       >
         <div style={{ maxWidth: 1320, margin: '0 auto' }}>
           <div className="doc-badge ent-eyebrow" style={{ marginBottom: '1.25rem' }}>
-            04 // ARSIP REGULASI &amp; PEDOMAN RESMI
+            ARSIP REGULASI &amp; PEDOMAN RESMI
           </div>
 
           <h1

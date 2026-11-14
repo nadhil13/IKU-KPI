@@ -132,7 +132,7 @@ export default function Guide() {
         <div style={{ maxWidth: 1400, margin: '0 auto' }} className="guide-hero-grid">
           <div>
             <div className="reveal-init ent-eyebrow" style={{ marginBottom: '1.35rem' }}>
-              03 // PROSEDUR OPERASIONAL STANDAR
+              PROSEDUR OPERASIONAL STANDAR
             </div>
             <h1
               className="reveal-init"

@@ -23,9 +23,9 @@ export function normalizePicList(raw) {
 export function canCallerEditKpiRow(item, callerUser) {
   if (!callerUser || callerUser.status === 'Nonaktif') return false;
   if (callerUser.role === 'superadmin_prp') return true;
-  if (callerUser.role !== 'kpi_only') return false;
+  if (callerUser.role !== 'kpi_only' && callerUser.role !== 'dual') return false;
   const rowPics = normalizePicList(item?.pics ?? item?.picDisplay ?? []);
-  if (rowPics.length === 0) return false;
+  if (rowPics.length === 0) return true;
   const userPics = new Set(normalizePicList(callerUser.picCodes || []));
   return rowPics.some((code) => userPics.has(code));
 }
@@ -89,17 +89,6 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
     return { forms, submissions: nextSubmissions, evidence: nextEvidence, drafts: nextDrafts };
   }
 
-  const editableItemIds = new Set();
-  const editableSubKeys = new Set();
-  (activeForm.sections || []).forEach((sec) => {
-    (sec.items || []).forEach((item) => {
-      if (canCallerEditKpiRow(item, callerUser)) {
-        editableItemIds.add(item.id);
-        (item.subrows || []).forEach((sub) => editableSubKeys.add(sub.key));
-      }
-    });
-  });
-
   // Cek apakah ada upaya memodifikasi key milik unit lain
   const checkForeignKeyTampering = (incomingMap, baseMap, mapLabel) => {
     for (const [entryKey, incomingVal] of Object.entries(incomingMap || {})) {
@@ -128,6 +117,17 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
   checkForeignKeyTampering(incoming.drafts, base.drafts, 'draf KPI');
 
   for (const form of forms) {
+    const editableItemIds = new Set();
+    const editableSubKeys = new Set();
+    (form.sections || []).forEach((sec) => {
+      (sec.items || []).forEach((item) => {
+        if (canCallerEditKpiRow(item, callerUser)) {
+          editableItemIds.add(item.id);
+          (item.subrows || []).forEach((sub) => editableSubKeys.add(sub.key));
+        }
+      });
+    });
+
     const unitKey = `${form.id}:${callerEmail}`;
 
     // 1. Validasi Draf Unit
@@ -240,9 +240,42 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
   }
 
   return {
+    ...base,
     forms,
+    formsByPeriod: base.formsByPeriod || incoming.formsByPeriod || {},
+    adminOverrides: base.adminOverrides || {},
+    revisions: base.revisions || {},
     submissions: nextSubmissions,
     evidence: nextEvidence,
     drafts: nextDrafts,
+  };
+}
+
+/**
+ * Isolasi Data Antar-Unit (Data Privacy):
+ * Akun unit (kpi_only) hanya boleh menerima submissions, drafts, dan evidence milik unitnya sendiri.
+ * Admin PRP (superadmin_prp) dan Auditor SPI (spi) dapat melihat seluruh data lintas unit.
+ */
+export function filterKpiWorkflowForCaller(workflow, callerUser) {
+  if (!workflow || typeof workflow !== 'object') return workflow;
+  if (!callerUser || ['superadmin_prp', 'spi', 'dual'].includes(callerUser.role)) {
+    return workflow;
+  }
+  const callerEmail = String(callerUser.email || '').toLowerCase();
+  const filterByOwnEmail = (mapObj) => {
+    const out = {};
+    for (const [entryKey, val] of Object.entries(mapObj || {})) {
+      const [, keyEmail] = String(entryKey).split(':');
+      if (keyEmail && keyEmail.toLowerCase() === callerEmail) {
+        out[entryKey] = val;
+      }
+    }
+    return out;
+  };
+  return {
+    ...workflow,
+    submissions: filterByOwnEmail(workflow.submissions),
+    evidence: filterByOwnEmail(workflow.evidence),
+    drafts: filterByOwnEmail(workflow.drafts),
   };
 }

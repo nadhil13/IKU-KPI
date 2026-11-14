@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   Check,
-  Clock3,
   KeyRound,
+  LockKeyhole,
   Mail,
   ShieldCheck,
   UserRound,
@@ -11,7 +11,10 @@ import {
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../../auth/context/AuthContext';
+import { useAuth } from '../../auth/hooks/useAuth';
+import { getStoredUsers } from '../../auth/authAccounts';
+import { minimumPasswordLength, notifyAdminUpdated, writeAudit } from '../adminStore';
+import { changeOwnPasswordViaBackend, getRealtimeStatus, subscribeRealtimeStatus } from '../../../lib/realtimeSync';
 import './Profile.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -25,11 +28,19 @@ const accessRows = [
 export default function Profile() {
   const { currentUser, updateProfile } = useAuth();
   const pageRef = useRef(null);
-  const [name, setName] = useState(currentUser?.name || 'Administrator');
+  const [nameDraft, setNameDraft] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [rtStatus, setRtStatus] = useState(() => getRealtimeStatus());
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [passwordStatus, setPasswordStatus] = useState(null);
 
-  const isAdmin = ['dual', 'superadmin_prp'].includes(currentUser?.role);
-  const canAccess = (key) => (key === 'admin' ? isAdmin : currentUser?.allowedPortals?.includes(key));
+  const displayName = nameDraft ?? (currentUser?.name || '');
+  const isSuperadmin = currentUser?.role === 'superadmin_prp';
+  const canAccess = (key) => (key === 'admin' ? isSuperadmin : currentUser?.allowedPortals?.includes(key));
+
+  useEffect(() => subscribeRealtimeStatus((next) => setRtStatus({ ...next })), []);
 
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -68,10 +79,57 @@ export default function Profile() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    updateProfile({ name: name.trim() || currentUser.name });
+    const cleaned = displayName.trim();
+    if (!cleaned) return;
+    updateProfile({ name: cleaned });
+    setNameDraft(null);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2800);
   };
+
+  const handlePasswordChange = async (event) => {
+    event.preventDefault();
+    const minLen = minimumPasswordLength();
+    if (!currentUser) return;
+    if (currentUser.password && currentPasswordInput !== currentUser.password) {
+      setPasswordStatus({ type: 'error', text: 'Kata sandi saat ini tidak sesuai.' });
+      return;
+    }
+    if (newPasswordInput.length < minLen) {
+      setPasswordStatus({ type: 'error', text: `Kata sandi baru minimal ${minLen} karakter.` });
+      return;
+    }
+    if (newPasswordInput !== confirmPasswordInput) {
+      setPasswordStatus({ type: 'error', text: 'Konfirmasi kata sandi tidak cocok.' });
+      return;
+    }
+    if (currentPasswordInput && newPasswordInput === currentPasswordInput) {
+      setPasswordStatus({ type: 'error', text: 'Kata sandi baru harus berbeda dari kata sandi sebelumnya.' });
+      return;
+    }
+
+    const res = await changeOwnPasswordViaBackend(currentPasswordInput, newPasswordInput);
+    if (res.handled && !res.ok) {
+      setPasswordStatus({ type: 'error', text: res.error || 'Gagal memperbarui kata sandi pada server.' });
+      return;
+    }
+
+    const nextUser = { ...currentUser, password: newPasswordInput, mustChangePassword: false };
+    const storedUsers = getStoredUsers().filter((u) => u.email?.toLowerCase() !== nextUser.email.toLowerCase());
+    localStorage.setItem('prp_users', JSON.stringify([...storedUsers, nextUser]));
+    localStorage.setItem('performa_user', JSON.stringify(nextUser));
+    writeAudit('PASSWORD_DIUBAH', 'Kata sandi diubah melalui halaman profil', nextUser.email);
+    notifyAdminUpdated();
+    setCurrentPasswordInput('');
+    setNewPasswordInput('');
+    setConfirmPasswordInput('');
+    setPasswordStatus({ type: 'success', text: 'Kata sandi berhasil diperbarui untuk sesi dan login berikutnya.' });
+  };
+
+  const picText = currentUser?.picCodes?.length ? currentUser.picCodes.join(', ') : 'Tidak khusus';
+  const portalText = currentUser?.allowedPortals?.length
+    ? currentUser.allowedPortals.map((p) => p.toUpperCase()).join(' & ')
+    : '-';
 
   return (
     <section ref={pageRef} className="profile-page">
@@ -82,11 +140,11 @@ export default function Profile() {
           </div>
           <h1 className="profile-title profile-hero-item">Profil Sesi Saya</h1>
           <p className="profile-subtitle profile-hero-item">
-            Kelola nama tampilan, periksa cakupan otorisasi modul aktif, serta pantau parameter keamanan sesi Anda.
+            Kelola nama tampilan, periksa cakupan otorisasi modul aktif, serta pantau status sinkronisasi dan kredensial Anda.
           </p>
         </div>
         <div className="profile-live-state profile-hero-item">
-          <i /> Sesi Terautentikasi · Aktif
+          <i /> {rtStatus.mode === 'server-sse' ? 'Sesi Terhubung Server' : 'Sesi Lokal Aktif'}
         </div>
       </header>
 
@@ -117,7 +175,7 @@ export default function Profile() {
           <form className="profile-form" onSubmit={handleSubmit}>
             <label>
               Nama Tampilan Resmi
-              <input value={name} onChange={(event) => setName(event.target.value)} />
+              <input value={displayName} onChange={(event) => setNameDraft(event.target.value)} required />
             </label>
             <label>
               Alamat Email Autentikasi
@@ -173,37 +231,86 @@ export default function Profile() {
           <div className="profile-panel-heading">
             <span className="profile-index">03</span>
             <div>
-              <span className="profile-overline">Status Sesi Lokal</span>
+              <span className="profile-overline">Telemetri & Penugasan</span>
               <h3>Parameter Sesi</h3>
             </div>
           </div>
           <div className="profile-metrics">
             <div>
               <Activity size={17} />
-              <strong>LOKAL AKTIF</strong>
-              <span>Penyimpanan Sesi</span>
+              <strong>{rtStatus.mode === 'server-sse' ? 'SERVER SSE' : 'LOKAL TAB'}</strong>
+              <span>Mode Sinkronisasi</span>
             </div>
             <div>
-              <Clock3 size={17} />
-              <strong>TERVERIFIKASI</strong>
-              <span>Status Kredensial</span>
+              <KeyRound size={17} />
+              <strong>{picText}</strong>
+              <span>Penugasan PIC KPI</span>
             </div>
             <div>
               <UserRound size={17} />
-              <strong>{currentUser?.shortName || 'USER'}</strong>
-              <span>Operator Aktif</span>
+              <strong>{portalText}</strong>
+              <span>Portal Diizinkan</span>
             </div>
           </div>
         </article>
 
-        <article className="profile-panel profile-reveal profile-quote">
-          <span className="profile-overline">Prinsip Tata Kelola ITPLN</span>
-          <p>
-            “Otorisasi kinerja yang unggul bukan yang paling luas, melainkan yang paling presisi, terukur, dan dapat dipertanggungjawabkan.”
-          </p>
-          <span className="profile-signature">
-            PERFORMA ITPLN · ENTERPRISE GOVERNANCE
-          </span>
+        <article className="profile-panel profile-reveal">
+          <div className="profile-panel-heading">
+            <span className="profile-index">04</span>
+            <div>
+              <span className="profile-overline">Kredensial Akses</span>
+              <h3>Ubah Kata Sandi</h3>
+            </div>
+          </div>
+          <form className="profile-form" onSubmit={handlePasswordChange}>
+            <label>
+              Kata Sandi Saat Ini
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={currentPasswordInput}
+                onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Kata Sandi Baru (min. {minimumPasswordLength()} karakter)
+              <input
+                type="password"
+                autoComplete="new-password"
+                minLength={minimumPasswordLength()}
+                value={newPasswordInput}
+                onChange={(e) => setNewPasswordInput(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Konfirmasi Kata Sandi Baru
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirmPasswordInput}
+                onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                required
+              />
+            </label>
+            <button className="profile-submit" type="submit">
+              <LockKeyhole size={15} /> Perbarui Kata Sandi
+            </button>
+            {passwordStatus && (
+              <p
+                role={passwordStatus.type === 'error' ? 'alert' : 'status'}
+                className="profile-feedback"
+                style={
+                  passwordStatus.type === 'error'
+                    ? { background: '#FEF2F2', borderColor: '#FCA5A5', color: '#B91C1C' }
+                    : undefined
+                }
+              >
+                {passwordStatus.text}
+              </p>
+            )}
+          </form>
         </article>
       </div>
     </section>

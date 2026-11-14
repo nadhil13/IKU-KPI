@@ -620,7 +620,7 @@ export default function Home() {
           {CORPORATE_PILLARS.map((pillar) => (
             <div key={pillar.idx} className="corp-pillar-cell">
               <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#0E7480', letterSpacing: '0.1em', marginBottom: '0.9rem' }}>
-                {pillar.idx} // PARAMETER
+                {pillar.idx} · PARAMETER
               </div>
               <div
                 className="pillar-odometer"
@@ -699,7 +699,7 @@ export default function Home() {
                 display: 'inline-block',
               }}
             >
-              01 // DIMENSI STRATEGIS MAKRO
+              DIMENSI STRATEGIS MAKRO
             </div>
 
             <h3
@@ -774,7 +774,7 @@ export default function Home() {
                 display: 'inline-block',
               }}
             >
-              02 // DIMENSI OPERASIONAL MIKRO
+              DIMENSI OPERASIONAL MIKRO
             </div>
 
             <h3
@@ -818,7 +818,7 @@ export default function Home() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '2.75rem' }}>
             <div>
               <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.14em', color: '#0E7480', marginBottom: '0.65rem' }}>
-                04 // DIREKTORI DOKUMENTASI &amp; REGULASI
+                DIREKTORI DOKUMENTASI &amp; REGULASI
               </div>
               <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 'clamp(2rem, 3.8vw, 3.1rem)', fontWeight: 800, color: '#072534', letterSpacing: '-0.04em', lineHeight: 1.04, margin: 0 }}>
                 Indeks Tata Kelola Institusi.
@@ -982,7 +982,7 @@ export default function Home() {
                 marginBottom: '1.35rem',
               }}
             >
-              SSO // GERBANG AUTENTIKASI ITPLN
+              GERBANG AUTENTIKASI ITPLN
             </div>
 
             <h2

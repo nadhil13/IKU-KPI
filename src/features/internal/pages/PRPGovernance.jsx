@@ -9,7 +9,8 @@ import KPISubmissionInbox from '../../kpi/components/KPISubmissionInbox';
 import AllSubmissionsTable from '../components/AllSubmissionsTable';
 import SystemSettings from '../components/SystemSettings';
 import { readAudit, readSystemConfig, writeAudit } from '../adminStore';
-import { useAuth } from '../../auth/context/AuthContext';
+import { pushRealtimeNotification } from '../notificationStore';
+import { useAuth } from '../../auth/hooks/useAuth';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -35,6 +36,94 @@ const readJSON = (key, fallback) => {
     return fallback;
   }
 };
+
+function PeriodRow({ period, globalDeadline, onUpdate }) {
+  const [draft, setDraft] = useState({});
+
+  const clearDraftField = (field) => {
+    setDraft((prev) => {
+      if (!(field in prev)) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const commit = (field, rawValue, normalized = rawValue) => {
+    if (normalized !== (period[field] || '')) {
+      onUpdate(period.id, field, normalized);
+    }
+    clearDraftField(field);
+  };
+
+  const labelVal = 'label' in draft ? draft.label : (period.label || '');
+  const startVal = 'start' in draft ? draft.start : (period.start || '');
+  const endVal = 'end' in draft ? draft.end : (period.end || '');
+  const deadlineVal = 'submissionDeadline' in draft ? draft.submissionDeadline : (period.submissionDeadline || '');
+
+  return (
+    <div className="gov-period-row">
+      <input
+        aria-label={`Nama periode ${period.label}`}
+        value={labelVal}
+        onChange={(event) => setDraft((prev) => ({ ...prev, label: event.target.value }))}
+        onBlur={() => commit('label', labelVal, labelVal.trim())}
+      />
+      <input
+        aria-label={`Tanggal mulai ${period.label}`}
+        type="date"
+        value={startVal}
+        onChange={(event) => {
+          const val = event.target.value;
+          setDraft((prev) => ({ ...prev, start: val }));
+          commit('start', val);
+        }}
+      />
+      <input
+        aria-label={`Tanggal akhir ${period.label}`}
+        type="date"
+        value={endVal}
+        onChange={(event) => {
+          const val = event.target.value;
+          setDraft((prev) => ({ ...prev, end: val }));
+          commit('end', val);
+        }}
+      />
+      <div>
+        <input
+          aria-label={`Tenggat periode opsional ${period.label}`}
+          type="datetime-local"
+          value={deadlineVal}
+          onChange={(event) => {
+            const val = event.target.value;
+            setDraft((prev) => ({ ...prev, submissionDeadline: val }));
+            commit('submissionDeadline', val);
+          }}
+        />
+        <small style={{ display: 'block', marginTop: '4px', color: '#475569', fontSize: '0.68rem' }}>
+          Tenggat global: {globalDeadline || 'Belum diatur'}
+        </small>
+      </div>
+      <select
+        aria-label={`Status periode ${period.label}`}
+        value={period.status}
+        onChange={(event) => onUpdate(period.id, 'status', event.target.value)}
+      >
+        <option>Active</option>
+        <option>Draft</option>
+        <option>Archived</option>
+      </select>
+      <label>
+        <input
+          type="checkbox"
+          checked={period.inputOpen !== false}
+          onChange={(event) => onUpdate(period.id, 'inputOpen', event.target.checked)}
+        />
+        Input dibuka
+      </label>
+    </div>
+  );
+}
 
 export default function PRPGovernance() {
   const { currentUser } = useAuth();
@@ -166,21 +255,25 @@ export default function PRPGovernance() {
   }, { scope: pageRef });
 
   // Sliding Underline Bar + Stage Transition saat berpindah sub-tab
+  const syncTabUnderline = () => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!tabBarRef.current || !tabLineRef.current) return;
+    const activeBtn = tabBarRef.current.querySelector('[data-tab-active="true"]');
+    if (!activeBtn) return;
+    gsap.to(tabLineRef.current, {
+      x: activeBtn.offsetLeft,
+      y: activeBtn.offsetTop + activeBtn.offsetHeight - 2.5,
+      width: activeBtn.offsetWidth,
+      opacity: 1,
+      duration: reduced ? 0 : 0.36,
+      ease: 'expo.out',
+      overwrite: 'auto',
+    });
+  };
+
   useGSAP(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (tabBarRef.current && tabLineRef.current) {
-      const activeBtn = tabBarRef.current.querySelector('[data-tab-active="true"]');
-      if (activeBtn) {
-        gsap.to(tabLineRef.current, {
-          x: activeBtn.offsetLeft,
-          width: activeBtn.offsetWidth,
-          opacity: 1,
-          duration: reduced ? 0 : 0.4,
-          ease: 'expo.out',
-          overwrite: 'auto',
-        });
-      }
-    }
+    syncTabUnderline();
 
     if (reduced || !tabStageRef.current) return undefined;
     gsap.fromTo(
@@ -197,6 +290,22 @@ export default function PRPGovernance() {
     );
   }, { dependencies: [activeTab] });
 
+  useEffect(() => {
+    const bar = tabBarRef.current;
+    if (!bar) return undefined;
+    const handleResize = () => syncTabUnderline();
+    window.addEventListener('resize', handleResize);
+    let ro = null;
+    if (typeof ResizeObserver === 'function') {
+      ro = new ResizeObserver(handleResize);
+      ro.observe(bar);
+    }
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (ro) ro.disconnect();
+    };
+  }, [activeTab]);
+
   const activePeriod = useMemo(
     () => periods.find((period) => period.status === 'Active') || periods[0],
     [periods]
@@ -206,18 +315,31 @@ export default function PRPGovernance() {
     try {
       validatePeriods(next);
       const previous = readJSON('prp_periods', DEFAULT_PERIODS);
-      if (JSON.stringify(previous) === JSON.stringify(next)) return;
+      if (JSON.stringify(previous) === JSON.stringify(next)) return true;
       localStorage.setItem('prp_periods', JSON.stringify(next));
       writeAudit('PERIODE_EVALUASI', detail, actor);
+      pushRealtimeNotification({
+        kind: 'PERIOD_STATUS',
+        title: 'Pembaruan Status & Tenggat Periode Evaluasi',
+        message: `${detail}. Silakan periksa status periode pada filter dashboard KPI Anda.`,
+        priority: 'WARNING',
+        targetType: 'ALL',
+        actionUrl: '/internal/kpi',
+        actionLabel: 'Lihat Status Periode',
+        senderName: actor,
+        senderEmail: currentUser?.email || 'superadmin@itpln.ac.id',
+      });
       setPeriods(next);
       window.dispatchEvent(new CustomEvent('prp-admin-updated'));
-      setFeedback('Perubahan periode berhasil disimpan dan diaudit.');
+      setFeedback('Perubahan periode berhasil disimpan, diaudit, dan dinotifikasikan ke seluruh unit.');
+      return true;
     } catch (error) {
       setFeedback(error.message);
+      return false;
     }
   };
 
-  const updatePeriod = (id, field, value) => {
+  const updatePeriod = (id, field, value) =>
     savePeriods(
       periods.map((period) => {
         if (period.id === id) return { ...period, [field]: value };
@@ -226,7 +348,6 @@ export default function PRPGovernance() {
       }),
       `Periode ${id}: ${field} -> ${String(value)}${field === 'status' && value === 'Active' ? '; periode aktif lainnya diarsipkan' : ''}`
     );
-  };
 
   const addPeriod = () =>
     savePeriods([
@@ -364,7 +485,7 @@ export default function PRPGovernance() {
         .gov-tab-underline {
           position: absolute;
           left: 0;
-          bottom: -1px;
+          top: 0;
           height: 2.5px;
           width: 0;
           background: #094E68;
@@ -497,7 +618,7 @@ export default function PRPGovernance() {
           transition: border-color 0.18s ease;
         }
         .gov-field::placeholder {
-          color: #64748b;
+          color: #475569;
         }
         .gov-field:focus-visible {
           outline: 2px solid #0E7480;
@@ -594,18 +715,24 @@ export default function PRPGovernance() {
             text-align: left !important;
           }
         }
+        @media (max-width: 768px) {
+          .gov-button,
+          .gov-field,
+          .gov-period-row input:not([type="checkbox"]),
+          .gov-period-row select,
+          .gov-period-row label {
+            min-height: 44px;
+          }
+        }
         @media (max-width: 640px) {
           .gov-period-row {
             grid-template-columns: 1fr;
-          }
-          .gov-button {
-            min-height: 44px;
           }
         }
       `}</style>
 
       <div className="gov-meta-top gov-reveal">
-        <span style={{ color: '#094E68', fontWeight: 700 }}>PRP // TATA KELOLA SISTEM</span>
+        <span style={{ color: '#094E68', fontWeight: 700 }}>DIREKTORAT PRP · TATA KELOLA SISTEM</span>
         <span>
           SIKLUS AKTIF: <strong style={{ color: '#072534' }}>{activePeriod?.label || 'Belum diatur'}</strong>
         </span>
@@ -720,57 +847,12 @@ export default function PRPGovernance() {
                 </button>
               </div>
               {periods.map((period) => (
-                <div className="gov-period-row" key={period.id}>
-                  <input
-                    aria-label="Nama periode"
-                    key={`label-${period.label}`}
-                    defaultValue={period.label}
-                    onBlur={(event) => updatePeriod(period.id, 'label', event.target.value.trim())}
-                  />
-                  <input
-                    aria-label="Tanggal mulai"
-                    key={`start-${period.start}`}
-                    type="date"
-                    defaultValue={period.start || ''}
-                    onBlur={(event) => updatePeriod(period.id, 'start', event.target.value)}
-                  />
-                  <input
-                    aria-label="Tanggal akhir"
-                    key={`end-${period.end}`}
-                    type="date"
-                    defaultValue={period.end || ''}
-                    onBlur={(event) => updatePeriod(period.id, 'end', event.target.value)}
-                  />
-                  <div>
-                    <input
-                      aria-label="Tenggat periode opsional"
-                      key={`deadline-${period.submissionDeadline}`}
-                      type="datetime-local"
-                      defaultValue={period.submissionDeadline || ''}
-                      onBlur={(event) => updatePeriod(period.id, 'submissionDeadline', event.target.value)}
-                    />
-                    <small style={{ display: 'block', marginTop: '4px', color: '#475569', fontSize: '0.68rem' }}>
-                      Tenggat global: {readSystemConfig().submissionDeadline || 'Belum diatur'}
-                    </small>
-                  </div>
-                  <select
-                    aria-label={`Status periode ${period.label}`}
-                    value={period.status}
-                    onChange={(event) => updatePeriod(period.id, 'status', event.target.value)}
-                  >
-                    <option>Active</option>
-                    <option>Draft</option>
-                    <option>Archived</option>
-                  </select>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={period.inputOpen !== false}
-                      onChange={(event) => updatePeriod(period.id, 'inputOpen', event.target.checked)}
-                    />
-                    Input dibuka
-                  </label>
-                </div>
+                <PeriodRow
+                  key={period.id}
+                  period={period}
+                  globalDeadline={readSystemConfig().submissionDeadline}
+                  onUpdate={updatePeriod}
+                />
               ))}
             </div>
           )}

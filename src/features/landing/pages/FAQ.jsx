@@ -195,7 +195,7 @@ export default function FAQ() {
           <div className="faq-hero-grid">
             <div>
               <div className="faq-hero-eyebrow ent-eyebrow" style={{ marginBottom: '1.25rem' }}>
-                06 // PUSAT BANTUAN &amp; KONTAK TEKNIS
+                PUSAT BANTUAN &amp; KONTAK TEKNIS
               </div>
               <h1
                 className="faq-hero-title"

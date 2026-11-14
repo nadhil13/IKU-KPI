@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, ArrowUpRight, Info } from 'lucide-react';
+import { Calendar, ArrowUpRight, Info, Lock, LockOpen } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../../auth/context/AuthContext';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { ikuPercentage, listIkuSubmissions, subscribeIku } from '../../iku/ikuWorkflowStore';
+import { listKpiPeriodsWithStatus } from '../../kpi/kpiWorkflowStore';
 import KPIDataEntrySheet from '../../kpi/components/KPIDataEntrySheet';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -105,20 +106,14 @@ const STATUS_LABELS = {
 
 export default function Dashboard() {
   const { currentUser, activeWorkspace, switchWorkspace } = useAuth();
-  const [periods, setPeriods] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('prp_periods')) || [];
-    } catch {
-      return [];
-    }
-  });
+  const [periods, setPeriods] = useState(listKpiPeriodsWithStatus);
   const [ikuTick, setIkuTick] = useState(0);
 
   const activePeriod = useMemo(
-    () => periods.find((period) => period.status === 'Active') || periods[0],
+    () => periods.find((period) => period.isOpenForInput) || periods.find((period) => period.status === 'Active') || periods[0],
     [periods]
   );
-  const [selectedYear, setSelectedYear] = useState(() => activePeriod?.id || '2025/2026');
+  const [selectedYear, setSelectedYear] = useState(() => activePeriod?.id || '2026');
   const [kpiLiveMetrics, setKpiLiveMetrics] = useState({
     totalBobot: 100,
     totalScore: 0,
@@ -145,27 +140,26 @@ export default function Dashboard() {
 
   const isIkuOnly = currentUser?.role === 'iku_only';
   const isKpiOnly = currentUser?.role === 'kpi_only';
+  const isSpiAuditor = currentUser?.role === 'spi';
   const isDual = ['dual', 'superadmin_prp'].includes(currentUser?.role);
   const effectiveYear =
-    periods.length && !periods.some((period) => period.id === selectedYear)
+    periods.length && !periods.some((period) => String(period.id) === String(selectedYear))
       ? activePeriod?.id || selectedYear
       : selectedYear;
-  const selectedPeriod = periods.find((period) => period.id === effectiveYear) || activePeriod;
-  const isPeriodOpen = selectedPeriod?.inputOpen !== false && selectedPeriod?.status !== 'Archived';
+  const selectedPeriod = periods.find((period) => String(period.id) === String(effectiveYear)) || activePeriod;
+  const isPeriodOpen = selectedPeriod ? Boolean(selectedPeriod.isOpenForInput) : true;
 
   useEffect(() => {
     const refreshPeriods = () => {
-      try {
-        setPeriods(JSON.parse(localStorage.getItem('prp_periods')) || []);
-      } catch {
-        setPeriods([]);
-      }
+      setPeriods(listKpiPeriodsWithStatus());
     };
     window.addEventListener('storage', refreshPeriods);
     window.addEventListener('prp-admin-updated', refreshPeriods);
+    window.addEventListener('kpi-workflow-updated', refreshPeriods);
     return () => {
       window.removeEventListener('storage', refreshPeriods);
       window.removeEventListener('prp-admin-updated', refreshPeriods);
+      window.removeEventListener('kpi-workflow-updated', refreshPeriods);
     };
   }, []);
 
@@ -173,7 +167,7 @@ export default function Dashboard() {
 
   const currentView = isIkuOnly
     ? 'iku'
-    : isKpiOnly
+    : (isKpiOnly || isSpiAuditor)
       ? 'kpi'
       : activeWorkspace === 'kpi'
         ? 'kpi'
@@ -183,7 +177,7 @@ export default function Dashboard() {
   const ikuOverview = useMemo(() => {
     void ikuTick;
     let periodRecords = [];
-    if (currentUser && ['iku_only', 'superadmin_prp'].includes(currentUser.role)) {
+    if (currentUser && ['iku_only', 'dual', 'superadmin_prp'].includes(currentUser.role)) {
       try {
         periodRecords = listIkuSubmissions(currentUser).filter((r) => r.period === effectiveYear);
       } catch {
@@ -450,22 +444,26 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <span style={{ color: '#094E68', fontWeight: 700 }}>
             {isIkuOnly
-              ? '01 // OTORITAS KHUSUS IKU'
-              : isKpiOnly
-                ? '02 // OTORITAS KHUSUS KPI'
-                : currentUser?.role === 'superadmin_prp'
-                  ? `PRP // RUANG KERJA ${currentView.toUpperCase()}`
-                  : '03 // PERAN GANDA'}
+              ? 'OTORITAS KHUSUS IKU'
+              : isSpiAuditor
+                ? 'AUDITOR SPI · HANYA LIHAT (READ-ONLY) & EKSPOR AUDIT'
+                : isKpiOnly
+                  ? `OTORITAS KHUSUS UNIT PIC: ${(currentUser?.picCodes || []).join(', ') || currentUser?.unit || 'KPI'}`
+                  : currentUser?.role === 'superadmin_prp'
+                    ? `RUANG KERJA ${currentView.toUpperCase()} ADMIN PRP (FULL ACCESS)`
+                    : 'OTORITAS GANDA IKU & KPI'}
           </span>
           <span>·</span>
           <span>
             {currentView === 'iku'
               ? 'KEPMENDIKBUDRISTEK NO. 210/M/2023'
-              : 'PERSPEKTIF A · B · C · D'}
+              : isKpiOnly
+                ? 'DATA TERISOLASI KHUSUS UNIT PIC ANDA'
+                : 'PERSPEKTIF A · B · C · D'}
           </span>
         </div>
 
-        {/* Pemilih Tahun Akademik */}
+        {/* Pemilih Tahun Akademik & Penanda Status Aktif / Terkunci */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
             <Calendar size={14} color="#0E7480" aria-hidden="true" />
@@ -478,17 +476,33 @@ export default function Dashboard() {
               {periods.length ? (
                 periods.map((period) => (
                   <option key={period.id} value={period.id}>
-                    {period.label} [{period.status === 'Active' ? 'AKTIF' : period.status === 'Archived' ? 'ARSIP' : 'DRAFT'}]
+                    {period.label || `Periode ${period.id}`} [{period.isOpenForInput ? 'AKTIF • Terbuka untuk Diisi' : 'TERKUNCI • Nonaktif / Arsip'}]
                   </option>
                 ))
               ) : (
-                <option value="2025/2026">Tahun Akademik 2025/2026 [AKTIF]</option>
+                <option value="2026">Tahun Akademik 2025/2026 [AKTIF • Terbuka untuk Diisi]</option>
               )}
             </select>
           </div>
-          {currentView === 'kpi' && !isPeriodOpen && (
-            <span className="ent-badge ent-badge-revision">PERIODE TERKUNCI</span>
-          )}
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              padding: '0.35rem 0.68rem',
+              borderRadius: '6px',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              fontFamily: 'var(--ent-mono)',
+              background: isPeriodOpen ? '#F0FDF4' : '#FEF2F2',
+              border: `1px solid ${isPeriodOpen ? '#86EFAC' : '#FECACA'}`,
+              color: isPeriodOpen ? '#14532D' : '#991B1B',
+            }}
+            title={selectedPeriod?.statusLabel || (isPeriodOpen ? 'Periode Aktif (Terbuka untuk Diisi)' : 'Periode Nonaktif (Terkunci)')}
+          >
+            {isPeriodOpen ? <LockOpen size={12} /> : <Lock size={12} />}
+            {isPeriodOpen ? 'STATUS PERIODE: AKTIF (TERBUKA)' : 'STATUS PERIODE: TERKUNCI (NONAKTIF)'}
+          </span>
         </div>
       </div>
 
@@ -498,12 +512,24 @@ export default function Dashboard() {
           <h1 className="dash-title-h1">
             <span className="dash-title-mask">
               <span className="dash-title-line">
-                {currentView === 'iku' ? 'Matriks Capaian' : 'Evaluasi Operasional'}
+                {currentView === 'iku'
+                  ? 'Matriks Capaian'
+                  : isSpiAuditor
+                    ? 'Tabel Audit & Rekapitulasi'
+                    : isKpiOnly
+                      ? 'Indikator Kerja Khusus'
+                      : 'Evaluasi Operasional'}
               </span>
             </span>
             <span className="dash-title-mask">
               <span className="dash-title-line" style={{ fontWeight: 700, color: '#094E68' }}>
-                {currentView === 'iku' ? '8 IKU Kementerian.' : 'KPI Unit & Fakultas.'}
+                {currentView === 'iku'
+                  ? '8 IKU Kementerian.'
+                  : isSpiAuditor
+                    ? 'KPI Institusi (SPI View-Only).'
+                    : isKpiOnly
+                      ? `${currentUser?.unit || 'Unit PIC Anda'}.`
+                      : 'KPI Unit & Fakultas.'}
               </span>
             </span>
           </h1>
@@ -519,7 +545,11 @@ export default function Dashboard() {
           >
             {currentView === 'iku'
               ? 'Pemantauan pengisian aktual, standar target RKAT, dan kelengkapan bukti 8 Indikator Kinerja Utama Institut Teknologi PLN.'
-              : 'Pengukuran terstruktur capaian Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), serta Kepatuhan (D).'}
+              : isSpiAuditor
+                ? 'Halaman audit Satuan Pengawasan Internal (SPI). Seluruh data KPI dan bukti dukung ditampilkan dalam mode baca-saja (Read-Only) tanpa fitur checklist persetujuan, dilengkapi akses unduh bukti dan Ekspor Excel penuh.'
+                : isKpiOnly
+                  ? `Menampilkan khusus daftar indikator yang menjadi tanggung jawab PIC Anda (${(currentUser?.picCodes || []).join(', ')}). Data unit lain diisolasi demi kerahasiaan antar-bagian.`
+                  : 'Pengukuran terstruktur capaian Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), serta Kepatuhan (D).'}
           </p>
         </div>
 
@@ -561,7 +591,7 @@ export default function Dashboard() {
               style={{
                 position: 'relative',
                 zIndex: 2,
-                minHeight: '40px',
+                minHeight: '44px',
                 padding: '0.48rem 0.75rem',
                 border: 'none',
                 borderRadius: '6px',
@@ -575,7 +605,7 @@ export default function Dashboard() {
                 transition: 'color 0.2s ease',
               }}
             >
-              01 // RUANG IKU
+              RUANG IKU
             </button>
             <button
               type="button"
@@ -584,7 +614,7 @@ export default function Dashboard() {
               style={{
                 position: 'relative',
                 zIndex: 2,
-                minHeight: '40px',
+                minHeight: '44px',
                 padding: '0.48rem 0.75rem',
                 border: 'none',
                 borderRadius: '6px',
@@ -598,7 +628,7 @@ export default function Dashboard() {
                 transition: 'color 0.2s ease',
               }}
             >
-              02 // RUANG KPI
+              RUANG KPI
             </button>
           </div>
         )}
@@ -612,7 +642,7 @@ export default function Dashboard() {
         <div className="dash-ledger-strip">
           {[
             {
-              code: '01 // CAKUPAN',
+              code: 'CAKUPAN',
               label: 'Indikator Terisi',
               val: `${String(ikuOverview.filledCount).padStart(2, '0')}/08`,
               sub: ikuOverview.activeRecord
@@ -620,7 +650,7 @@ export default function Dashboard() {
                 : 'Belum ada submission pada periode ini',
             },
             {
-              code: '02 // CAPAIAN',
+              code: 'CAPAIAN',
               label: 'Memenuhi Target (≥100%)',
               val: `${String(ikuOverview.onTargetCount).padStart(2, '0')}/08`,
               sub:
@@ -629,7 +659,7 @@ export default function Dashboard() {
                   : 'Menunggu input realisasi aktual unit',
             },
             {
-              code: '03 // BUKTI HTTPS',
+              code: 'BUKTI HTTPS',
               label: 'Tautan Bukti Tercatat',
               val: `${String(ikuOverview.withEvidenceCount).padStart(2, '0')}/08`,
               sub: ikuOverview.activeRecord
@@ -637,7 +667,7 @@ export default function Dashboard() {
                 : 'Lengkapi bukti pada menu Submission IKU',
             },
             {
-              code: '04 // SIKLUS',
+              code: 'SIKLUS',
               label: 'Status Periode Evaluasi',
               val: isPeriodOpen ? 'AKTIF' : 'KUNCI',
               sub: selectedPeriod?.label || effectiveYear,
@@ -679,15 +709,15 @@ export default function Dashboard() {
       ) : (
         <div className="dash-ledger-strip" style={{ marginBottom: '2rem' }}>
           {[
-            ...(kpiLiveMetrics.sectionScores || []).map((sec, idx) => ({
-              code: `0${idx + 1} // BAGIAN ${sec.code}`,
+            ...(kpiLiveMetrics.sectionScores || []).map((sec) => ({
+              code: isKpiOnly ? `BAGIAN ${sec.code} (PIC ANDA)` : `BAGIAN ${sec.code}`,
               label: sec.isPenaltySection ? `Maks ${sec.weightDisplay}` : `Bobot ${sec.weightDisplay}`,
               val: `${(Number(sec.score) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
               sub: `${sec.title} · ${sec.completed}/${sec.total} butir`,
             })),
             {
-              code: 'FINAL // SKOR BERSIH',
-              label: 'Total Capaian / 100',
+              code: isKpiOnly ? 'SKOR UNIT PIC' : 'SKOR BERSIH',
+              label: isKpiOnly ? 'Total Skor Unit Anda' : 'Total Capaian / 100',
               val: kpiLiveMetrics.totalScore.toFixed(2).replace('.', ','),
               sub: `Terisi ${kpiLiveMetrics.filledCount}/${kpiLiveMetrics.totalCount} butir (${kpiLiveMetrics.filledInputsCount}/${kpiLiveMetrics.totalInputsCount} sel)`,
             },
@@ -787,7 +817,7 @@ export default function Dashboard() {
                   textTransform: 'uppercase',
                 }}
               >
-                INDEKS // 01 - 08
+                INDEKS 01–08
               </span>
               <h2
                 style={{
@@ -803,13 +833,13 @@ export default function Dashboard() {
               </h2>
             </div>
 
-            {['iku_only', 'superadmin_prp'].includes(currentUser?.role) ? (
-              <Link to="/internal/iku-submissions" className="ent-btn ent-btn-primary" style={{ minHeight: '42px' }}>
+            {['iku_only', 'dual', 'superadmin_prp'].includes(currentUser?.role) ? (
+              <Link to="/internal/iku-submissions" className="ent-btn ent-btn-primary" style={{ minHeight: '44px' }}>
                 {ikuOverview.activeRecord ? 'Buka Submission & Bukti IKU' : 'Isi Capaian & Bukti IKU'}{' '}
                 <ArrowUpRight size={14} />
               </Link>
             ) : (
-              <Link to="/iku-list" className="ent-btn" style={{ minHeight: '42px' }}>
+              <Link to="/iku-list" className="ent-btn" style={{ minHeight: '44px' }}>
                 Katalog Standar 8 IKU <ArrowUpRight size={14} />
               </Link>
             )}
@@ -839,7 +869,7 @@ export default function Dashboard() {
                           letterSpacing: '0.06em',
                         }}
                       >
-                        {item.idx} // {item.code}
+                        {item.idx} · {item.code}
                       </span>
                       <span className={item.badgeClass}>{item.badgeLabel}</span>
                     </div>
@@ -948,7 +978,11 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        <KPIDataEntrySheet onMetricsUpdate={setKpiLiveMetrics} readOnly={!isPeriodOpen} />
+        <KPIDataEntrySheet
+          period={effectiveYear}
+          onMetricsUpdate={setKpiLiveMetrics}
+          readOnly={!isPeriodOpen || isSpiAuditor}
+        />
       )}
     </div>
   );

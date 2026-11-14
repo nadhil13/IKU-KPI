@@ -249,7 +249,7 @@ export default function IKUList() {
         {/* HERO MASTHEAD */}
         <header style={{ marginBottom: '2.25rem' }}>
           <div className="iku-cat-hero ent-eyebrow" style={{ marginBottom: '1rem' }}>
-            KEPMENDIKBUDRISTEK NO. 210/M/2023 // DIREKTORAT PRP ITPLN
+            KEPMENDIKBUDRISTEK NO. 210/M/2023 · DIREKTORAT PRP ITPLN
           </div>
 
           <div
@@ -400,7 +400,7 @@ export default function IKUList() {
                       letterSpacing: '0.06em',
                     }}
                   >
-                    {item.idx} // {item.code}
+                    {item.idx} · {item.code}
                   </span>
                   <span className="ent-badge ent-badge-info">{item.pillar}</span>
                 </div>

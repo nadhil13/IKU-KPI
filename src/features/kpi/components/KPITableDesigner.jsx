@@ -6,13 +6,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDown, ArrowUp, Check, CircleCheck, Copy, Ellipsis, Eye, History, MousePointerClick,
-  PanelRightClose, Plus, Radio, RotateCcw, Send, Settings2, Sigma, Table2, Trash2, TriangleAlert, Users, X,
+  ArrowDown, ArrowUp, Check, CircleCheck, Copy, Ellipsis, Eye, GitMerge, History, Lock, LockOpen, MousePointerClick,
+  PanelRightClose, Plus, Radio, RotateCcw, Send, Settings2, Sigma, Split, Table2, Trash2, TriangleAlert, Users, X,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../../auth/context/AuthContext';
-import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG } from './KPIDataEntrySheet';
+import { useAuth } from '../../auth/hooks/useAuth';
+import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
+import KPIDataEntrySheet from './KPIDataEntrySheet';
 import {
   CALC_TYPES, PRESET_FORMULA_EXPR, KPI_DRAFT_KEY, KPI_LIVE_SYNC_KEY, DEFAULT_KPI_VALIDATION_RULES,
   createId, normalizeKpiSections, publishKpiSections, readKpiHistory, readPublishedKpiConfig,
@@ -20,7 +21,14 @@ import {
   readMasterPicCatalog, normalizePicCodes, formatPicDisplay, readKpiValidationRules, saveKpiValidationRules,
 } from '../kpiSchema';
 import { compileFormula, describeKpiFormula, validateKpiFormula } from '../formulaEngine';
-import { distributeKpiForm, syncActiveKpiFormSections, getKpiUnits } from '../kpiWorkflowStore';
+import {
+  distributeKpiForm,
+  syncActiveKpiFormSections,
+  getKpiUnits,
+  listKpiPeriodsWithStatus,
+  syncPeriodMasterTable,
+  getFormForPeriod,
+} from '../kpiWorkflowStore';
 import './KPITableDesigner.css';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -159,9 +167,18 @@ export default function KPITableDesigner() {
   const [history, setHistory] = useState(readKpiHistory);
   const [showPreview, setShowPreview] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
+  const [confirmState, setConfirmState] = useState(null);
   const [simValues, setSimValues] = useState({});
   const [periodString, setPeriodString] = useState(() => String(new Date().getFullYear()));
+  const [periodsList, setPeriodsList] = useState(listKpiPeriodsWithStatus);
+  const [syncOpenPeriod, setSyncOpenPeriod] = useState(true);
+  const [syncLockPrevious, setSyncLockPrevious] = useState(true);
   const [sending, setSending] = useState(false);
+
+  const selectedPeriodMeta = useMemo(() => {
+    const clean = String(periodString || '').trim();
+    return periodsList.find((p) => String(p.id) === clean || String(p.name || '').includes(clean)) || null;
+  }, [periodsList, periodString]);
 
   const normalized = useMemo(() => normalizeKpiSections(sections), [sections]);
   const validation = useMemo(() => validateKpiSections(normalized, validationRules), [normalized, validationRules]);
@@ -175,8 +192,10 @@ export default function KPITableDesigner() {
     return map;
   }, [validation]);
 
-  const selectedSection = normalized.find((section) => section.items.some((item) => item.id === selectedId));
-  const selected = selectedSection?.items.find((item) => item.id === selectedId) || null;
+  const selectedSectionIndex = normalized.findIndex((section) => section.items.some((item) => item.id === selectedId));
+  const selectedSection = selectedSectionIndex >= 0 ? normalized[selectedSectionIndex] : undefined;
+  const selectedItemIndex = selectedSection ? selectedSection.items.findIndex((item) => item.id === selectedId) : -1;
+  const selected = selectedItemIndex >= 0 ? selectedSection.items[selectedItemIndex] : null;
   const selectedPrefix = selected ? itemRefPrefix(selectedSection.code, selected.no) : '';
   const selectedExpr = selected ? visibleExpr(selected) : '';
   const formulaEditable = Boolean(selected) && !isDateType(selected.calcType);
@@ -209,7 +228,7 @@ export default function KPITableDesigner() {
   }, [normalized]);
   const totalScore = [...results.values()].reduce((sum, result) => sum + (result.weightedScore || 0), 0);
   const totalRows = normalized.reduce((sum, section) => sum + section.items.length, 0);
-  const activeUnitCount = useMemo(() => getKpiUnits().length, [picCatalog]);
+  const activeUnitCount = useMemo(() => (picCatalog.length >= 0 ? getKpiUnits().length : 0), [picCatalog]);
 
   const notify = useCallback((message) => {
     setNotice(message);
@@ -221,11 +240,14 @@ export default function KPITableDesigner() {
     const syncMaster = () => {
       setPicCatalog(readMasterPicCatalog());
       setValidationRules(readKpiValidationRules());
+      setPeriodsList(listKpiPeriodsWithStatus());
     };
     window.addEventListener('prp-admin-updated', syncMaster);
+    window.addEventListener('kpi-workflow-updated', syncMaster);
     window.addEventListener('storage', syncMaster);
     return () => {
       window.removeEventListener('prp-admin-updated', syncMaster);
+      window.removeEventListener('kpi-workflow-updated', syncMaster);
       window.removeEventListener('storage', syncMaster);
     };
   }, []);
@@ -254,6 +276,18 @@ export default function KPITableDesigner() {
   }, [normalized, liveSync, hasBlockingError, notify, currentUser?.email]);
 
   useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
+
+  useEffect(() => {
+    if (!confirmState) return undefined;
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setConfirmState(null);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [confirmState]);
 
   useEffect(() => {
     if (!menuFor && !picPickerFor) return undefined;
@@ -346,7 +380,7 @@ export default function KPITableDesigner() {
     });
   };
 
-  const insertRow = (si, ii, duplicate = false) => {
+  const insertRow = (si, ii, duplicate = false, position = 'below') => {
     let addedId = null;
     const secCode = normalized[si]?.code || 'A';
     editItems(
@@ -364,12 +398,108 @@ export default function KPITableDesigner() {
         delete item.hideIndikatorCell;
         addedId = item.id;
         const result = [...items];
-        result.splice(ii + 1, 0, item);
+        const insertAt = position === 'above' ? Math.max(0, ii) : ii + 1;
+        result.splice(insertAt, 0, item);
         return result;
       },
-      `Baris indikator baru pada Perspektif ${secCode} berhasil ditambahkan dan disinkronkan realtime ke ${activeUnitCount} unit kerja.`,
+      `Baris indikator baru (${position === 'above' ? 'sisip di atas' : 'sisip di bawah'}) pada Perspektif ${secCode} berhasil ditambahkan dan disinkronkan realtime ke ${activeUnitCount} unit kerja.`,
     );
     if (addedId) setSelectedId(addedId);
+  };
+
+  const deleteRowAt = (si, ii, itemLabel = '') => {
+    const secCode = normalized[si]?.code || 'A';
+    editItems(
+      si,
+      (items) => items.filter((_, index) => index !== ii),
+      `Baris ${secCode}.${itemLabel || ii + 1} dihapus dan disinkronkan ke form seluruh unit.`,
+    );
+  };
+
+  const toggleMergeNo = (si, ii, item) => {
+    if (ii <= 0) {
+      notify('Merge sel ke atas hanya dapat dilakukan mulai dari baris ke-2 pada bagian yang sama.');
+      return;
+    }
+    const nextMerged = !item.hideExcelNo;
+    editItems(
+      si,
+      (items) => items.map((entry, idx) => (idx === ii ? { ...entry, hideExcelNo: nextMerged } : entry)),
+      nextMerged
+        ? `Sel Nomor pada baris ${normalized[si]?.code}.${item.no} digabung (Merge Cell) dengan baris di atasnya.`
+        : `Merge Sel Nomor pada baris ${normalized[si]?.code}.${item.no} dibatalkan (Unmerge).`,
+    );
+  };
+
+  const toggleMergeIndikator = (si, ii, item) => {
+    if (ii <= 0) {
+      notify('Merge sel ke atas hanya dapat dilakukan mulai dari baris ke-2 pada bagian yang sama.');
+      return;
+    }
+    const nextMerged = !item.hideIndikatorCell;
+    editItems(
+      si,
+      (items) => items.map((entry, idx) => (idx === ii ? { ...entry, hideIndikatorCell: nextMerged } : entry)),
+      nextMerged
+        ? `Sel Indikator Kinerja pada baris ${normalized[si]?.code}.${item.no} digabung (Merge Cell) dengan baris di atasnya.`
+        : `Merge Sel Indikator pada baris ${normalized[si]?.code}.${item.no} dibatalkan (Unmerge).`,
+    );
+  };
+
+  const mergeBothCellsAbove = (si, ii, item) => {
+    if (ii <= 0) {
+      notify('Merge sel ke atas hanya dapat dilakukan mulai dari baris ke-2 pada bagian yang sama.');
+      return;
+    }
+    editItems(
+      si,
+      (items) => items.map((entry, idx) => (idx === ii ? { ...entry, hideExcelNo: true, hideIndikatorCell: true } : entry)),
+      `Sel Nomor & Indikator pada baris ${normalized[si]?.code}.${item.no} digabung (Merge Cell) dengan baris di atasnya.`,
+    );
+  };
+
+  const unmergeRowCells = (si, ii, item) => {
+    editItems(
+      si,
+      (items) => items.map((entry, idx) => (idx === ii ? { ...entry, hideExcelNo: false, hideIndikatorCell: false } : entry)),
+      `Sel pada baris ${normalized[si]?.code}.${item.no} dipisahkan kembali (Unmerge Cell).`,
+    );
+  };
+
+  const handleLoadPeriodStructure = (targetPeriod) => {
+    const clean = String(targetPeriod || periodString || '').trim();
+    if (!clean) return;
+    setPeriodString(clean);
+    const periodForm = getFormForPeriod(clean);
+    if (periodForm?.sections?.length) {
+      const migrated = migrate(clone(periodForm.sections));
+      setSections(migrated);
+      notify(`Struktur master tabel historis periode ${clean} (${migrated.reduce((acc, s) => acc + s.items.length, 0)} baris) dimuat ke editor.`);
+    } else {
+      notify(`Periode ${clean} dipilih. Gunakan "Sinkronkan Master Tabel ke Periode" untuk menyimpan struktur tahun ${clean}.`);
+    }
+  };
+
+  const handleSyncPeriodMaster = () => {
+    const clean = String(periodString || '').trim();
+    if (!clean || hasBlockingError) {
+      notify('Perbaiki error validasi wajib dan pastikan tahun periode terisi sebelum menyinkronkan master tabel.');
+      setShowPanel(true);
+      return;
+    }
+    const actor = currentUser?.email || 'Superadmin PRP';
+    const pub = publishKpiSections(normalized, { actor, snapshot: true, note: `Sinkronisasi Master Tabel Periode ${clean}` });
+    syncPeriodMasterTable(normalized, {
+      period: clean,
+      actor: currentUser,
+      openPeriod: syncOpenPeriod,
+      lockPreviousPeriods: syncLockPrevious,
+    });
+    setHistory(readKpiHistory());
+    setPeriodsList(listKpiPeriodsWithStatus());
+    notify(
+      `Master Tabel KPI Periode ${clean} (v${pub.version}, ${totalRows} baris) berhasil disinkronkan! Data historis periode sebelumnya tetap tersimpan utuh.`,
+    );
   };
 
   const addSubIndicator = (si, ii) => {
@@ -486,7 +616,8 @@ export default function KPITableDesigner() {
     try {
       const result = await distributeKpiForm(normalized, { period: periodString, actor: currentUser });
       setHistory(readKpiHistory());
-      notify(`Formulir KPI v${result.version} terdistribusi ke seluruh akun Unit/PIC. ID: ${result.id}`);
+      setPeriodsList(listKpiPeriodsWithStatus());
+      notify(`Formulir KPI v${result.version} terdistribusi ke seluruh akun Unit/PIC untuk periode ${periodString}. ID: ${result.id}`);
     } catch (error) {
       notify(`Pengiriman gagal: ${error?.message || 'Silakan coba kembali.'}`);
     } finally {
@@ -507,41 +638,88 @@ export default function KPITableDesigner() {
     <div ref={rootRef} className="kpi-designer-page" aria-busy={sending}>
       <header className="designer-hero">
         <div>
-          <div className="designer-kicker"><Table2 size={14} /> PRP / DESAINER TABEL, PIC &amp; SINKRONISASI BARIS REALTIME</div>
+          <div className="designer-kicker"><Table2 size={14} /> PRP / DESAINER TABEL DINAMIS, MERGE SEL, PIC &amp; SINKRONISASI PERIODE</div>
           <h1>Desainer Tabel &amp; Formula KPI</h1>
           <p>
-            Kelola indikator kinerja, tetapkan <strong>PIC Penanggung Jawab</strong> per baris (mengunci hak input unit), rancang rumus <strong>fx</strong>, dan tambahkan baris yang langsung muncul secara <strong>realtime</strong> di formulir tiap unit.
+            Kelola struktur tabel ala Excel (<strong>Sisip/Hapus Baris</strong>, <strong>Merge &amp; Unmerge Sel</strong>, bobot, target, rumus <strong>fx</strong>), tetapkan <strong>PIC Penanggung Jawab</strong>, dan sinkronkan master tabel saat pergantian periode tanpa mengubah data historis tahun sebelumnya.
           </p>
         </div>
-        <div className="designer-actions">
-          <label className="designer-period">
+        <div className="designer-actions" style={{ alignItems: 'center' }}>
+          <label className="designer-period" title="Pilih periode yang ada atau ketik tahun periode baru (mis. 2027)">
             <span>Periode</span>
-            <input value={periodString} onChange={(event) => setPeriodString(event.target.value)} />
+            <select
+              aria-label="Pilih periode tersedia"
+              value={periodsList.some((p) => String(p.id) === String(periodString).trim()) ? String(periodString).trim() : ''}
+              onChange={(event) => {
+                if (event.target.value) handleLoadPeriodStructure(event.target.value);
+              }}
+              style={{ border: 'none', background: 'transparent', fontWeight: 700, color: '#072534', cursor: 'pointer' }}
+            >
+              <option value="">Kustom...</option>
+              {periodsList.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.id} ({p.isOpenForInput ? 'AKTIF - Terbuka' : 'TERKUNCI - Nonaktif'})
+                </option>
+              ))}
+            </select>
+            <input
+              aria-label="Ketik tahun periode"
+              value={periodString}
+              onChange={(event) => setPeriodString(event.target.value)}
+              style={{ width: '68px' }}
+            />
           </label>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              padding: '0.42rem 0.7rem',
+              borderRadius: '6px',
+              fontSize: '0.73rem',
+              fontWeight: 800,
+              background: selectedPeriodMeta?.isOpenForInput ? '#F0FDF4' : '#FEF2F2',
+              border: `1px solid ${selectedPeriodMeta?.isOpenForInput ? '#86EFAC' : '#FECACA'}`,
+              color: selectedPeriodMeta?.isOpenForInput ? '#14532D' : '#991B1B',
+            }}
+            title={selectedPeriodMeta ? selectedPeriodMeta.statusLabel : 'Periode Baru (belum disinkronkan)'}
+          >
+            {selectedPeriodMeta?.isOpenForInput ? <LockOpen size={13} /> : <Lock size={13} />}
+            {selectedPeriodMeta
+              ? (selectedPeriodMeta.isOpenForInput ? `Periode ${periodString}: AKTIF (Terbuka)` : `Periode ${periodString}: TERKUNCI (Nonaktif)`)
+              : `Periode ${periodString || '-'}: Siap Buat Baru`}
+          </span>
           <button
             type="button"
             onClick={() => {
-              if (!window.confirm('Kembalikan draft ke struktur resmi ITPLN beserta 29 pemetaan PIC default?')) return;
-              localStorage.removeItem(KPI_DRAFT_KEY);
-              const defaults = migrate(KPI_SECTIONS_CONFIG);
-              setSections(defaults);
-              setSimValues({});
-              setSelectedId(null);
-              pushRealtimeStructureNow(defaults, 'Draft dikembalikan ke struktur resmi ITPLN beserta pemetaan PIC.');
+              setConfirmState({
+                title: 'Reset Draft Struktur KPI',
+                message: 'Kembalikan draft ke struktur resmi ITPLN beserta 29 pemetaan PIC default?',
+                confirmLabel: 'Ya, Reset Default',
+                danger: false,
+                onConfirm: () => {
+                  localStorage.removeItem(KPI_DRAFT_KEY);
+                  const defaults = migrate(KPI_SECTIONS_CONFIG);
+                  setSections(defaults);
+                  setSimValues({});
+                  setSelectedId(null);
+                  pushRealtimeStructureNow(defaults, 'Draft dikembalikan ke struktur resmi ITPLN beserta pemetaan PIC.');
+                },
+              });
             }}
           >
             <RotateCcw size={15} /> Reset Default
           </button>
           <button
             type="button"
-            disabled={hasBlockingError}
-            onClick={handleSyncStructureRealtime}
-            title="Perbarui baris & struktur pada formulir aktif seluruh unit secara instan tanpa menghapus draf/submission unit"
+            disabled={hasBlockingError || !periodString.trim()}
+            onClick={handleSyncPeriodMaster}
+            title="Sinkronkan desain master tabel ke periode terpilih dan simpan struktur historis periode sebelumnya secara utuh"
           >
-            <Radio size={15} /> Sinkronkan Baris Realtime
+            <Radio size={15} /> Sinkronkan Master Tabel ke Periode {periodString}
           </button>
           <button type="button" className="primary" disabled={sending || hasBlockingError || !periodString.trim()} onClick={distribute}>
-            <Send size={15} /> {sending ? 'Mengirim...' : 'Kirim ke Unit Kerja'}
+            <Send size={15} /> {sending ? 'Mengirim...' : `Buka & Kirim Periode ${periodString}`}
           </button>
         </div>
       </header>
@@ -567,6 +745,23 @@ export default function KPITableDesigner() {
               }}
             /> Live sync ke unit
           </label>
+          <label className="designer-check" title="Buka periode target untuk pengisian unit saat sinkronisasi periode">
+            <input
+              type="checkbox"
+              checked={syncOpenPeriod}
+              onChange={(event) => setSyncOpenPeriod(event.target.checked)}
+            /> Buka periode saat sync
+          </label>
+          <label className="designer-check" title="Kunci periode tahun sebelumnya agar data historis tetap utuh dan tidak berubah">
+            <input
+              type="checkbox"
+              checked={syncLockPrevious}
+              onChange={(event) => setSyncLockPrevious(event.target.checked)}
+            /> Kunci periode lama (Arsip utuh)
+          </label>
+          <button type="button" onClick={handleSyncStructureRealtime} disabled={hasBlockingError}>
+            <Radio size={14} /> Sync Baris Aktif
+          </button>
           <button type="button" onClick={() => setSimValues({})}><RotateCcw size={14} /> Kosongkan simulasi</button>
           <button type="button" aria-pressed={showPreview} onClick={() => setShowPreview((value) => !value)}>
             <Eye size={14} /> {showPreview ? 'Kembali ke editor' : 'Preview user'}
@@ -722,6 +917,14 @@ export default function KPITableDesigner() {
                       onChange={(event) => updateItemPicText(selected, event.target.value)}
                     />
                   </label>
+                  <label>
+                    <span>Judul Grup Spanduk di Atas Baris (opsional, ala C.2)</span>
+                    <input
+                      value={selected.groupBannerTitle ?? ''}
+                      placeholder="Contoh: Klasterisasi Perguruan Tinggi Menuju Mandiri"
+                      onChange={(event) => patchItemById(selected.id, { groupBannerTitle: event.target.value })}
+                    />
+                  </label>
                   {selected.calcType === 'compliance_date_single' && (
                     <label>
                       <span>Batas waktu</span>
@@ -742,6 +945,85 @@ export default function KPITableDesigner() {
                       />
                     </label>
                   ))}
+                  <div
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      flexWrap: 'wrap',
+                      paddingTop: '0.35rem',
+                      borderTop: '1px dashed #D8E4EA',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#072534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Kontrol Baris &amp; Merge Sel ({selectedSection.code}.{selected.no}):
+                    </span>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => insertRow(selectedSectionIndex, selectedItemIndex, false, 'above')}
+                      title="Sisipkan baris indikator baru tepat di atas baris ini"
+                    >
+                      <Plus size={13} /> Sisip Baris Atas
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => insertRow(selectedSectionIndex, selectedItemIndex, false, 'below')}
+                      title="Sisipkan baris indikator baru tepat di bawah baris ini"
+                    >
+                      <Plus size={13} /> Sisip Baris Bawah
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={selectedItemIndex <= 0}
+                      aria-pressed={Boolean(selected.hideExcelNo)}
+                      onClick={() => toggleMergeNo(selectedSectionIndex, selectedItemIndex, selected)}
+                      title="Gabungkan (Merge) atau pisahkan sel Nomor dengan baris di atasnya"
+                    >
+                      <GitMerge size={13} /> {selected.hideExcelNo ? 'Unmerge Sel No' : 'Merge Sel No ↑'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={selectedItemIndex <= 0}
+                      aria-pressed={Boolean(selected.hideIndikatorCell)}
+                      onClick={() => toggleMergeIndikator(selectedSectionIndex, selectedItemIndex, selected)}
+                      title="Gabungkan (Merge) atau pisahkan sel Indikator Kinerja dengan baris di atasnya"
+                    >
+                      <GitMerge size={13} /> {selected.hideIndikatorCell ? 'Unmerge Sel Indikator' : 'Merge Sel Indikator ↑'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={selectedItemIndex <= 0}
+                      onClick={() => mergeBothCellsAbove(selectedSectionIndex, selectedItemIndex, selected)}
+                      title="Gabungkan sel Nomor sekaligus Indikator dengan baris di atasnya"
+                    >
+                      <GitMerge size={13} /> Merge No &amp; Indikator ↑
+                    </button>
+                    {(selected.hideExcelNo || selected.hideIndikatorCell) && (
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => unmergeRowCells(selectedSectionIndex, selectedItemIndex, selected)}
+                        title="Batalkan seluruh penggabungan sel (Unmerge Cell) pada baris ini"
+                        style={{ background: '#FFFBEB', borderColor: '#FCD34D', color: '#78350F', fontWeight: 700 }}
+                      >
+                        <Split size={13} /> Batalkan Merge Sel (Unmerge)
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="ghost danger"
+                      onClick={() => deleteRowAt(selectedSectionIndex, selectedItemIndex, selected.no)}
+                      title="Hapus baris indikator ini"
+                    >
+                      <Trash2 size={13} /> Hapus Baris
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -821,7 +1103,15 @@ export default function KPITableDesigner() {
                               className="ghost danger"
                               disabled={normalized.length <= 1}
                               title={`Hapus bagian ${section.code}`}
-                              onClick={() => window.confirm(`Hapus bagian ${section.code} beserta seluruh indikatornya?`) && setSections((current) => current.filter((_, index) => index !== si))}
+                              onClick={() =>
+                                setConfirmState({
+                                  title: `Hapus Bagian ${section.code}`,
+                                  message: `Hapus bagian ${section.code} beserta seluruh indikatornya?`,
+                                  confirmLabel: 'Ya, Hapus Bagian',
+                                  danger: true,
+                                  onConfirm: () => setSections((current) => current.filter((_, index) => index !== si)),
+                                })
+                              }
                             >
                               <Trash2 size={13} />
                             </button>
@@ -848,21 +1138,70 @@ export default function KPITableDesigner() {
                               <td className="gutter" title={hasError ? rowIssues.map((issue) => issue.message).join('\n') : undefined}>{gutter}</td>
                               {subi === 0 && (
                                 <>
-                                  <td rowSpan={span}>
+                                  <td rowSpan={span} style={{ background: item.hideExcelNo ? '#F8FAFC' : undefined }}>
                                     <Cell
                                       aria-label={`Nomor ${section.code}.${item.no}`}
                                       className="center"
                                       value={item.no}
                                       onChange={(value) => updateItem(si, ii, { no: value, excelNo: value, hideExcelNo: false })}
                                     />
+                                    {item.hideExcelNo && (
+                                      <button
+                                        type="button"
+                                        className="ghost"
+                                        onClick={() => toggleMergeNo(si, ii, item)}
+                                        title="Sel Nomor ini digabung (Merge) ke baris di atasnya. Klik untuk membatalkan merge (Unmerge)."
+                                        style={{
+                                          fontSize: '0.6rem',
+                                          padding: '1px 4px',
+                                          minHeight: '20px',
+                                          width: '100%',
+                                          color: '#094E68',
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        Merged ↑ (Unmerge)
+                                      </button>
+                                    )}
                                   </td>
-                                  <td rowSpan={span}>
+                                  <td rowSpan={span} style={{ background: item.hideIndikatorCell ? '#F8FAFC' : undefined }}>
+                                    {item.groupBannerTitle && (
+                                      <div
+                                        style={{
+                                          fontSize: '0.64rem',
+                                          fontWeight: 800,
+                                          color: '#094E68',
+                                          padding: '2px 6px',
+                                          background: '#EDF3F6',
+                                          borderBottom: '1px solid #D8E4EA',
+                                        }}
+                                      >
+                                        Grup: {item.groupBannerTitle}
+                                      </div>
+                                    )}
                                     <Cell
                                       multiline
                                       aria-label={`Indikator ${section.code}.${item.no}`}
                                       value={item.indikator}
                                       onChange={(value) => updateItem(si, ii, { indikator: value })}
                                     />
+                                    {item.hideIndikatorCell && (
+                                      <button
+                                        type="button"
+                                        className="ghost"
+                                        onClick={() => toggleMergeIndikator(si, ii, item)}
+                                        title="Sel Indikator ini digabung (Merge) ke baris di atasnya. Klik untuk membatalkan merge (Unmerge)."
+                                        style={{
+                                          fontSize: '0.62rem',
+                                          padding: '2px 6px',
+                                          minHeight: '22px',
+                                          color: '#094E68',
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        Merged dg Baris Atas ↑ (Klik untuk Unmerge)
+                                      </button>
+                                    )}
                                   </td>
                                   <td rowSpan={span} className="pic-cell">
                                     <button
@@ -1058,9 +1397,28 @@ export default function KPITableDesigner() {
                                       {menuFor === item.id && (
                                         <div className="menu" role="menu">
                                           {[
-                                            { icon: Plus, label: 'Sisipkan indikator di bawah', run: () => insertRow(si, ii) },
+                                            { icon: Plus, label: 'Sisipkan indikator di atas', run: () => insertRow(si, ii, false, 'above') },
+                                            { icon: Plus, label: 'Sisipkan indikator di bawah', run: () => insertRow(si, ii, false, 'below') },
                                             { icon: Plus, label: 'Tambah sub-indikator (1a, 1b...)', run: () => addSubIndicator(si, ii) },
                                             { icon: Plus, label: 'Tambah isian', run: () => editSubs(si, ii, (subs) => [...subs, newSub(subs.length + 1)]) },
+                                            {
+                                              icon: GitMerge,
+                                              label: item.hideExcelNo ? 'Unmerge Sel Nomor' : 'Merge Sel Nomor dg Baris Atas ↑',
+                                              run: () => toggleMergeNo(si, ii, item),
+                                              disabled: ii === 0,
+                                            },
+                                            {
+                                              icon: GitMerge,
+                                              label: item.hideIndikatorCell ? 'Unmerge Sel Indikator' : 'Merge Sel Indikator dg Baris Atas ↑',
+                                              run: () => toggleMergeIndikator(si, ii, item),
+                                              disabled: ii === 0,
+                                            },
+                                            {
+                                              icon: Split,
+                                              label: 'Batalkan Semua Merge Sel (Unmerge)',
+                                              run: () => unmergeRowCells(si, ii, item),
+                                              disabled: !item.hideExcelNo && !item.hideIndikatorCell,
+                                            },
                                             { icon: Copy, label: 'Duplikat baris', run: () => insertRow(si, ii, true) },
                                             { icon: ArrowUp, label: 'Pindah ke atas', run: () => editItems(si, (items) => move(items, ii, -1)), disabled: ii === 0 },
                                             { icon: ArrowDown, label: 'Pindah ke bawah', run: () => editItems(si, (items) => move(items, ii, 1)), disabled: ii === section.items.length - 1 },
@@ -1068,11 +1426,7 @@ export default function KPITableDesigner() {
                                               icon: Trash2,
                                               label: 'Hapus baris',
                                               danger: true,
-                                              run: () => editItems(
-                                                si,
-                                                (items) => items.filter((_, index) => index !== ii),
-                                                `Baris ${section.code}.${item.no} dihapus dan disinkronkan ke form seluruh unit.`,
-                                              ),
+                                              run: () => deleteRowAt(si, ii, item.no),
                                             },
                                           ].map(({ icon: Icon, label, run, disabled, danger }) => (
                                             <button
@@ -1271,6 +1625,77 @@ export default function KPITableDesigner() {
               </section>
             </aside>
           )}
+        </div>
+      )}
+
+      {confirmState && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="kpi-designer-confirm-title"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setConfirmState(null);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1300,
+            background: 'rgba(6, 44, 61, 0.56)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: 'min(440px, 100%)',
+              background: '#FFFFFF',
+              borderRadius: '10px',
+              border: '1px solid #D8E4EA',
+              boxShadow: '0 24px 48px rgba(7, 37, 52, 0.22)',
+              padding: '1.35rem',
+            }}
+          >
+            <h3
+              id="kpi-designer-confirm-title"
+              style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
+            >
+              {confirmState.title}
+            </h3>
+            <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
+              {confirmState.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="ghost"
+                style={{ minHeight: '44px', padding: '0.45rem 0.9rem', border: '1px solid #B8CAD4', borderRadius: '6px' }}
+                onClick={() => setConfirmState(null)}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="primary"
+                style={{
+                  minHeight: '44px',
+                  padding: '0.45rem 0.95rem',
+                  borderRadius: '6px',
+                  background: confirmState.danger ? '#991B1B' : '#094E68',
+                  borderColor: confirmState.danger ? '#991B1B' : '#094E68',
+                  color: '#FFFFFF',
+                }}
+                onClick={() => {
+                  const fn = confirmState.onConfirm;
+                  setConfirmState(null);
+                  fn?.();
+                }}
+              >
+                {confirmState.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

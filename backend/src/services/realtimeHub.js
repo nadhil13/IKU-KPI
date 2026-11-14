@@ -4,6 +4,7 @@
  */
 import crypto from 'node:crypto';
 import { doesBroadcastMatchUser } from './database.js';
+import { filterKpiWorkflowForCaller } from '../modules/kpi/kpiAccessPolicy.js';
 
 const clients = new Map();
 const MAX_CLIENTS_PER_IP = 25;
@@ -86,7 +87,17 @@ export function publishRealtimeEvent(eventName, payload, filterFn = null) {
     if (typeof filterFn === 'function' && !filterFn(client)) {
       continue;
     }
-    sendSseEvent(client, eventName, payload);
+    let clientPayload = payload;
+    if (payload?.stores?.prp_kpi_distribution_v1 && client.user?.role === 'kpi_only') {
+      clientPayload = {
+        ...payload,
+        stores: {
+          ...payload.stores,
+          prp_kpi_distribution_v1: filterKpiWorkflowForCaller(payload.stores.prp_kpi_distribution_v1, client.user),
+        },
+      };
+    }
+    sendSseEvent(client, eventName, clientPayload);
     delivered += 1;
   }
   return delivered;

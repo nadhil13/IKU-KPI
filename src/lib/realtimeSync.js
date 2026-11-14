@@ -21,6 +21,8 @@ const SYNCED_STORE_KEYS = [
   'prp_system_config',
   'prp_organization',
   'prp_users',
+  'prp_notifications_v1',
+  'prp_email_outbox_v1',
 ];
 
 const clientId = `client_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
@@ -91,7 +93,33 @@ function dispatchStoreRefreshEvents(changedKeys = []) {
   if (set.has('prp_iku_submissions_v1')) {
     window.dispatchEvent(new Event('prp-iku-updated'));
   }
+  if (set.has('prp_notifications_v1') || set.has('prp_email_outbox_v1')) {
+    window.dispatchEvent(new Event('prp-notifications-updated'));
+  }
   window.dispatchEvent(new Event('prp-admin-updated'));
+}
+
+function mergeRemoteUsersPreservingLocalSecrets(incomingUsers = []) {
+  let existing = [];
+  try {
+    const raw = JSON.parse(localStorage.getItem('prp_users') || '[]');
+    existing = Array.isArray(raw) ? raw : [];
+  } catch {
+    existing = [];
+  }
+  const existingByEmail = new Map(
+    existing
+      .filter((u) => typeof u?.email === 'string')
+      .map((u) => [u.email.toLowerCase(), u])
+  );
+  return incomingUsers.map((user) => {
+    const email = String(user?.email || '').toLowerCase();
+    const prev = email ? existingByEmail.get(email) : null;
+    if (!user.password && prev?.password) {
+      return { ...user, password: prev.password };
+    }
+    return user;
+  });
 }
 
 function applyRemoteStoresToLocal(storesMap = {}, remoteUsers = null, remoteAudit = null) {
@@ -101,14 +129,18 @@ function applyRemoteStoresToLocal(storesMap = {}, remoteUsers = null, remoteAudi
   try {
     for (const [key, val] of Object.entries(storesMap || {})) {
       if (val === undefined || val === null) continue;
-      const serialized = JSON.stringify(val);
+      const nextVal = key === 'prp_users' && Array.isArray(val)
+        ? mergeRemoteUsersPreservingLocalSecrets(val)
+        : val;
+      const serialized = JSON.stringify(nextVal);
       if (localStorage.getItem(key) !== serialized) {
         localStorage.setItem(key, serialized);
         changedKeys.push(key);
       }
     }
     if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-      const serializedUsers = JSON.stringify(remoteUsers);
+      const mergedRemote = mergeRemoteUsersPreservingLocalSecrets(remoteUsers);
+      const serializedUsers = JSON.stringify(mergedRemote);
       if (localStorage.getItem('prp_users') !== serializedUsers) {
         localStorage.setItem('prp_users', serializedUsers);
         changedKeys.push('prp_users');
@@ -186,6 +218,65 @@ export async function logoutViaBackend() {
     });
   } catch {
     // Abaikan jika sedang offline
+  }
+}
+
+export async function updateOwnProfileViaBackend(changes) {
+  const token = getAccessToken();
+  if (!token) return { handled: false };
+  try {
+    const res = await fetch('/api/v1/auth/profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(changes || {}),
+    });
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return { handled: false };
+    const data = await res.json();
+    return { handled: true, ok: res.ok && data.ok, user: data.user, error: data.error };
+  } catch {
+    return { handled: false };
+  }
+}
+
+export async function changeOwnPasswordViaBackend(currentPassword, newPassword) {
+  const token = getAccessToken();
+  if (!token) return { handled: false };
+  try {
+    const res = await fetch('/api/v1/auth/password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return { handled: false };
+    const data = await res.json();
+    return { handled: true, ok: res.ok && data.ok, user: data.user, error: data.error };
+  } catch {
+    return { handled: false };
+  }
+}
+
+export async function deleteUserViaBackend(email) {
+  const token = getAccessToken();
+  if (!token || !email) return { handled: false };
+  try {
+    const res = await fetch(`/api/v1/users/${encodeURIComponent(String(email).toLowerCase())}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return { handled: false };
+    const data = await res.json();
+    return { handled: true, ok: res.ok && data.ok, error: data.error };
+  } catch {
+    return { handled: false };
   }
 }
 

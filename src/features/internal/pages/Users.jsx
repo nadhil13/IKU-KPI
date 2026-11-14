@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Plus, Search, SlidersHorizontal, ShieldCheck, Pencil, Trash2, X, Check, KeyRound
+  Plus, Search, SlidersHorizontal, ShieldCheck, Pencil, Trash2, X, Check, KeyRound, Copy
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { MOCK_ACCOUNTS, readMergedUsers, useAuth } from '../../auth/context/AuthContext';
+import { MOCK_ACCOUNTS, readMergedUsers } from '../../auth/authAccounts';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { normalizePicCodes, readMasterPicCatalog } from '../../kpi/kpiSchema';
 import { syncActiveKpiFormUnits } from '../../kpi/kpiWorkflowStore';
-import { minimumPasswordLength, notifyAdminUpdated, resetUserPassword, writeAudit } from '../adminStore';
+import { deleteUserViaBackend } from '../../../lib/realtimeSync';
+import { minimumPasswordLength, notifyAdminUpdated, readOrganization, resetUserPassword, saveOrganization, writeAudit } from '../adminStore';
 import './Users.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -19,6 +21,8 @@ const roleLabels = {
   all: 'Semua peran',
   iku_only: 'Otoritas IKU',
   kpi_only: 'Otoritas KPI (Unit/PIC)',
+  spi: 'Auditor SPI (View Only & Audit)',
+  dual: 'Peran Ganda (IKU & KPI)',
   superadmin_prp: 'Superadmin PRP',
 };
 
@@ -34,11 +38,18 @@ const readUsers = () =>
 export default function Users() {
   const { currentUser } = useAuth();
   const pageRef = useRef(null);
+  const modalRef = useRef(null);
   const [users, setUsers] = useState(readUsers);
   const [picCatalog, setPicCatalog] = useState(readMasterPicCatalog);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [editing, setEditing] = useState(null);
+  const [modalError, setModalError] = useState('');
+  const [pageNotice, setPageNotice] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [resetResult, setResetResult] = useState(null);
+  const [newPicCodeInput, setNewPicCodeInput] = useState('');
+  const [newPicNameInput, setNewPicNameInput] = useState('');
 
   useEffect(() => {
     const refresh = () => {
@@ -54,13 +65,42 @@ export default function Users() {
   }, []);
 
   useEffect(() => {
-    if (!editing) return undefined;
+    if (!editing && !confirmAction && !resetResult) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setEditing(null);
+      if (event.key === 'Escape') {
+        if (confirmAction) setConfirmAction(null);
+        else if (resetResult) setResetResult(null);
+        else if (editing) {
+          setEditing(null);
+          setModalError('');
+        }
+        return;
+      }
+      if (event.key === 'Tab' && editing && !confirmAction && modalRef.current) {
+        const focusables = [...modalRef.current.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [editing]);
+  }, [editing, confirmAction, resetResult]);
+
+  const editingId = editing?.id || null;
+  useEffect(() => {
+    if (editingId && modalRef.current) {
+      const firstInput = modalRef.current.querySelector('input:not([disabled]), select:not([disabled])');
+      firstInput?.focus();
+    }
+  }, [editingId]);
 
   const persist = (next) => {
     setUsers(next);
@@ -71,6 +111,7 @@ export default function Users() {
 
   const openCreate = () => {
     setPicCatalog(readMasterPicCatalog());
+    setModalError('');
     setEditing({
       id: `user-${crypto.randomUUID()}`,
       name: '',
@@ -100,30 +141,34 @@ export default function Users() {
     const latest = readUsers();
     const original = latest.find((item) => item.id === editing.id);
     const email = editing.email.trim().toLowerCase();
+    const minLen = minimumPasswordLength();
     if (
       !editing.name.trim()
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
       || (!original && !editing.password)
-      || (editing.password && editing.password.length < minimumPasswordLength())
+      || (editing.password && editing.password.length < minLen)
     ) {
-      window.alert(`Nama, email valid, dan password minimal ${minimumPasswordLength()} karakter wajib diisi (password edit boleh kosong).`);
+      setModalError(`Nama, email valid, dan kata sandi minimal ${minLen} karakter wajib diisi (kata sandi saat edit boleh dikosongkan).`);
       return;
     }
-    const cleanPicCodes = editing.role === 'kpi_only' ? normalizePicCodes(editing.picCodes || []) : (editing.role === 'superadmin_prp' ? ['PRP'] : []);
-    if (editing.role === 'kpi_only' && cleanPicCodes.length === 0) {
-      window.alert('Pilih minimal satu Kode PIC Penanggung Jawab untuk akun Otoritas KPI agar hak akses baris indikator dapat dipetakan.');
+    const needsPic = editing.role === 'kpi_only' || editing.role === 'dual';
+    const cleanPicCodes = needsPic
+      ? normalizePicCodes(editing.picCodes || [])
+      : (editing.role === 'superadmin_prp' ? ['PRP'] : editing.role === 'spi' ? ['SPI'] : []);
+    if (needsPic && cleanPicCodes.length === 0) {
+      setModalError('Pilih minimal satu Kode PIC Penanggung Jawab untuk akun Otoritas KPI / Peran Ganda.');
       return;
     }
     if (latest.some((item) => item.email.toLowerCase() === email && item.id !== editing.id)) {
-      window.alert('Email sudah digunakan.');
+      setModalError('Alamat email tersebut sudah digunakan oleh akun lain.');
       return;
     }
     if (original?.email === currentUser?.email && (email !== original.email || editing.role !== original.role || editing.status !== original.status)) {
-      window.alert('Email, peran, dan status akun sendiri tidak dapat diubah.');
+      setModalError('Email, peran, dan status akun sesi aktif sendiri tidak dapat diubah.');
       return;
     }
     if (original && usersList.some((base) => base.id === original.id) && email !== original.email) {
-      window.alert('Email akun bawaan tidak dapat diubah.');
+      setModalError('Email akun bawaan sistem tidak dapat diubah.');
       return;
     }
     if (
@@ -132,9 +177,38 @@ export default function Users() {
       && (editing.role !== 'superadmin_prp' || editing.status !== 'Aktif')
       && !latest.some((item) => item.id !== original.id && item.role === 'superadmin_prp' && item.status === 'Aktif')
     ) {
-      window.alert('Minimal satu superadmin aktif harus tersedia.');
+      setModalError('Minimal satu akun Superadmin aktif harus tetap tersedia.');
       return;
     }
+
+    const badgeText = editing.role === 'kpi_only'
+      ? `PIC: ${cleanPicCodes.join(', ')}`
+      : editing.role === 'spi'
+        ? 'AUDITOR SPI (VIEW ONLY)'
+        : editing.role === 'dual'
+          ? `DUAL: ${cleanPicCodes.join(', ')}`
+          : editing.role === 'superadmin_prp'
+            ? 'SUPERADMIN PRP'
+            : 'IKU ONLY';
+
+    const titleText = editing.role === 'kpi_only'
+      ? `PIC Unit ${cleanPicCodes.join(', ')}`
+      : editing.role === 'spi'
+        ? 'Auditor SPI (View Only & Audit)'
+        : editing.role === 'dual'
+          ? `Peran Ganda (${cleanPicCodes.join(', ')})`
+          : roleLabels[editing.role];
+
+    const scopeText = editing.role === 'iku_only'
+      ? '8 IKU Kementerian'
+      : editing.role === 'spi'
+        ? 'Audit KPI (View Only & Ekspor)'
+        : editing.role === 'superadmin_prp'
+          ? 'Platform, IKU & KPI'
+          : editing.role === 'dual'
+            ? `IKU & KPI (${cleanPicCodes.join(', ')})`
+            : `KPI (${cleanPicCodes.join(', ')})`;
+
     const normalized = {
       ...original,
       ...editing,
@@ -143,15 +217,10 @@ export default function Users() {
       name: editing.name.trim(),
       unit: (editing.unit || editing.name).trim(),
       picCodes: cleanPicCodes,
-      badge: editing.role === 'kpi_only' ? `PIC: ${cleanPicCodes.join(', ')}` : (editing.role === 'superadmin_prp' ? 'SUPERADMIN PRP' : 'IKU ONLY'),
-      roleTitle: editing.role === 'kpi_only' ? `PIC Unit ${cleanPicCodes.join(', ')}` : roleLabels[editing.role],
-      roleLabel: roleLabels[editing.role],
-      accessScope:
-        editing.role === 'iku_only'
-          ? '8 IKU Kementerian'
-          : editing.role === 'superadmin_prp'
-            ? 'Platform, IKU & KPI'
-            : `KPI (${cleanPicCodes.join(', ')})`,
+      badge: badgeText,
+      roleTitle: titleText,
+      roleLabel: roleLabels[editing.role] || editing.role,
+      accessScope: scopeText,
     };
     const exists = !!original;
     persist(exists ? latest.map((item) => (item.id === normalized.id ? normalized : item)) : [...latest, normalized]);
@@ -160,82 +229,144 @@ export default function Users() {
       `Akun ${email}: ${normalized.role}${cleanPicCodes.length ? ` [PIC: ${cleanPicCodes.join(', ')}]` : ''}, ${normalized.status}`,
       currentUser?.email,
     );
+    setModalError('');
     setEditing(null);
+    setPageNotice({
+      type: 'ok',
+      text: exists ? `Akun ${email} berhasil diperbarui.` : `Akun baru ${email} berhasil ditambahkan.`,
+    });
   };
 
-  const removeUser = (id) => {
+  const requestRemoveUser = (target) => {
     const latest = readUsers();
-    const target = latest.find((item) => item.id === id);
-    if (!target || target.email === currentUser?.email || usersList.some((base) => base.id === id)) {
-      window.alert('Akun sendiri atau akun bawaan sistem tidak dapat dihapus.');
+    if (!target || target.email === currentUser?.email || usersList.some((base) => base.id === target.id)) {
+      setPageNotice({ type: 'error', text: 'Akun sesi sendiri atau akun bawaan sistem tidak dapat dihapus.' });
       return;
     }
-    if (target.role === 'superadmin_prp' && target.status === 'Aktif' && !latest.some((item) => item.id !== id && item.role === 'superadmin_prp' && item.status === 'Aktif')) {
-      window.alert('Superadmin aktif terakhir tidak dapat dihapus.');
+    if (target.role === 'superadmin_prp' && target.status === 'Aktif' && !latest.some((item) => item.id !== target.id && item.role === 'superadmin_prp' && item.status === 'Aktif')) {
+      setPageNotice({ type: 'error', text: 'Superadmin aktif terakhir tidak dapat dihapus.' });
       return;
     }
-    if (window.confirm('Hapus akun ini dari daftar akses?')) {
-      persist(latest.filter((item) => item.id !== id));
-      writeAudit('HAPUS_AKUN', `Akun ${target.email} dihapus`, currentUser?.email);
-    }
+    setConfirmAction({ type: 'delete', user: target });
   };
 
   const toggleUser = (user) => {
     if (user.email === currentUser?.email) {
-      window.alert('Akun sesi aktif tidak dapat dinonaktifkan sendiri.');
+      setPageNotice({ type: 'error', text: 'Akun sesi aktif tidak dapat dinonaktifkan sendiri.' });
       return;
     }
     const status = user.status === 'Aktif' ? 'Nonaktif' : 'Aktif';
     const latest = readUsers();
     if (user.role === 'superadmin_prp' && status === 'Nonaktif' && !latest.some((item) => item.id !== user.id && item.role === 'superadmin_prp' && item.status === 'Aktif')) {
-      window.alert('Superadmin aktif terakhir tidak dapat dinonaktifkan.');
+      setPageNotice({ type: 'error', text: 'Superadmin aktif terakhir tidak dapat dinonaktifkan.' });
       return;
     }
     persist(latest.map((item) => (item.id === user.id ? { ...item, status } : item)));
     writeAudit(status === 'Aktif' ? 'AKTIFKAN_AKUN' : 'NONAKTIFKAN_AKUN', `Akun ${user.email} diubah menjadi ${status}`, currentUser?.email);
+    setPageNotice({ type: 'ok', text: `Status akun ${user.email} diubah menjadi ${status}.` });
   };
 
-  const resetPassword = (user) => {
-    if (!window.confirm(`Reset password akun ${user.email}?`)) return;
-    const temporaryPassword = resetUserPassword(user, currentUser?.email);
-    setUsers(readUsers());
-    window.alert(`Password sementara ${user.email}: ${temporaryPassword}`);
+  const executeConfirmAction = async () => {
+    if (!confirmAction?.user) return;
+    const target = confirmAction.user;
+    if (confirmAction.type === 'delete') {
+      const latest = readUsers();
+      persist(latest.filter((item) => item.id !== target.id));
+      await deleteUserViaBackend(target.email);
+      writeAudit('HAPUS_AKUN', `Akun ${target.email} dihapus`, currentUser?.email);
+      setPageNotice({ type: 'ok', text: `Akun ${target.email} berhasil dihapus dari daftar akses.` });
+    } else if (confirmAction.type === 'reset') {
+      const temporaryPassword = resetUserPassword(target, currentUser?.email);
+      setUsers(readUsers());
+      setResetResult({ email: target.email, temporaryPassword, copied: false });
+      setPageNotice({ type: 'ok', text: `Kata sandi sementara dibuat untuk ${target.email}.` });
+    }
+    setConfirmAction(null);
   };
 
   const filteredUsers = useMemo(() => users.filter((user) => {
     const query = searchQuery.toLowerCase();
     const picText = (user.picCodes || []).join(' ').toLowerCase();
+    const unitText = String(user.unit || '').toLowerCase();
     const matchesSearch = user.name.toLowerCase().includes(query)
       || user.email.toLowerCase().includes(query)
+      || unitText.includes(query)
       || picText.includes(query);
     return matchesSearch && (filterRole === 'all' || user.role === filterRole);
   }), [users, searchQuery, filterRole]);
 
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const entrance = gsap.timeline({ defaults: { ease: 'expo.out' } });
-    entrance
-      .fromTo('.users-head-anim', { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, stagger: 0.05, clearProps: 'transform' })
-      .fromTo('.users-stat', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, stagger: 0.06, clearProps: 'transform' }, '-=0.35')
-      .fromTo('.users-table-card', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.65, clearProps: 'transform' }, '-=0.3');
+    const scroller = document.querySelector('.internal-main-scroll');
+    gsap.fromTo(
+      '.users-head-anim',
+      { y: 18, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.68, stagger: 0.06, ease: 'expo.out', clearProps: 'transform' }
+    );
+    gsap.fromTo(
+      '.users-row',
+      { y: 14, opacity: 0 },
+      {
+        y: 0,
+        opacity: 1,
+        duration: 0.56,
+        stagger: 0.04,
+        ease: 'expo.out',
+        clearProps: 'transform',
+        scrollTrigger: scroller ? { trigger: '.users-table-card', scroller, start: 'top 90%', once: true } : undefined,
+      }
+    );
   }, { scope: pageRef });
+
+  const kpiActiveCount = users.filter((item) => (item.role === 'kpi_only' || item.role === 'dual') && item.status === 'Aktif').length;
+  const ikuAndDualCount = users.filter((item) => (item.role === 'iku_only' || item.role === 'dual') && item.status === 'Aktif').length;
 
   return (
     <section ref={pageRef} className="users-page">
-      <div className="users-heading">
-        <div className="users-head-anim">
+      <div className="users-header">
+        <div className="users-header-copy users-head-anim">
           <div className="ent-eyebrow">
-            <ShieldCheck size={12} /> DIREKTORI & OTORITAS / HAK AKSES AKUN & PIC
+            <ShieldCheck size={12} /> DIREKTORI & HAK AKSES PENGGUNA
           </div>
-          <h1 className="users-title">Manajemen Pengguna & Hak Input PIC</h1>
-          <p className="users-description">
-            Kelola kredensial unit kerja, pemetaan kode PIC untuk pembatasan hak input baris KPI, serta pemulihan kata sandi teraudit.
+          <h1 className="users-title">Pengaturan Pengguna</h1>
+          <p className="users-subtitle">
+            Kelola akun akses PERFORMA ITPLN, penugasan Kode PIC baris indikator KPI, peran ganda IKU &amp; KPI, dan otoritas audit PRP.
           </p>
         </div>
         <button className="users-action users-head-anim" type="button" onClick={openCreate}>
           <Plus size={16} /> Tambah Akun Unit / PIC
         </button>
       </div>
+
+      {pageNotice && (
+        <div
+          role={pageNotice.type === 'error' ? 'alert' : 'status'}
+          style={{
+            marginBottom: '1rem',
+            padding: '0.8rem 1rem',
+            borderRadius: '8px',
+            border: pageNotice.type === 'error' ? '1px solid #FCA5A5' : '1px solid #B8CAD4',
+            background: pageNotice.type === 'error' ? '#FEF2F2' : '#EDF3F6',
+            color: pageNotice.type === 'error' ? '#B91C1C' : '#072534',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+          }}
+        >
+          <span>{pageNotice.text}</span>
+          <button
+            type="button"
+            onClick={() => setPageNotice(null)}
+            aria-label="Tutup pemberitahuan"
+            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', minWidth: '44px', minHeight: '44px', display: 'grid', placeItems: 'center' }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       <div className="users-stats" aria-label="Ringkasan pengguna">
         <div className="users-stat">
@@ -245,13 +376,13 @@ export default function Users() {
         </div>
         <div className="users-stat">
           <span>Akun Unit PIC KPI</span>
-          <strong>{users.filter((item) => item.role === 'kpi_only' && item.status === 'Aktif').length.toString().padStart(2, '0')}</strong>
+          <strong>{kpiActiveCount.toString().padStart(2, '0')}</strong>
           <small>Terkunci per kode PIC indikator</small>
         </div>
         <div className="users-stat">
-          <span>Isolasi Modul</span>
-          <strong>03</strong>
-          <small>PRP · IKU · KPI per PIC</small>
+          <span>Akun Otoritas 8 IKU</span>
+          <strong>{ikuAndDualCount.toString().padStart(2, '0')}</strong>
+          <small>Termasuk akun peran ganda aktif</small>
         </div>
         <button
           type="button"
@@ -317,7 +448,7 @@ export default function Users() {
                         <span className="user-avatar">{user.avatar}</span>
                         <span>
                           <strong>{user.name}</strong>
-                          <small>{user.email}{isCurrent ? ' · Sesi Aktif Anda' : ''}</small>
+                          <small>{user.email}{user.unit ? ` · ${user.unit}` : ''}{isCurrent ? ' · Sesi Aktif Anda' : ''}</small>
                         </span>
                       </div>
                     </td>
@@ -326,7 +457,7 @@ export default function Users() {
                     </td>
                     <td className="user-scope">
                       <div>{user.accessScope}</div>
-                      {user.role === 'kpi_only' && (
+                      {(user.role === 'kpi_only' || user.role === 'dual') && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
                           {(user.picCodes?.length ? user.picCodes : ['Belum dipetakan']).map((code) => (
                             <span
@@ -360,19 +491,25 @@ export default function Users() {
                           title="Edit pengguna dan kode PIC"
                           onClick={() => {
                             setPicCatalog(readMasterPicCatalog());
+                            setModalError('');
                             setEditing({ ...user, picCodes: user.picCodes || [], password: '' });
                           }}
                         >
                           <Pencil size={12} /> Edit
                         </button>
-                        <button type="button" className="user-mini-btn" title="Reset password" onClick={() => resetPassword(user)}>
+                        <button
+                          type="button"
+                          className="user-mini-btn"
+                          title="Reset kata sandi"
+                          onClick={() => setConfirmAction({ type: 'reset', user })}
+                        >
                           <KeyRound size={12} /> Reset
                         </button>
                         <button type="button" className="user-mini-btn" title="Aktifkan atau nonaktifkan akun" onClick={() => toggleUser(user)}>
                           {user.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}
                         </button>
                         {!usersList.some((base) => base.email === user.email) && (
-                          <button type="button" className="user-mini-btn danger" title="Hapus user" onClick={() => removeUser(user.id)}>
+                          <button type="button" className="user-mini-btn danger" title="Hapus user" onClick={() => requestRemoveUser(user)}>
                             <Trash2 size={12} /> Hapus
                           </button>
                         )}
@@ -401,7 +538,10 @@ export default function Users() {
           aria-label="Tambah atau edit pengguna"
           data-lenis-prevent
           onClick={(event) => {
-            if (event.target === event.currentTarget) setEditing(null);
+            if (event.target === event.currentTarget) {
+              setEditing(null);
+              setModalError('');
+            }
           }}
           style={{
             position: 'fixed',
@@ -415,6 +555,7 @@ export default function Users() {
           }}
         >
           <div
+            ref={modalRef}
             style={{
               width: 'min(580px, 100%)',
               background: '#FFFFFF',
@@ -434,7 +575,10 @@ export default function Users() {
               <button
                 type="button"
                 aria-label="Tutup modal pengguna"
-                onClick={() => setEditing(null)}
+                onClick={() => {
+                  setEditing(null);
+                  setModalError('');
+                }}
                 className="ent-btn"
                 style={{ minWidth: '44px', minHeight: '44px', padding: '0.45rem' }}
               >
@@ -442,17 +586,48 @@ export default function Users() {
               </button>
             </div>
 
+            {modalError && (
+              <div
+                role="alert"
+                style={{
+                  marginBottom: '0.9rem',
+                  padding: '0.7rem 0.9rem',
+                  borderRadius: '6px',
+                  border: '1px solid #FCA5A5',
+                  background: '#FEF2F2',
+                  color: '#B91C1C',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                }}
+              >
+                {modalError}
+              </div>
+            )}
+
             <div style={{ display: 'grid', gap: '0.9rem' }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
-                Nama Lengkap / Unit Kerja
-                <input
-                  className="ent-input"
-                  aria-label="Nama pengguna"
-                  placeholder="Contoh: Biro Akuntansi ITPLN"
-                  value={editing.name}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value, unit: editing.unit || e.target.value })}
-                />
-              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: '0.75rem' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
+                  Nama Lengkap / Operator
+                  <input
+                    className="ent-input"
+                    aria-label="Nama pengguna"
+                    placeholder="Contoh: Biro Akuntansi ITPLN"
+                    value={editing.name}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  />
+                </label>
+
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
+                  Nama Unit Kerja
+                  <input
+                    className="ent-input"
+                    aria-label="Unit kerja pengguna"
+                    placeholder="Contoh: Biro Keuangan & Akuntansi"
+                    value={editing.unit || ''}
+                    onChange={(e) => setEditing({ ...editing, unit: e.target.value })}
+                  />
+                </label>
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: '0.75rem' }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
@@ -496,6 +671,8 @@ export default function Users() {
                   >
                     <option value="iku_only">Otoritas IKU</option>
                     <option value="kpi_only">Otoritas KPI (Unit/PIC)</option>
+                    <option value="spi">Auditor SPI (View Only &amp; Audit)</option>
+                    <option value="dual">Peran Ganda (IKU &amp; KPI)</option>
                     <option value="superadmin_prp">Superadmin PRP</option>
                   </select>
                 </label>
@@ -515,7 +692,7 @@ export default function Users() {
                 </label>
               </div>
 
-              {editing.role === 'kpi_only' && (
+              {(editing.role === 'kpi_only' || editing.role === 'dual') && (
                 <div
                   style={{
                     border: '1px solid #D8E4EA',
@@ -526,14 +703,14 @@ export default function Users() {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
                     <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#072534' }}>
-                      Kode PIC Penanggung Jawab KPI (Hak Input Baris)
+                      Kode PIC Penanggung Jawab KPI (Isolasi Data &amp; Hak Input Unit)
                     </span>
                     <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', color: '#0E7480', fontWeight: 700 }}>
                       {(editing.picCodes || []).length} dipilih
                     </span>
                   </div>
                   <p style={{ margin: '0 0 0.6rem', fontSize: '0.73rem', color: '#475569', lineHeight: 1.45 }}>
-                    Akun ini dapat melihat seluruh indikator KPI secara transparan (View Only), namun hanya diizinkan mengisi nilai, bukti, dan keterangan pada baris yang memiliki salah satu kode PIC terpilih di bawah ini.
+                    Setiap akun unit hanya dapat mengakses, melihat, mengisi, dan mengekspor baris indikator KPI yang sesuai dengan kode PIC miliknya sendiri (terisolasi dari unit lain).
                   </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', maxHeight: '160px', overflowY: 'auto' }}>
                     {picCatalog.map((entry) => {
@@ -546,8 +723,8 @@ export default function Users() {
                           title={entry.name}
                           onClick={() => togglePicSelection(entry.code)}
                           style={{
-                            minHeight: '34px',
-                            padding: '0.28rem 0.6rem',
+                            minHeight: '44px',
+                            padding: '0.35rem 0.72rem',
                             borderRadius: '6px',
                             border: active ? '1px solid #094E68' : '1px solid #CBD5E1',
                             background: active ? '#094E68' : '#FFFFFF',
@@ -563,16 +740,157 @@ export default function Users() {
                       );
                     })}
                   </div>
+
+                  <div style={{ marginTop: '0.7rem', paddingTop: '0.65rem', borderTop: '1px solid #D8E4EA', display: 'flex', flexWrap: 'wrap', gap: '0.45rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      className="ent-input"
+                      placeholder="Kode Bagian Baru (mis. BBTI)"
+                      value={newPicCodeInput}
+                      onChange={(e) => setNewPicCodeInput(e.target.value)}
+                      style={{ flex: '1 1 130px', minHeight: '38px', fontSize: '0.74rem' }}
+                    />
+                    <input
+                      type="text"
+                      className="ent-input"
+                      placeholder="Nama Unit/Bagian Baru"
+                      value={newPicNameInput}
+                      onChange={(e) => setNewPicNameInput(e.target.value)}
+                      style={{ flex: '2 1 180px', minHeight: '38px', fontSize: '0.74rem' }}
+                    />
+                    <button
+                      type="button"
+                      className="ent-btn"
+                      style={{ minHeight: '38px', fontSize: '0.72rem', fontWeight: 700 }}
+                      onClick={() => {
+                        const code = newPicCodeInput.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+                        if (!code) return;
+                        const label = newPicNameInput.trim() ? `${newPicNameInput.trim()} (${code})` : `Bagian ${code} (${code})`;
+                        const org = readOrganization();
+                        const nextUnits = [...new Set([...(org.units || []), label])];
+                        saveOrganization({ ...org, units: nextUnits }, currentUser?.email || 'Superadmin PRP');
+                        setPicCatalog(readMasterPicCatalog());
+                        togglePicSelection(code);
+                        if (!editing.unit) {
+                          setEditing((prev) => (prev ? { ...prev, unit: label } : prev));
+                        }
+                        setNewPicCodeInput('');
+                        setNewPicNameInput('');
+                      }}
+                    >
+                      <Plus size={13} /> Tambah Bagian/PIC Baru
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '0.6rem', marginTop: '1.5rem' }}>
-              <button type="button" className="ent-btn" onClick={() => setEditing(null)}>
+              <button
+                type="button"
+                className="ent-btn"
+                style={{ minHeight: '44px' }}
+                onClick={() => {
+                  setEditing(null);
+                  setModalError('');
+                }}
+              >
                 Batal
               </button>
               <button className="users-action" type="button" onClick={saveUser}>
                 <Check size={15} /> Simpan Pengguna
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmAction && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="users-confirm-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 130,
+            background: 'rgba(6, 44, 61, 0.56)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div style={{ width: 'min(430px, 100%)', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #D8E4EA', padding: '1.35rem', boxShadow: '0 20px 48px rgba(7, 37, 52, 0.22)' }}>
+            <h2 id="users-confirm-title" style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
+              {confirmAction.type === 'delete' ? 'Hapus Akun Pengguna?' : 'Reset Kata Sandi Akun?'}
+            </h2>
+            <p style={{ margin: '0 0 1.15rem', fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>
+              {confirmAction.type === 'delete'
+                ? `Akun ${confirmAction.user.email} akan dihapus permanen dari daftar akses PERFORMA ITPLN.`
+                : `Sistem akan membuat kata sandi sementara untuk ${confirmAction.user.email} dan mewajibkan penggantian pada login berikutnya.`}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setConfirmAction(null)}>
+                Batal
+              </button>
+              <button
+                type="button"
+                className="ent-btn ent-btn-primary"
+                style={{ minHeight: '44px', ...(confirmAction.type === 'delete' ? { background: '#B91C1C', borderColor: '#B91C1C' } : {}) }}
+                onClick={executeConfirmAction}
+              >
+                {confirmAction.type === 'delete' ? 'Ya, Hapus Akun' : 'Buat Kata Sandi Baru'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetResult && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="users-reset-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 130,
+            background: 'rgba(6, 44, 61, 0.56)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div style={{ width: 'min(450px, 100%)', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #D8E4EA', padding: '1.35rem', boxShadow: '0 20px 48px rgba(7, 37, 52, 0.22)' }}>
+            <h2 id="users-reset-title" style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
+              Kata Sandi Sementara Dibuat
+            </h2>
+            <p style={{ margin: '0 0 0.75rem', fontSize: '0.82rem', color: '#334155', lineHeight: 1.55 }}>
+              Salin kredensial sementara untuk <strong>{resetResult.email}</strong> dan serahkan secara privat kepada pemilik akun:
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', padding: '0.7rem 0.9rem', background: '#EDF3F6', border: '1px solid #B8CAD4', borderRadius: '6px', marginBottom: '1.1rem' }}>
+              <code style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.92rem', fontWeight: 700, color: '#072534', wordBreak: 'break-all' }}>
+                {resetResult.temporaryPassword}
+              </code>
+              <button
+                type="button"
+                className="ent-btn"
+                style={{ minHeight: '44px' }}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard?.writeText(resetResult.temporaryPassword);
+                    setResetResult((prev) => (prev ? { ...prev, copied: true } : prev));
+                  } catch {
+                    // Clipboard API mungkin tidak tersedia di konteks non-HTTPS
+                  }
+                }}
+              >
+                <Copy size={14} /> {resetResult.copied ? 'Tersalin' : 'Salin'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="ent-btn ent-btn-primary" style={{ minHeight: '44px' }} onClick={() => setResetResult(null)}>
+                Selesai
               </button>
             </div>
           </div>

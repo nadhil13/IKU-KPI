@@ -63,7 +63,7 @@ export default function Footer() {
 
           <div>
             <h3 style={{ color: '#ffffff', marginBottom: '1rem', fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>
-              01 // EKOSISTEM KINERJA
+              EKOSISTEM KINERJA
             </h3>
             <ul style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               <li><Link to="/about" style={{ color: '#C5DEE8', fontSize: '0.84rem' }}>Tentang 8 IKU</Link></li>
@@ -75,7 +75,7 @@ export default function Footer() {
 
           <div>
             <h3 style={{ color: '#ffffff', marginBottom: '1rem', fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>
-              02 // PANDUAN &amp; REGULASI
+              PANDUAN &amp; REGULASI
             </h3>
             <ul style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               <li><Link to="/guide" style={{ color: '#C5DEE8', fontSize: '0.84rem' }}>Panduan Pengisian</Link></li>
@@ -87,7 +87,7 @@ export default function Footer() {
 
           <div>
             <h3 style={{ color: '#ffffff', marginBottom: '1rem', fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>
-              03 // KAMPUS UTAMA ITPLN
+              KAMPUS UTAMA ITPLN
             </h3>
             <ul style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', color: '#C5DEE8', fontSize: '0.83rem', lineHeight: 1.65 }}>
               <li>Menara PLN, Jl. Lingkar Luar Barat, Duri Kosambi, Cengkareng, Jakarta Barat 11750</li>

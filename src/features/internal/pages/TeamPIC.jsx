@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Database, GitBranch, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { MOCK_ACCOUNTS, useAuth } from '../../auth/context/AuthContext';
+import { MOCK_ACCOUNTS } from '../../auth/authAccounts';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { MASTER_KPI_PICS, extractPicCodeFromOrgEntry } from '../../kpi/kpiSchema';
 import { readOrganization, saveOrganization } from '../adminStore';
 import './TeamPIC.css';
@@ -94,6 +95,7 @@ export default function TeamPIC() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [editor, setEditor] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState('');
 
@@ -112,13 +114,16 @@ export default function TeamPIC() {
   }, []);
 
   useEffect(() => {
-    if (!editor) return undefined;
+    if (!editor && !pendingDelete) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setEditor(null);
+      if (event.key === 'Escape') {
+        if (pendingDelete) setPendingDelete(null);
+        else if (editor) setEditor(null);
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [editor]);
+  }, [editor, pendingDelete]);
 
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -257,14 +262,29 @@ export default function TeamPIC() {
       setMessage('Pindahkan atau hapus organisasi anak sebelum menghapus induknya.');
       return;
     }
-    if (!window.confirm(`Hapus ${TYPES[item.type].toLowerCase()} "${item.name}"?`)) return;
-    const next = { ...latest, [item.type]: latest[item.type].filter((entry) => String(entry.id) !== String(item.id)) };
+    setPendingDelete(item);
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete || !canEdit) return;
+    const latest = loadOrganization();
+    if (flatten(latest).some((child) => child.parentId === keyOf(pendingDelete))) {
+      setPendingDelete(null);
+      setMessage('Pindahkan atau hapus organisasi anak sebelum menghapus induknya.');
+      return;
+    }
+    const next = {
+      ...latest,
+      [pendingDelete.type]: latest[pendingDelete.type].filter((entry) => String(entry.id) !== String(pendingDelete.id)),
+    };
     try {
       saveOrganization(next, currentUser.email || currentUser.name);
       setOrganization(next);
-      if (editingKey === keyOf(item)) setEditor(null);
+      if (editingKey === keyOf(pendingDelete)) setEditor(null);
+      setPendingDelete(null);
       setMessage('Organisasi berhasil dihapus.');
     } catch {
+      setPendingDelete(null);
       setMessage('Penghapusan gagal. Periksa penyimpanan browser lalu coba kembali.');
     }
   };
@@ -520,6 +540,61 @@ export default function TeamPIC() {
           </div>
         )}
       </div>
+
+      {pendingDelete && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="tp-delete-title"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setPendingDelete(null);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1200,
+            background: 'rgba(6, 44, 61, 0.56)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: 'min(440px, 100%)',
+              background: '#FFFFFF',
+              borderRadius: '10px',
+              border: '1px solid #D8E4EA',
+              boxShadow: '0 24px 48px rgba(7, 37, 52, 0.22)',
+              padding: '1.35rem',
+            }}
+          >
+            <h2
+              id="tp-delete-title"
+              style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
+            >
+              Hapus Entitas Organisasi
+            </h2>
+            <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
+              Hapus {TYPES[pendingDelete.type]?.toLowerCase()} <strong>"{pendingDelete.name}"</strong>? Tindakan ini akan memperbarui direktori master PIC unit kerja.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
+              <button type="button" className="tp-secondary" style={{ minHeight: '44px' }} onClick={() => setPendingDelete(null)}>
+                Batal
+              </button>
+              <button
+                type="button"
+                className="tp-primary"
+                style={{ minHeight: '44px', background: '#991B1B', borderColor: '#991B1B' }}
+                onClick={confirmDelete}
+              >
+                <Trash2 size={14} /> Ya, Hapus Entitas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

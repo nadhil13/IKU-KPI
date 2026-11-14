@@ -26,12 +26,18 @@ import {
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import { useAuth } from '../features/auth/context/AuthContext';
+import { useAuth } from '../features/auth/hooks/useAuth';
 import { readKpiWorkflow } from '../features/kpi/kpiWorkflowStore';
 import { listIkuSubmissions } from '../features/iku/ikuWorkflowStore';
 import { readAudit } from '../features/internal/adminStore';
 import { mountSmoothScroll, getLenis } from '../lib/smoothScroll';
 import { ActiveBroadcastBanner, BroadcastComposerModal } from '../features/internal/components/BroadcastCenter';
+import {
+  getNotificationsForUser,
+  markNotificationRead,
+  markAllNotificationsRead,
+  subscribeNotifications,
+} from '../features/internal/notificationStore';
 import { getRealtimeStatus, subscribeRealtimeStatus } from '../lib/realtimeSync';
 import {
   initPwaAndNotifications,
@@ -123,9 +129,13 @@ export default function InternalLayout() {
   // Live telemetry listener
   useEffect(() => {
     const bump = () => setTelemetryTick((v) => v + 1);
-    const events = ['storage', 'prp-admin-updated', 'prp-kpi-workflow-updated', 'prp-iku-updated'];
+    const events = ['storage', 'prp-admin-updated', 'prp-kpi-workflow-updated', 'prp-iku-updated', 'prp-notifications-updated'];
     events.forEach((ev) => window.addEventListener(ev, bump));
-    return () => events.forEach((ev) => window.removeEventListener(ev, bump));
+    const unsubNotif = subscribeNotifications(bump);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, bump));
+      unsubNotif();
+    };
   }, []);
 
   // Global Keyboard Shortcut Ctrl+K / Meta+K & Escape untuk semua dialog/drawer
@@ -216,19 +226,30 @@ export default function InternalLayout() {
 
   const isIkuOnly = currentUser?.role === 'iku_only';
   const isKpiOnly = currentUser?.role === 'kpi_only';
+  const isSpiAuditor = currentUser?.role === 'spi';
   const isSuperadminPrp = currentUser?.role === 'superadmin_prp';
   const isDual = ['dual', 'superadmin_prp'].includes(currentUser?.role);
   const showPRP = isSuperadminPrp && activeContext === 'prp';
-  const showIKU = !showPRP && !isKpiOnly && activeContext === 'iku';
-  const showKPI = !showPRP && !isIkuOnly && activeContext === 'kpi';
+  const showIKU = !showPRP && !isKpiOnly && !isSpiAuditor && activeContext === 'iku';
+  const showKPI = !showPRP && !isIkuOnly && (activeContext === 'kpi' || isSpiAuditor);
 
   const effectiveWorkspace = isIkuOnly
     ? 'iku'
-    : isKpiOnly
+    : (isKpiOnly || isSpiAuditor)
       ? 'kpi'
       : activeWorkspace === 'kpi'
         ? 'kpi'
         : 'iku';
+
+  const userNotifications = useMemo(() => {
+    void telemetryTick;
+    return getNotificationsForUser(currentUser);
+  }, [currentUser, telemetryTick]);
+
+  const unreadNotifCount = useMemo(
+    () => userNotifications.filter((n) => !n.isRead).length,
+    [userNotifications],
+  );
 
   const telemetry = useMemo(() => {
     void telemetryTick;
@@ -243,7 +264,7 @@ export default function InternalLayout() {
       /* fallback */
     }
     try {
-      if (['iku_only', 'superadmin_prp'].includes(currentUser.role)) {
+      if (['iku_only', 'dual', 'superadmin_prp'].includes(currentUser.role)) {
         const iku = listIkuSubmissions(currentUser);
         ikuPending = iku.filter((r) => r.status === 'SUBMITTED').length;
       }
@@ -646,7 +667,7 @@ export default function InternalLayout() {
   const handleRestrictedClick = (targetFeature) => {
     if (isIkuOnly && targetFeature === 'kpi') {
       setBlockedModalInfo({
-        code: '403 // OTORITAS KHUSUS IKU',
+        code: 'OTORITAS KHUSUS IKU',
         title: 'Akses Dibatasi: Otoritas Khusus IKU',
         message:
           'Akun Anda terdaftar dengan hak akses khusus 8 Indikator Kinerja Utama (Kemendikbudristek). Modul KPI internal unit dan fakultas tidak termasuk dalam cakupan peran sesi ini.',
@@ -655,7 +676,7 @@ export default function InternalLayout() {
       });
     } else if (isKpiOnly && targetFeature === 'iku') {
       setBlockedModalInfo({
-        code: '403 // OTORITAS KHUSUS KPI',
+        code: 'OTORITAS KHUSUS KPI',
         title: 'Akses Dibatasi: Otoritas Khusus KPI',
         message:
           'Akun Anda terdaftar dengan hak akses operasional Key Performance Indicator (Unit & Fakultas). Modul 8 IKU Kementerian tidak termasuk dalam cakupan peran sesi ini.',
@@ -844,7 +865,7 @@ export default function InternalLayout() {
               >
                 <span>KONTEKS OTORITAS</span>
                 <span style={{ color: '#094E68', fontWeight: 700 }}>
-                  {isSuperadminPrp ? 'PRP // PENUH' : 'DUAL'}
+                  {isSuperadminPrp ? 'PRP PENUH' : 'DUAL'}
                 </span>
               </div>
               <div
@@ -1022,7 +1043,7 @@ export default function InternalLayout() {
               <>
                 <div className="sidebar-stagger nav-context-item">
                   <div className="corp-nav-section-label">
-                    <span>01 // TATA KELOLA PUSAT</span>
+                    <span>TATA KELOLA PUSAT</span>
                     <span>[06]</span>
                   </div>
 
@@ -1092,7 +1113,7 @@ export default function InternalLayout() {
                 {/* Grup 2: Operasional & Direktori */}
                 <div className="sidebar-stagger nav-context-item">
                   <div className="corp-nav-section-label">
-                    <span>02 // OPERASIONAL &amp; DIREKTORI</span>
+                    <span>OPERASIONAL &amp; DIREKTORI</span>
                     <span>[03]</span>
                   </div>
                   <ul className="corp-nav-ul">
@@ -1145,7 +1166,7 @@ export default function InternalLayout() {
             {showIKU && (
               <div className="sidebar-stagger nav-context-item">
                 <div className="corp-nav-section-label">
-                  <span>01 // MODUL 8 IKU</span>
+                  <span>MODUL 8 IKU</span>
                   <span>[MAKRO]</span>
                 </div>
                 <ul className="corp-nav-ul">
@@ -1229,12 +1250,12 @@ export default function InternalLayout() {
               </div>
             )}
 
-            {/* Konteks ruang kerja KPI operasional unit. */}
+            {/* Konteks ruang kerja KPI operasional unit / Audit SPI. */}
             {showKPI && (
               <div className="sidebar-stagger nav-context-item">
                 <div className="corp-nav-section-label">
-                  <span>01 // MODUL KPI UNIT</span>
-                  <span>[MIKRO]</span>
+                  <span>{isSpiAuditor ? 'AUDIT SPI (VIEW-ONLY)' : 'MODUL KPI UNIT'}</span>
+                  <span>{isSpiAuditor ? '[AUDIT]' : '[MIKRO]'}</span>
                 </div>
                 <ul className="corp-nav-ul">
                   <li>
@@ -1246,35 +1267,39 @@ export default function InternalLayout() {
                       className={`corp-nav-item ${isExactPath('/internal') && effectiveWorkspace === 'kpi' ? 'active' : ''}`}
                     >
                       <Building2 size={15} strokeWidth={1.85} className="corp-item-icon" />
-                      <span>Lembar Kerja KPI</span>
+                      <span>{isSpiAuditor ? 'Tabel Audit KPI (Read-Only)' : 'Lembar Kerja KPI'}</span>
                     </button>
                   </li>
-                  <li>
-                    <Link
-                      to="/internal/team"
-                      onClick={closeMobileSidebar}
-                      onMouseEnter={handleNavItemEnter}
-                      data-nav-active={isActivePrefix('/internal/team') ? 'true' : undefined}
-                      aria-current={isActivePrefix('/internal/team') ? 'page' : undefined}
-                      className={`corp-nav-item ${isActivePrefix('/internal/team') ? 'active' : ''}`}
-                    >
-                      <ShieldCheck size={15} strokeWidth={1.85} className="corp-item-icon" />
-                      <span>Struktur Unit &amp; PIC</span>
-                    </Link>
-                  </li>
-                  <li>
-                    <Link
-                      to="/internal/documents"
-                      onClick={closeMobileSidebar}
-                      onMouseEnter={handleNavItemEnter}
-                      data-nav-active={isActivePrefix('/internal/documents') ? 'true' : undefined}
-                      aria-current={isActivePrefix('/internal/documents') ? 'page' : undefined}
-                      className={`corp-nav-item ${isActivePrefix('/internal/documents') ? 'active' : ''}`}
-                    >
-                      <FileText size={15} strokeWidth={1.85} className="corp-item-icon" />
-                      <span>Panduan &amp; Referensi</span>
-                    </Link>
-                  </li>
+                  {!isSpiAuditor && (
+                    <>
+                      <li>
+                        <Link
+                          to="/internal/team"
+                          onClick={closeMobileSidebar}
+                          onMouseEnter={handleNavItemEnter}
+                          data-nav-active={isActivePrefix('/internal/team') ? 'true' : undefined}
+                          aria-current={isActivePrefix('/internal/team') ? 'page' : undefined}
+                          className={`corp-nav-item ${isActivePrefix('/internal/team') ? 'active' : ''}`}
+                        >
+                          <ShieldCheck size={15} strokeWidth={1.85} className="corp-item-icon" />
+                          <span>Struktur Unit &amp; PIC</span>
+                        </Link>
+                      </li>
+                      <li>
+                        <Link
+                          to="/internal/documents"
+                          onClick={closeMobileSidebar}
+                          onMouseEnter={handleNavItemEnter}
+                          data-nav-active={isActivePrefix('/internal/documents') ? 'true' : undefined}
+                          aria-current={isActivePrefix('/internal/documents') ? 'page' : undefined}
+                          className={`corp-nav-item ${isActivePrefix('/internal/documents') ? 'active' : ''}`}
+                        >
+                          <FileText size={15} strokeWidth={1.85} className="corp-item-icon" />
+                          <span>Panduan &amp; Referensi</span>
+                        </Link>
+                      </li>
+                    </>
+                  )}
                 </ul>
 
                 {isKpiOnly && (
@@ -1452,19 +1477,19 @@ export default function InternalLayout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
             {windowWidth > 768 && (
               <div
-                title={rtStatus.mode === 'server-sse' ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif)' : 'Sinkronisasi Realtime Lintas Sesi Aktif'}
+                title={rtStatus.mode === 'server-sse' ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif)' : 'Sinkronisasi lokal antar-tab aktif (mode offline/lokal)'}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.4rem',
-                  height: '32px',
+                  height: '34px',
                   padding: '0 0.65rem',
-                  borderRadius: '99px',
-                  background: '#F0FDF4',
-                  border: '1px solid #86EFAC',
-                  color: '#14532D',
+                  borderRadius: '4px',
+                  background: rtStatus.mode === 'server-sse' ? '#ECFDF5' : '#EDF3F6',
+                  border: rtStatus.mode === 'server-sse' ? '1px solid #86EFAC' : '1px solid #C5D5DF',
+                  color: rtStatus.mode === 'server-sse' ? '#047857' : '#094E68',
                   fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.62rem',
+                  fontSize: '0.64rem',
                   fontWeight: 700,
                   letterSpacing: '0.05em',
                 }}
@@ -1474,11 +1499,11 @@ export default function InternalLayout() {
                   style={{
                     width: '6px',
                     height: '6px',
-                    borderRadius: '50%',
-                    background: '#16A34A',
+                    borderRadius: '1px',
+                    background: rtStatus.mode === 'server-sse' ? '#047857' : '#0E7480',
                   }}
                 />
-                <span>REALTIME</span>
+                <span>{rtStatus.mode === 'server-sse' ? 'SSE AKTIF' : 'LOKAL AKTIF'}</span>
               </div>
             )}
 
@@ -1492,12 +1517,12 @@ export default function InternalLayout() {
               aria-label="Install Aplikasi HP dan Notifikasi Layar Kunci"
               title="Install Aplikasi di Android/iPhone & Aktifkan Notifikasi Layar HP"
               style={{
-                height: isMobile ? '44px' : '38px',
-                padding: isMobile && windowWidth <= 600 ? '0 0.6rem' : '0 0.75rem',
-                borderRadius: '8px',
-                background: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#F0FDF4' : '#F7FAFB',
-                border: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '1px solid #86EFAC' : '1px solid #D8E4EA',
-                color: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#14532D' : '#072534',
+                minHeight: isMobile ? '44px' : '38px',
+                padding: isMobile && windowWidth <= 600 ? '0 0.65rem' : '0 0.75rem',
+                borderRadius: '6px',
+                background: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#ECFDF5' : '#F7FAFB',
+                border: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '1px solid #86EFAC' : '1px solid #D8E4EA',
+                color: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#047857' : '#072534',
                 fontSize: '0.73rem',
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -1509,8 +1534,8 @@ export default function InternalLayout() {
               <Smartphone size={14} />
               {windowWidth > 680 && (
                 <span>
-                  {pwaState.isInstalled
-                    ? (pwaState.notificationPermission === 'granted' ? 'Notif HP Aktif' : 'Notif HP')
+                  {pwaState.standalone
+                    ? (pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? 'Notif HP Aktif' : 'Notif HP')
                     : 'Install & Notif HP'}
                 </span>
               )}
@@ -1544,7 +1569,7 @@ export default function InternalLayout() {
             <div ref={notifRef} style={{ position: 'relative' }}>
               <button
                 type="button"
-                aria-label="Log aktivitas dan antrean review"
+                aria-label={`Notifikasi sistem (${unreadNotifCount} belum dibaca)`}
                 aria-expanded={notifOpen}
                 aria-haspopup="dialog"
                 onClick={() => setNotifOpen((prev) => !prev)}
@@ -1563,36 +1588,49 @@ export default function InternalLayout() {
                 }}
               >
                 <Bell size={16} color="#072534" />
-                {telemetry.totalPending > 0 && (
+                {(unreadNotifCount > 0 || (isSuperadminPrp && telemetry.totalPending > 0)) && (
                   <span
                     aria-hidden="true"
                     style={{
                       position: 'absolute',
-                      top: '7px',
-                      right: '7px',
-                      width: '7px',
-                      height: '7px',
-                      borderRadius: '50%',
-                      background: '#0E7480',
+                      top: '-4px',
+                      right: '-4px',
+                      minWidth: '17px',
+                      height: '17px',
+                      padding: '0 4px',
+                      borderRadius: '999px',
+                      background: unreadNotifCount > 0 ? '#991B1B' : '#0E7480',
+                      color: '#FFFFFF',
+                      fontSize: '0.6rem',
+                      fontWeight: 800,
+                      fontFamily: 'var(--ent-mono)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '2px solid #FFFFFF',
                     }}
-                  />
+                  >
+                    {unreadNotifCount > 0 ? unreadNotifCount : telemetry.totalPending}
+                  </span>
                 )}
               </button>
 
               {notifOpen && (
                 <div
                   role="dialog"
-                  aria-label="Ringkasan antrean dan aktivitas"
+                  aria-label="Pusat Notifikasi In-App, Revisi PRP, dan Aktivitas"
                   data-lenis-prevent
                   style={{
                     position: 'absolute',
                     top: 'calc(100% + 8px)',
                     right: 0,
-                    width: 'min(340px, 88vw)',
+                    width: 'min(420px, 92vw)',
+                    maxHeight: '78dvh',
+                    overflowY: 'auto',
                     background: '#ffffff',
                     border: '1px solid #094E68',
                     borderRadius: '10px',
-                    boxShadow: '0 20px 44px -12px rgba(7, 37, 52, 0.18)',
+                    boxShadow: '0 20px 44px -12px rgba(7, 37, 52, 0.22)',
                     padding: '0.95rem',
                     zIndex: 80,
                   }}
@@ -1602,6 +1640,7 @@ export default function InternalLayout() {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
+                      gap: '0.5rem',
                       paddingBottom: '0.6rem',
                       marginBottom: '0.65rem',
                       borderBottom: '1px solid #D8E4EA',
@@ -1616,9 +1655,31 @@ export default function InternalLayout() {
                         color: '#072534',
                       }}
                     >
-                      ANTREAN &amp; AKTIVITAS
+                      NOTIFIKASI IN-APP &amp; EMAIL ({unreadNotifCount} BARU)
                     </strong>
-                    <span className="ent-badge ent-badge-info">{telemetry.totalPending} MENUNGGU</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      {unreadNotifCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => markAllNotificationsRead(currentUser)}
+                          style={{
+                            border: '1px solid #B8CAD4',
+                            background: '#F7FAFB',
+                            color: '#094E68',
+                            borderRadius: '5px',
+                            padding: '2px 7px',
+                            fontSize: '0.64rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Tandai Semua Dibaca
+                        </button>
+                      )}
+                      {isSuperadminPrp && (
+                        <span className="ent-badge ent-badge-info">{telemetry.totalPending} ANTREAN</span>
+                      )}
+                    </div>
                   </div>
 
                   {isSuperadminPrp && (
@@ -1642,37 +1703,143 @@ export default function InternalLayout() {
                       }}
                     >
                       <span>
-                        {telemetry.kpiPending} KPI · {telemetry.ikuPending} IKU menunggu review
+                        {telemetry.kpiPending} KPI · {telemetry.ikuPending} IKU menunggu review PRP
                       </span>
                       <ArrowUpRight size={14} />
                     </Link>
                   )}
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                    {telemetry.recentAudit.length > 0 ? (
-                      telemetry.recentAudit.map((item) => (
-                        <div
-                          key={item.id}
-                          style={{
-                            padding: '0.5rem 0.6rem',
-                            borderLeft: '2.5px solid #094E68',
-                            background: '#F7FAFB',
-                            borderRadius: '0 6px 6px 0',
-                            fontSize: '0.72rem',
-                          }}
-                        >
-                          <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 700, color: '#072534' }}>
-                            {item.action}
-                          </div>
-                          <div style={{ color: '#334155', fontSize: '0.7rem', marginTop: '2px' }}>{item.detail}</div>
-                        </div>
-                      ))
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    {userNotifications.length > 0 ? (
+                      userNotifications.slice(0, 12).map((notif) => {
+                        const kindLabel = {
+                          REVISION: 'REVISI PRP',
+                          BROADCAST: 'SIARAN ADMIN',
+                          TABLE_SYNC: 'SINKRONISASI TABEL',
+                          PERIOD_STATUS: 'STATUS PERIODE',
+                          SUBMISSION_STATUS: 'STATUS SUBMISSION',
+                        }[notif.kind] || 'INFO SISTEM';
+                        const isRev = notif.kind === 'REVISION';
+                        return (
+                          <button
+                            key={notif.id}
+                            type="button"
+                            onClick={() => {
+                              markNotificationRead(notif.id, currentUser?.email);
+                              setNotifOpen(false);
+                              const rawUrl = notif.actionUrl || '/internal/kpi';
+                              const [pathnamePart, hashPart] = rawUrl.split('#');
+                              navigate(pathnamePart || '/internal/kpi');
+                              if (hashPart) {
+                                window.setTimeout(() => {
+                                  const targetEl = document.getElementById(hashPart);
+                                  if (targetEl) {
+                                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  }
+                                }, 220);
+                              }
+                            }}
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '0.6rem 0.7rem',
+                              borderRadius: '7px',
+                              border: `1px solid ${!notif.isRead ? (isRev ? '#FCD34D' : '#94B8C7') : '#D8E4EA'}`,
+                              borderLeft: `3.5px solid ${isRev ? '#D97706' : !notif.isRead ? '#094E68' : '#94A3B8'}`,
+                              background: !notif.isRead ? (isRev ? '#FFFBEB' : '#F0F7FA') : '#FFFFFF',
+                              cursor: 'pointer',
+                              display: 'grid',
+                              gap: '0.25rem',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  fontFamily: 'var(--ent-mono)',
+                                  fontSize: '0.61rem',
+                                  fontWeight: 800,
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  background: isRev ? '#FEF3C7' : '#EDF3F6',
+                                  color: isRev ? '#92400E' : '#094E68',
+                                }}
+                              >
+                                {kindLabel}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                {notif.emailAuditId && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.59rem',
+                                      fontWeight: 700,
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: '#F0FDF4',
+                                      border: '1px solid #86EFAC',
+                                      color: '#14532D',
+                                    }}
+                                  >
+                                    Email Tercatat
+                                  </span>
+                                )}
+                                {!notif.isRead && (
+                                  <span
+                                    style={{
+                                      width: '7px',
+                                      height: '7px',
+                                      borderRadius: '50%',
+                                      background: '#991B1B',
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#072534', lineHeight: 1.35 }}>
+                              {notif.title}
+                            </div>
+                            <div style={{ fontSize: '0.71rem', color: '#334155', lineHeight: 1.45 }}>
+                              {notif.message}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.15rem', fontSize: '0.64rem', color: '#475569' }}>
+                              <span>{new Date(notif.createdAt).toLocaleString('id-ID')}</span>
+                              <span style={{ fontWeight: 700, color: '#094E68', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                {notif.actionLabel || 'Buka Tujuan'} <ArrowUpRight size={11} />
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
                     ) : (
-                      <div style={{ padding: '0.85rem 0.25rem', color: '#475569', fontSize: '0.76rem', textAlign: 'center' }}>
-                        Belum ada aktivitas baru pada sesi ini.
+                      <div style={{ padding: '0.75rem 0.25rem', color: '#475569', fontSize: '0.75rem', textAlign: 'center', background: '#F7FAFB', borderRadius: '6px', border: '1px dashed #D8E4EA' }}>
+                        Belum ada notifikasi pembaruan atau revisi untuk akun Anda.
                       </div>
                     )}
                   </div>
+
+                  {isSuperadminPrp && telemetry.recentAudit.length > 0 && (
+                    <div style={{ borderTop: '1px solid #D8E4EA', paddingTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <strong style={{ fontSize: '0.65rem', fontFamily: 'var(--ent-mono)', color: '#475569', textTransform: 'uppercase' }}>
+                        LOG AUDIT TERAKHIR
+                      </strong>
+                      {telemetry.recentAudit.slice(0, 3).map((item) => (
+                        <div
+                          key={item.id}
+                          style={{
+                            padding: '0.4rem 0.55rem',
+                            borderLeft: '2px solid #094E68',
+                            background: '#F7FAFB',
+                            borderRadius: '0 5px 5px 0',
+                            fontSize: '0.69rem',
+                          }}
+                        >
+                          <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#072534' }}>
+                            {item.action}
+                          </div>
+                          <div style={{ color: '#334155', fontSize: '0.68rem', marginTop: '1px' }}>{item.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1867,12 +2034,12 @@ export default function InternalLayout() {
                     padding: '3px 8px',
                     borderRadius: '4px',
                     fontFamily: 'var(--ent-mono)',
-                    background: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#F0FDF4' : '#EDF3F6',
-                    border: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '1px solid #86EFAC' : '1px solid #B8CAD4',
-                    color: pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? '#14532D' : '#094E68',
+                    background: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#ECFDF5' : '#EDF3F6',
+                    border: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '1px solid #86EFAC' : '1px solid #B8CAD4',
+                    color: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#047857' : '#094E68',
                   }}
                 >
-                  {pwaState.notificationPermission === 'granted' && pwaState.notificationEnabledByUser ? 'AKTIF DI LAYAR HP' : 'BELUM DIAKTIFKAN'}
+                  {pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? 'AKTIF DI LAYAR HP' : 'BELUM DIAKTIFKAN'}
                 </span>
               </div>
 
@@ -1882,20 +2049,33 @@ export default function InternalLayout() {
                   data-enable-os-notification="true"
                   onClick={async () => {
                     if (pwaState.notificationPermission === 'granted') {
-                      const next = !pwaState.notificationEnabledByUser;
+                      const next = !pwaState.osNotifEnabled;
                       setOsNotificationEnabledByUser(next);
                       setPwaNotice(next ? 'Notifikasi layar HP diaktifkan.' : 'Notifikasi layar HP dijeda.');
                       return;
                     }
-                    const res = await requestOsNotificationPermission();
-                    if (res.granted) {
+                    const permission = await requestOsNotificationPermission();
+                    if (permission === 'granted') {
+                      setOsNotificationEnabledByUser(true);
+                      await dispatchOsNotification({
+                        id: `performa-enable-${Date.now()}`,
+                        force: true,
+                        title: 'PERFORMA ITPLN Terhubung',
+                        body: 'Notifikasi layar HP telah diaktifkan untuk menerima siaran dan catatan revisi PRP.',
+                        url: '/internal',
+                        priority: 'IMPORTANT',
+                      });
                       setPwaNotice('Izin notifikasi layar HP aktif. Notifikasi percobaan telah dikirim ke perangkat Anda.');
+                    } else if (permission === 'denied') {
+                      setPwaNotice('Izin notifikasi diblokir browser. Buka Pengaturan Situs pada browser untuk mengizinkan notifikasi.');
+                    } else if (permission === 'unsupported') {
+                      setPwaNotice('Browser ini belum mendukung Notification API. Tambahkan aplikasi ke Layar Utama pada iOS Safari untuk mengaktifkan notifikasi.');
                     } else {
-                      setPwaNotice(res.reason || 'Aktifkan izin notifikasi pada pengaturan browser HP Anda.');
+                      setPwaNotice('Aktifkan izin notifikasi pada dialog atau pengaturan browser perangkat Anda.');
                     }
                   }}
                   style={{
-                    minHeight: '40px',
+                    minHeight: '44px',
                     padding: '0.45rem 0.9rem',
                     borderRadius: '6px',
                     border: '1px solid #094E68',
@@ -1912,7 +2092,7 @@ export default function InternalLayout() {
                   <Bell size={14} />
                   <span>
                     {pwaState.notificationPermission === 'granted'
-                      ? (pwaState.notificationEnabledByUser ? 'Jeda Notifikasi HP' : 'Aktifkan Kembali Notifikasi HP')
+                      ? (pwaState.osNotifEnabled ? 'Jeda Notifikasi HP' : 'Aktifkan Kembali Notifikasi HP')
                       : 'Izinkan Notifikasi Layar HP'}
                   </span>
                 </button>
@@ -1922,10 +2102,10 @@ export default function InternalLayout() {
                   data-test-os-notification="true"
                   onClick={async () => {
                     const sent = await dispatchOsNotification({
+                      id: `performa-test-${Date.now()}`,
                       force: true,
-                      title: '[SIARAN PERFORMA ITPLN] Uji Notifikasi Layar HP',
-                      body: `Akun ${currentUser?.name || 'Unit'} (${currentUser?.unit || 'ITPLN'}) terhubung ke kanal notifikasi realtime.`,
-                      tag: `performa-test-${Date.now()}`,
+                      title: 'Siaran PERFORMA ITPLN: Uji Notifikasi',
+                      body: `Akun ${currentUser?.name || 'Unit'} (${currentUser?.unit || 'ITPLN'}) terhubung ke kanal notifikasi.`,
                       url: '/internal',
                       priority: 'URGENT',
                     });
@@ -1936,7 +2116,7 @@ export default function InternalLayout() {
                     );
                   }}
                   style={{
-                    minHeight: '40px',
+                    minHeight: '44px',
                     padding: '0.45rem 0.85rem',
                     borderRadius: '6px',
                     border: '1px solid #B8CAD4',
@@ -1961,24 +2141,26 @@ export default function InternalLayout() {
                 <strong style={{ fontSize: '0.82rem', color: '#072534' }}>
                   2. Install Aplikasi di Layar Utama HP (Android, iPhone, &amp; Desktop)
                 </strong>
-                {pwaState.isInstalled && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', fontWeight: 700, color: '#14532D' }}>
+                {pwaState.standalone && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', fontWeight: 700, color: '#047857' }}>
                     <CheckCircle2 size={13} /> Terpasang
                   </span>
                 )}
               </div>
 
-              {pwaState.canInstallPrompt && !pwaState.isInstalled && (
+              {pwaState.canPromptInstall && !pwaState.standalone && (
                 <button
                   type="button"
                   onClick={async () => {
                     const res = await triggerPwaInstallPrompt();
-                    if (res.installed) {
+                    if (res?.outcome === 'accepted') {
                       setPwaNotice('Aplikasi PERFORMA ITPLN berhasil dipasang ke layar utama perangkat Anda.');
+                    } else if (res?.outcome === 'dismissed') {
+                      setPwaNotice('Pemasangan dibatalkan. Anda dapat mengulanginya kapan saja dari tombol ini.');
                     }
                   }}
                   style={{
-                    minHeight: '42px',
+                    minHeight: '44px',
                     padding: '0.5rem 0.95rem',
                     borderRadius: '6px',
                     border: '1px solid #0E7480',
@@ -2272,7 +2454,7 @@ export default function InternalLayout() {
           border-radius: 4px;
         }
         .cmd-palette-field::placeholder {
-          color: #64748b;
+          color: #475569;
         }
         .corp-profile-chip:hover {
           border-color: #094E68 !important;

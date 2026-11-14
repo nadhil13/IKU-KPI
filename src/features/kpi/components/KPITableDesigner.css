@@ -134,7 +134,7 @@
   flex: 1; min-width: 0; min-height: 38px; padding: .5rem .65rem; border: 1px solid var(--line-strong); border-radius: 5px; background: #FFFFFF;
   font: 600 .86rem/1.3 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace; color: #072534;
 }
-.kpi-designer-page .formula-input::placeholder { color: #64748B; }
+.kpi-designer-page .formula-input::placeholder { color: #475569; }
 .kpi-designer-page .formula-input:focus-visible,
 .kpi-designer-page .formula-input:focus { outline: 2px solid var(--focus-ring); outline-offset: 0; border-color: var(--accent); }
 .kpi-designer-page .formula-input.invalid { border-color: var(--err); background: #FEF2F2; }
@@ -209,7 +209,7 @@
   position: relative;
   z-index: 1;
 }
-.kpi-designer-page .cell-input::placeholder { color: #64748B; }
+.kpi-designer-page .cell-input::placeholder { color: #475569; }
 .kpi-designer-page .cell-input[type='number']::-webkit-inner-spin-button { opacity: .4; }
 
 .kpi-designer-page .pic-cell {
@@ -253,6 +253,7 @@
   top: calc(100% + 4px);
   z-index: 20;
   width: 290px;
+  max-width: calc(100vw - 2rem);
   padding: .65rem;
   border: 1px solid var(--line-strong);
   border-radius: 8px;

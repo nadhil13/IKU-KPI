@@ -17,7 +17,7 @@ function authorize(actor, role) {
   if (!actor?.email || !actor?.role || actor.status === 'Nonaktif' || !role.includes(actor.role)) throw new Error('Akses IKU tidak diizinkan.');
 }
 export function listIkuSubmissions(actor) {
-  authorize(actor, ['iku_only', 'superadmin_prp']);
+  authorize(actor, ['iku_only', 'dual', 'superadmin_prp']);
   const records = read(KEY, []);
   return records.filter((r) => actor.role === 'superadmin_prp' || r.owner === actor.email.toLowerCase());
 }
@@ -67,7 +67,7 @@ function normalize(values, submit) {
   });
 }
 export function saveIkuSubmission(actor, period, values, submit = false) {
-  authorize(actor, ['iku_only']);
+  authorize(actor, ['iku_only', 'dual']);
   const issue = ikuInputIssue(period);
   if (issue) throw new Error(issue);
   const records = read(KEY, []);

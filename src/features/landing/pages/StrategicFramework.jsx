@@ -234,7 +234,7 @@ export default function StrategicFramework() {
       >
         <div className="sf-hero-content" style={{ position: 'relative', zIndex: 1, maxWidth: 880, width: '100%' }}>
           <div className="sf-badge ent-eyebrow" style={{ marginBottom: '2rem' }}>
-            02 // ARSITEKTUR TATA KELOLA MUTU ITPLN
+            ARSITEKTUR TATA KELOLA MUTU ITPLN
           </div>
 
           <h1
@@ -409,7 +409,7 @@ export default function StrategicFramework() {
         <div className="container">
           <div style={{ marginBottom: '3.5rem', maxWidth: '680px' }}>
             <div className="ent-eyebrow" style={{ marginBottom: '1rem' }}>
-              03 // SIKLUS PENJAMINAN MUTU
+              SIKLUS PENJAMINAN MUTU
             </div>
             <h2 style={{ fontSize: 'clamp(2rem, 4vw, 3.2rem)', fontWeight: 800, letterSpacing: '-0.035em', margin: '0 0 0.75rem', lineHeight: 1.08, color: '#072534' }}>
               Alur Kerja PDCA Institusi.

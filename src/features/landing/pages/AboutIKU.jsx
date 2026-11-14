@@ -212,7 +212,7 @@ export default function AboutIKU() {
                   display: 'inline-block',
                 }}
               >
-                01 // TENTANG SISTEM EVALUASI ITPLN
+                TENTANG SISTEM EVALUASI ITPLN
               </div>
 
               <h1
@@ -320,7 +320,7 @@ export default function AboutIKU() {
           <div className="about-split-grid">
             <div>
               <div className="ent-eyebrow" style={{ marginBottom: '1.15rem' }}>
-                <Building size={13} /> 01 // RASIONALISASI
+                <Building size={13} /> RASIONALISASI
               </div>
               <h2
                 style={{
@@ -391,7 +391,7 @@ export default function AboutIKU() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
                   <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.12em', color: '#94B8C7', textTransform: 'uppercase' }}>
-                    02 // VISI INSTITUSI
+                    VISI INSTITUSI
                   </span>
                   <Target size={22} color="#38BDF8" strokeWidth={1.75} />
                 </div>
@@ -469,7 +469,7 @@ export default function AboutIKU() {
         <div className="container">
           <div style={{ maxWidth: '720px', marginBottom: '3rem' }}>
             <div className="ent-eyebrow" style={{ marginBottom: '1rem' }}>
-              <ShieldCheck size={13} /> 03 // LANDASAN REGULASI
+              <ShieldCheck size={13} /> LANDASAN REGULASI
             </div>
             <h2
               style={{

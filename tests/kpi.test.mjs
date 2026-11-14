@@ -35,7 +35,7 @@ test('validasi bobot akurat: Σ baris per bagian, total 100, tanpa noise float',
   assert.ok(!issues.some((i) => i.sectionCode === 'B' && /bobot/.test(i.message)));
 });
 const storeSource = (await readFile(new URL('../src/features/kpi/kpiWorkflowStore.js', import.meta.url), 'utf8'))
-  .replace("import { MOCK_ACCOUNTS } from '../auth/context/AuthContext';", `const MOCK_ACCOUNTS = [
+  .replace("import { MOCK_ACCOUNTS } from '../auth/authAccounts';", `const MOCK_ACCOUNTS = [
     {email:'one@test.id',name:'Satu',role:'kpi_only'},
     {email:'two@test.id',name:'Dua',role:'kpi_only'},
     {email:'ppa@itpln.ac.id',name:'Operator PPA',unit:'Pusat Pelayanan Akademik (PPA)',role:'kpi_only',picCodes:['PPA']},
@@ -254,4 +254,142 @@ test('pengaturan aturan validasi struktur oleh Admin PRP bekerja dinamis', () =>
   assert.equal(syncedForm.id, distributed.id);
   assert.equal(syncedForm.sections[0].items.length, 2);
   assert.equal(syncedForm.sections[0].items[1].id, 'A_2_rt');
+});
+
+test('peran dual memiliki hak edit KPI berbasis PIC yang konsisten dengan kpi_only', () => {
+  const dualBakt = { email: 'dual.bakt@itpln.ac.id', role: 'dual', picCodes: ['BAKT'], status: 'Aktif' };
+  const spiAuditor = { email: 'spi@itpln.ac.id', role: 'spi', picCodes: [], status: 'Aktif' };
+  const rowBakt = { id: 'r_bakt', pics: ['BAKT'] };
+  const rowPpa = { id: 'r_ppa', pics: ['PPA'] };
+  const rowUmum = { id: 'r_umum', pics: [] };
+
+  assert.equal(canUserEditKpiItem(rowBakt, dualBakt), true);
+  assert.equal(canUserEditKpiItem(rowPpa, dualBakt), false);
+  assert.equal(canUserEditKpiItem(rowUmum, dualBakt), true);
+  assert.equal(canUserEditKpiItem(rowBakt, { role: 'dual', picCodes: ['BAKT'], status: 'Nonaktif' }), false);
+  assert.equal(canUserEditKpiItem(rowBakt, spiAuditor), false);
+  assert.equal(canUserEditKpiItem(rowUmum, spiAuditor), false);
+});
+
+test('sinkronisasi master tabel lintas periode menjaga keutuhan data historis, override Admin PRP, serta revisi & notifikasi email', () => {
+  memory.clear();
+  const prpAdmin = { email: 'admin@itpln.ac.id', name: 'Superadmin PRP', role: 'superadmin_prp', status: 'Aktif' };
+  const userPpa = { email: 'ppa@itpln.ac.id', name: 'Pusat Pelayanan Akademik', unit: 'PPA', role: 'kpi_only', picCodes: ['PPA'], status: 'Aktif' };
+
+  const sections2026 = [{
+    code: 'B',
+    title: 'PERSPEKTIF MAHASISWA 2026',
+    totalWeight: 100,
+    items: [{
+      id: 'B_1a',
+      no: '1',
+      indikator: 'Tracer Study 2026',
+      calcType: 'single_target',
+      targetNum: 65,
+      bobot: 100,
+      pics: ['PPA'],
+      subrows: [{ key: 'b_1a_val', label: 'Tracer 2026' }],
+    }],
+  }];
+
+  const form2026 = store.syncPeriodMasterTable(sections2026, {
+    period: '2026 / 2027',
+    actor: prpAdmin,
+    openPeriod: true,
+    lockPreviousPeriods: false,
+  });
+  assert.equal(form2026.period, '2026 / 2027');
+
+  // Unit PPA mengisi dan mengirim data pada periode 2026 / 2027
+  store.addUnitEvidence(form2026.id, userPpa, {
+    indicatorId: 'B_1a',
+    kind: 'link',
+    label: 'Bukti Tracer 2026',
+    url: 'https://drive.google.com/file/d/tracer-2026/view',
+  });
+  store.submitUnitKpi(form2026.id, userPpa, { b_1a_val: '65' }, { notes: { B_1a: 'Target 2026 tercapai 100%' } });
+
+  // Transisi ke periode baru 2027 / 2028 dengan struktur baris baru + kunci periode sebelumnya
+  const sections2027 = [{
+    code: 'B',
+    title: 'PERSPEKTIF MAHASISWA 2027',
+    totalWeight: 100,
+    items: [
+      {
+        id: 'B_1a',
+        no: '1',
+        indikator: 'Tracer Study 2027',
+        calcType: 'single_target',
+        targetNum: 75,
+        bobot: 60,
+        pics: ['PPA'],
+        subrows: [{ key: 'b_1a_val', label: 'Tracer 2027' }],
+      },
+      {
+        id: 'B_new_2027',
+        no: '2',
+        indikator: 'Sertifikasi Kompetensi Internasional 2027',
+        calcType: 'single_target',
+        targetNum: 100,
+        bobot: 40,
+        pics: ['PPA'],
+        subrows: [{ key: 'b_cert_val', label: 'Sertifikasi 2027' }],
+      },
+    ],
+  }];
+
+  const form2027 = store.syncPeriodMasterTable(sections2027, {
+    period: '2027 / 2028',
+    actor: prpAdmin,
+    openPeriod: true,
+    lockPreviousPeriods: true,
+  });
+  assert.equal(form2027.period, '2027 / 2028');
+  assert.equal(form2027.sections[0].items.length, 2);
+
+  // Pastikan struktur & nilai historis 2026 / 2027 tetap utuh 1 baris dengan skor 100
+  const historicalForm2026 = store.getFormForPeriod('2026 / 2027');
+  assert.equal(historicalForm2026.id, form2026.id);
+  assert.equal(historicalForm2026.sections[0].items.length, 1);
+  const board2026 = store.readIntegratedKpiBoard(historicalForm2026.id);
+  assert.equal(board2026.totalScore, 100);
+  assert.equal(board2026.values.b_1a_val, '65');
+
+  // Cek status periode: 2026 Terkunci (inputOpen: false), 2027 Aktif (inputOpen: true)
+  const periodsStatus = store.listKpiPeriodsWithStatus();
+  const p2026 = periodsStatus.find((p) => p.year === '2026');
+  const p2027 = periodsStatus.find((p) => p.year === '2027');
+  assert.equal(p2026?.inputOpen, false);
+  assert.equal(p2027?.inputOpen, true);
+
+  // Admin PRP melakukan Override Edit langsung pada periode 2027 / 2028
+  store.saveAdminKpiOverride(form2027.id, prpAdmin, {
+    values: { b_1a_val: '75', b_cert_val: '50' },
+    notes: { B_1a: 'Diisi oleh Admin PRP karena mendekati tenggat waktu' },
+  });
+  const board2027 = store.readIntegratedKpiBoard(form2027.id);
+  assert.equal(board2027.values.b_1a_val, '75');
+  assert.equal(board2027.values.b_cert_val, '50');
+  assert.equal(board2027.totalScore, 80);
+
+  // Admin PRP mengirim catatan revisi per item dan per bagian -> memicu notifikasi in-app & log email
+  store.saveKpiRevisionComment(form2027.id, prpAdmin, {
+    scope: 'ITEM',
+    targetId: 'B_new_2027',
+    comment: 'Mohon lampirkan daftar nama mahasiswa penerima sertifikasi internasional.',
+  });
+  store.saveKpiRevisionComment(form2027.id, prpAdmin, {
+    scope: 'SECTION',
+    targetId: 'B',
+    comment: 'Rekapitulasi Perspektif Mahasiswa perlu paraf Kepala Biro.',
+  });
+
+  const revisions = store.readKpiRevisions(form2027.id);
+  assert.ok(revisions.items.B_new_2027);
+  assert.ok(revisions.sections.B);
+
+  const notifs = JSON.parse(memory.get('prp_notifications_v1') || '[]');
+  const emails = JSON.parse(memory.get('prp_email_outbox_v1') || '[]');
+  assert.ok(notifs.some((n) => n.kind === 'REVISION' && n.meta?.targetId === 'B_new_2027'));
+  assert.ok(emails.some((e) => e.kind === 'REVISION' && e.toEmails.includes('ppa@itpln.ac.id')));
 });

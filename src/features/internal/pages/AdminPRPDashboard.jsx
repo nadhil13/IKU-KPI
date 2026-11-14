@@ -4,7 +4,8 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { Link } from 'react-router-dom';
-import { readMergedUsers, useAuth } from '../../auth/context/AuthContext';
+import { readMergedUsers } from '../../auth/authAccounts';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { readAudit, readSystemConfig } from '../adminStore';
 import { readKpiWorkflow } from '../../kpi/kpiWorkflowStore';
 import { getIkuPeriods, listIkuSubmissions } from '../../iku/ikuWorkflowStore';
@@ -19,22 +20,25 @@ const formatClock = () =>
     hour12: false,
   });
 
+function LiveClock() {
+  const [clock, setClock] = useState(formatClock);
+  useEffect(() => {
+    const timer = setInterval(() => setClock(formatClock()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return <span>JAKARTA {clock} WIB</span>;
+}
+
 export default function AdminPRPDashboard() {
   const pageRef = useRef(null);
   const { currentUser } = useAuth();
   const [, refresh] = useState(0);
-  const [clock, setClock] = useState(formatClock);
 
   useEffect(() => {
     const update = () => refresh((value) => value + 1);
     const events = ['storage', 'focus', 'prp-admin-updated', 'prp-kpi-workflow-updated', 'prp-iku-updated'];
     events.forEach((event) => window.addEventListener(event, update));
     return () => events.forEach((event) => window.removeEventListener(event, update));
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => setClock(formatClock()), 1000);
-    return () => clearInterval(timer);
   }, []);
 
   const users = readMergedUsers();
@@ -447,7 +451,7 @@ export default function AdminPRPDashboard() {
       {/* Top System Metadata Strip */}
       <div className="prp-meta-strip">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
-          <span style={{ color: '#094E68', fontWeight: 700 }}>PRP // PUSAT KENDALI</span>
+          <span style={{ color: '#094E68', fontWeight: 700 }}>PUSAT KENDALI PRP</span>
           <span>·</span>
           <span>PERIODE {activePeriodLabel}</span>
           {sysConfig.maintenanceMode && (
@@ -458,7 +462,7 @@ export default function AdminPRPDashboard() {
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span>JAKARTA {clock} WIB</span>
+          <LiveClock />
           <span style={{ color: '#0E7480', fontWeight: 700 }}>[SESI AKTIF]</span>
         </div>
       </div>
@@ -508,7 +512,7 @@ export default function AdminPRPDashboard() {
                   letterSpacing: '0.08em',
                 }}
               >
-                {item.idx} // {item.code}
+                {item.idx} · {item.code}
               </span>
               <ArrowUpRight size={15} className="prp-ledger-arrow" />
             </div>
@@ -543,7 +547,7 @@ export default function AdminPRPDashboard() {
                   letterSpacing: '0.1em',
                 }}
               >
-                05 // JURNAL KRONOLOGIS
+                05 · JURNAL KRONOLOGIS
               </span>
               <h2>Aliran Aktivitas &amp; Audit Sistem</h2>
             </div>
@@ -605,7 +609,7 @@ export default function AdminPRPDashboard() {
                   letterSpacing: '0.1em',
                 }}
               >
-                06 // INDEKS MODUL
+                06 · INDEKS MODUL
               </span>
               <h2>Pintasan Tata Kelola</h2>
             </div>

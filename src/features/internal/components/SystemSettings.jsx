@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check, ShieldAlert, Sliders } from 'lucide-react';
-import { useAuth } from '../../auth/context/AuthContext';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { readSystemConfig, saveSystemConfig } from '../adminStore';
 
 export default function SystemSettings() {

@@ -162,9 +162,10 @@ export function canUserEditKpiItem(item, user) {
   if (!user || user.status === 'Nonaktif') return false;
   if (user.role === 'superadmin_prp') return true;
   const rowPics = normalizePicCodes(item?.pics?.length ? item.pics : (item?.picDisplay || []));
-  // Baris tanpa penugasan PIC spesifik tetap dapat diisi akun KPI untuk menjaga kompatibilitas formulir umum.
-  if (rowPics.length === 0) return !user.role || user.role === 'kpi_only';
-  if (user.role && user.role !== 'kpi_only') return false;
+  const hasKpiAuthority = !user.role || user.role === 'kpi_only' || user.role === 'dual';
+  // Baris tanpa penugasan PIC spesifik tetap dapat diisi akun KPI/Dual untuk menjaga kompatibilitas formulir umum.
+  if (rowPics.length === 0) return hasKpiAuthority;
+  if (!hasKpiAuthority) return false;
   const userPics = new Set(getUserPicCodes(user).map((code) => code.toLowerCase()));
   if (userPics.size === 0) return false;
   return rowPics.some((code) => userPics.has(code.toLowerCase()));

@@ -305,15 +305,31 @@ export const SEED_ACCOUNTS = Object.freeze([
     code: '19',
     email: 'spi@itpln.ac.id',
     password: 'password',
-    name: 'Satuan Pengawasan Intern, Akuntansi & WBS',
-    shortName: 'PIC SPI/Audit',
+    name: 'Satuan Pengawasan Intern (SPI)',
+    shortName: 'Auditor SPI',
+    role: 'spi',
+    roleTitle: 'Auditor SPI (View Only & Audit)',
+    badge: 'AUDITOR SPI',
+    allowedPortals: ['kpi'],
+    picCodes: [],
+    unit: 'Satuan Pengawasan Intern (SPI)',
+    avatar: 'SPI',
+    status: 'Aktif',
+  },
+  {
+    id: 'user-kpi-wbs',
+    code: '20',
+    email: 'wbs@itpln.ac.id',
+    password: 'password',
+    name: 'Unit Tindak Lanjut Audit, Akuntansi & WBS',
+    shortName: 'PIC Audit/WBS',
     role: 'kpi_only',
-    roleTitle: 'PIC Unit SPI, Akuntansi & WBS',
+    roleTitle: 'PIC Unit Audit, Akuntansi & WBS',
     badge: 'PIC: SPI, Akuntansi, WBS',
     allowedPortals: ['kpi'],
     picCodes: ['SPI', 'Akuntansi', 'WBS'],
-    unit: 'Satuan Pengawasan Intern (SPI, Akuntansi, WBS)',
-    avatar: 'SPI',
+    unit: 'Unit Tindak Lanjut Audit (SPI, Akuntansi, WBS)',
+    avatar: 'WBS',
     status: 'Aktif',
   },
 ]);
@@ -444,7 +460,20 @@ const sharedDefaultPasswordHash = hashPassword('password', 'a1b2c3d4e5f60718293a
 
 function seedDefaultAccounts(db) {
   const countRow = db.prepare('SELECT COUNT(*) AS cnt FROM users').get();
-  if (countRow && countRow.cnt >= SEED_ACCOUNTS.length) return;
+  if (countRow && countRow.cnt >= SEED_ACCOUNTS.length) {
+    db.prepare(`
+      UPDATE users
+      SET role = 'spi',
+          role_title = 'Auditor SPI (View Only & Audit)',
+          badge = 'AUDITOR SPI',
+          pic_codes_json = '[]',
+          name = 'Satuan Pengawasan Intern (SPI)',
+          short_name = 'Auditor SPI',
+          unit = 'Satuan Pengawasan Intern (SPI)'
+      WHERE email = 'spi@itpln.ac.id' AND role != 'spi'
+    `).run();
+    return;
+  }
 
   const insertStmt = db.prepare(`
     INSERT OR IGNORE INTO users (
@@ -474,6 +503,17 @@ function seedDefaultAccounts(db) {
         now,
       );
     }
+    db.prepare(`
+      UPDATE users
+      SET role = 'spi',
+          role_title = 'Auditor SPI (View Only & Audit)',
+          badge = 'AUDITOR SPI',
+          pic_codes_json = '[]',
+          name = 'Satuan Pengawasan Intern (SPI)',
+          short_name = 'Auditor SPI',
+          unit = 'Satuan Pengawasan Intern (SPI)'
+      WHERE email = 'spi@itpln.ac.id' AND role != 'spi'
+    `).run();
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
@@ -570,7 +610,7 @@ export function syncUsersListFromAdmin(usersArray, actorEmail = 'admin@itpln.ac.
       const pwHash = u.password && u.password !== '********'
         ? hashPassword(u.password)
         : existing?.password_hash || sharedDefaultPasswordHash;
-      const role = ['superadmin_prp', 'iku_only', 'kpi_only', 'dual'].includes(u.role) ? u.role : 'kpi_only';
+      const role = ['superadmin_prp', 'iku_only', 'kpi_only', 'dual', 'spi'].includes(u.role) ? u.role : 'kpi_only';
       const portals = role === 'superadmin_prp' || role === 'dual' ? ['iku', 'kpi'] : role === 'iku_only' ? ['iku'] : ['kpi'];
       const picCodes = Array.isArray(u.picCodes) ? u.picCodes : [];
       upsertStmt.run(
@@ -600,6 +640,54 @@ export function syncUsersListFromAdmin(usersArray, actorEmail = 'admin@itpln.ac.
   return listAllUsers();
 }
 
+export function deleteUserByEmail(email, actorEmail = 'admin@itpln.ac.id') {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail || cleanEmail === String(actorEmail || '').trim().toLowerCase()) return false;
+  const db = getDatabase();
+  const info = db.prepare('DELETE FROM users WHERE email = ?').run(cleanEmail);
+  if (info.changes > 0) {
+    appendAuditLog('PENGGUNA_DIHAPUS', `Akun ${cleanEmail} dihapus oleh ${actorEmail}`, actorEmail);
+    return true;
+  }
+  return false;
+}
+
+export function updateUserProfileByEmail(email, changes = {}) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail) return null;
+  const existing = findUserByEmail(cleanEmail);
+  if (!existing) return null;
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const nextName = typeof changes.name === 'string' && changes.name.trim() ? changes.name.trim() : existing.name;
+  const nextShortName = typeof changes.shortName === 'string' && changes.shortName.trim() ? changes.shortName.trim() : existing.shortName;
+  const nextUnit = typeof changes.unit === 'string' ? changes.unit.trim() : existing.unit;
+  const nextAvatar = typeof changes.avatar === 'string' && changes.avatar.trim() ? changes.avatar.trim().slice(0, 4) : existing.avatar;
+  db.prepare(`
+    UPDATE users
+    SET name = ?, short_name = ?, unit = ?, avatar = ?, updated_at = ?
+    WHERE email = ?
+  `).run(nextName, nextShortName, nextUnit, nextAvatar, now, cleanEmail);
+  appendAuditLog('PROFIL_DIPERBARUI', `Profil ${cleanEmail} diperbarui`, cleanEmail);
+  return rowToUser(db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail));
+}
+
+export function changeUserPasswordByEmail(email, newPassword) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail || !newPassword) return null;
+  const existing = findUserByEmail(cleanEmail);
+  if (!existing) return null;
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE users
+    SET password_hash = ?, updated_at = ?
+    WHERE email = ?
+  `).run(hashPassword(newPassword), now, cleanEmail);
+  appendAuditLog('PASSWORD_DIUBAH', `Kata sandi ${cleanEmail} diperbarui`, cleanEmail);
+  return rowToUser(db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail));
+}
+
 export function createSessionRecord({ jti, email, role, ip, userAgent, expiresAt }) {
   const db = getDatabase();
   db.prepare(`
@@ -620,7 +708,11 @@ export function isSessionActive(jti) {
   const row = db.prepare('SELECT revoked_at, expires_at FROM sessions WHERE jti = ?').get(jti);
   if (!row) return true;
   if (row.revoked_at) return false;
-  return row.expires_at >= Math.floor(Date.now() / 1000);
+  const numericExp = Number(row.expires_at);
+  const expSeconds = Number.isFinite(numericExp)
+    ? numericExp
+    : Math.floor(Date.parse(String(row.expires_at || '')) / 1000);
+  return Number.isFinite(expSeconds) && expSeconds >= Math.floor(Date.now() / 1000);
 }
 
 export function readKvStore(key, fallback = null) {

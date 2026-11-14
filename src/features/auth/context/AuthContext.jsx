@@ -1,348 +1,23 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { minimumPasswordLength, notifyAdminUpdated, readSystemConfig, writeAudit } from '../../internal/adminStore';
-import { connectRealtimeEngine, loginViaBackend, logoutViaBackend, getAccessToken } from '../../../lib/realtimeSync';
+import {
+  connectRealtimeEngine,
+  loginViaBackend,
+  logoutViaBackend,
+  getAccessToken,
+  updateOwnProfileViaBackend,
+  changeOwnPasswordViaBackend,
+} from '../../../lib/realtimeSync';
+import { AuthContext } from '../authContext';
+import { MOCK_ACCOUNTS, getStoredUsers, portalsForRole, readMergedUsers } from '../authAccounts';
 
-/**
- * Akun resmi pengujian operasional:
- * - iku@itpln.ac.id   : Otoritas khusus IKU Kementerian
- * - kpi@itpln.ac.id   : Otoritas unit KPI (default PIC BAKT & BAG) beserta akun per unit/PIC resmi ITPLN
- * - admin@itpln.ac.id : Superadmin PRP untuk tata kelola penuh, validasi bukti, dan audit terpusat
- */
-export const MOCK_ACCOUNTS = [
-  {
-    id: 'user-iku',
-    code: '01',
-    email: 'iku@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Kemahasiswaan & Akademik',
-    shortName: 'PIC IKU',
-    role: 'iku_only',
-    roleTitle: 'Otoritas Khusus IKU',
-    badge: 'IKU ONLY',
-    allowedPortals: ['iku'],
-    picCodes: [],
-    unit: 'Biro Akademik & Kemahasiswaan ITPLN',
-    avatar: 'IKU',
-    description: 'Akses khusus untuk pengelolaan dan pemantauan 8 IKU Kementerian.'
-  },
-  {
-    id: 'user-kpi',
-    code: '02',
-    email: 'kpi@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Akuntansi & Biro Anggaran (BAKT / BAG)',
-    shortName: 'PIC BAKT/BAG',
-    role: 'kpi_only',
-    roleTitle: 'Otoritas Unit KPI (BAKT & BAG)',
-    badge: 'PIC: BAKT, BAG',
-    allowedPortals: ['kpi'],
-    picCodes: ['BAKT', 'BAG'],
-    unit: 'Biro Akuntansi & Anggaran (BAKT, BAG)',
-    avatar: 'BKG',
-    description: 'Mengisi indikator KPI yang ditugaskan ke BAKT/BAG dan memantau capaian unit lain secara transparan.'
-  },
-  {
-    id: 'user-dual',
-    code: '03',
-    email: 'admin@itpln.ac.id',
-    password: 'password',
-    name: 'Administrator Terpadu ITPLN',
-    shortName: 'Integrator',
-    role: 'superadmin_prp',
-    roleTitle: 'Superadmin PRP',
-    badge: 'SUPERADMIN PRP',
-    allowedPortals: ['iku', 'kpi'],
-    picCodes: ['PRP'],
-    unit: 'Direktorat Perencanaan & Pengembangan (PRP)',
-    avatar: 'ADM',
-    description: 'Mengelola platform, submission, konfigurasi tabel, rumus, validasi bukti, periode, dan audit trail terpusat.'
-  },
-  {
-    id: 'user-kpi-bakt',
-    code: '04',
-    email: 'bakt@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Akuntansi ITPLN',
-    shortName: 'PIC BAKT',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BAKT',
-    badge: 'PIC: BAKT',
-    allowedPortals: ['kpi'],
-    picCodes: ['BAKT'],
-    unit: 'Biro Akuntansi (BAKT)',
-    avatar: 'BAK',
-    description: 'Hak pengisian khusus indikator KPI dengan PIC BAKT (1b, 2, 3, 4 Bagian A & 2 Bagian D).'
-  },
-  {
-    id: 'user-kpi-bag',
-    code: '05',
-    email: 'bag@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Anggaran ITPLN',
-    shortName: 'PIC BAG',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BAG',
-    badge: 'PIC: BAG',
-    allowedPortals: ['kpi'],
-    picCodes: ['BAG'],
-    unit: 'Biro Anggaran (BAG)',
-    avatar: 'BAG',
-    description: 'Hak pengisian khusus indikator KPI dengan PIC BAG (1b, 2, 3, 4 Bagian A & 1 Bagian D).'
-  },
-  {
-    id: 'user-kpi-ppa',
-    code: '06',
-    email: 'ppa@itpln.ac.id',
-    password: 'password',
-    name: 'Pusat Pelayanan Akademik ITPLN',
-    shortName: 'PIC PPA',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit PPA',
-    badge: 'PIC: PPA',
-    allowedPortals: ['kpi'],
-    picCodes: ['PPA'],
-    unit: 'Pusat Pelayanan Akademik (PPA)',
-    avatar: 'PPA',
-    description: 'Hak pengisian khusus indikator KPI dengan PIC PPA (1a Bagian A).'
-  },
-  {
-    id: 'user-kpi-bku',
-    code: '07',
-    email: 'bku@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Keuangan ITPLN',
-    shortName: 'PIC BKU',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BKU',
-    badge: 'PIC: BKU',
-    allowedPortals: ['kpi'],
-    picCodes: ['BKU'],
-    unit: 'Biro Keuangan (BKU)',
-    avatar: 'BKU',
-    description: 'Hak pengisian khusus indikator KPI dengan PIC BKU (5 Bagian A).'
-  },
-  {
-    id: 'user-kpi-pjm',
-    code: '08',
-    email: 'pjm@itpln.ac.id',
-    password: 'password',
-    name: 'Pusat Jaminan Mutu ITPLN',
-    shortName: 'PIC PJM',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit PJM',
-    badge: 'PIC: PJM',
-    allowedPortals: ['kpi'],
-    picCodes: ['PJM'],
-    unit: 'Pusat Jaminan Mutu (PJM)',
-    avatar: 'PJM',
-    description: 'Hak pengisian khusus indikator KPI dengan PIC PJM (tata kelola, EDOM, layanan kampus, OBE, akreditasi, tindak lanjut audit).'
-  },
-  {
-    id: 'user-kpi-prp',
-    code: '09',
-    email: 'prp.unit@itpln.ac.id',
-    password: 'password',
-    name: 'Unit Pelaksana Pelaporan PRP',
-    shortName: 'PIC PRP',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit PRP',
-    badge: 'PIC: PRP',
-    allowedPortals: ['kpi'],
-    picCodes: ['PRP'],
-    unit: 'Direktorat Perencanaan & Pengembangan (PRP)',
-    avatar: 'PRP',
-    description: 'Hak pengisian khusus indikator KPI dengan PIC PRP (tata kelola, EDOM, layanan kampus, pelaporan manajemen).'
-  },
-  {
-    id: 'user-kpi-bpka',
-    code: '10',
-    email: 'bpka@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Pengembangan Karir & Alumni',
-    shortName: 'PIC BPKA',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BPKA',
-    badge: 'PIC: BPKA',
-    allowedPortals: ['kpi'],
-    picCodes: ['BPKA'],
-    unit: 'Biro Pengembangan Karir & Alumni (BPKA)',
-    avatar: 'BPK',
-    description: 'Hak pengisian khusus indikator KPI Tracer Study dan Penerimaan Lulusan Offtaker.'
-  },
-  {
-    id: 'user-kpi-bkk',
-    code: '11',
-    email: 'bkk@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Kemahasiswaan & Konseling',
-    shortName: 'PIC BKK',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BKK',
-    badge: 'PIC: BKK',
-    allowedPortals: ['kpi'],
-    picCodes: ['BKK'],
-    unit: 'Biro Kemahasiswaan & Konseling (BKK)',
-    avatar: 'BKK',
-    description: 'Hak pengisian khusus indikator KPI Mahasiswa Berprestasi.'
-  },
-  {
-    id: 'user-kpi-bkai',
-    code: '12',
-    email: 'bkai@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Kerja Sama Akademik Internasional',
-    shortName: 'PIC BKAI',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BKAI',
-    badge: 'PIC: BKAI',
-    allowedPortals: ['kpi'],
-    picCodes: ['BKAI'],
-    unit: 'Biro Kerja Sama Akademik Internasional (BKAI)',
-    avatar: 'BKI',
-    description: 'Hak pengisian khusus indikator KPI Kerja Sama Internasional.'
-  },
-  {
-    id: 'user-kpi-bpik',
-    code: '13',
-    email: 'bpik@itpln.ac.id',
-    password: 'password',
-    name: 'Tim Penjaringan Mahasiswa Baru (BPIK, BKM, BSAR, BPAD)',
-    shortName: 'PIC Admisi',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BPIK/BKM/BSAR/BPAD',
-    badge: 'PIC: BPIK, BKM, BSAR, BPAD',
-    allowedPortals: ['kpi'],
-    picCodes: ['BPIK', 'BKM', 'BSAR', 'BPAD'],
-    unit: 'Biro Pemasaran, Kemahasiswaan, Sarpras & Aset (BPIK, BKM, BSAR, BPAD)',
-    avatar: 'PMB',
-    description: 'Hak pengisian khusus indikator KPI Efektivitas Penjaringan Calon Mahasiswa Baru.'
-  },
-  {
-    id: 'user-kpi-fak',
-    code: '14',
-    email: 'fak@itpln.ac.id',
-    password: 'password',
-    name: 'Fakultas & Program Studi ITPLN',
-    shortName: 'PIC FAK',
-    role: 'kpi_only',
-    roleTitle: 'PIC Fakultas (FAK)',
-    badge: 'PIC: FAK',
-    allowedPortals: ['kpi'],
-    picCodes: ['FAK'],
-    unit: 'Fakultas & Program Studi (FAK)',
-    avatar: 'FAK',
-    description: 'Hak pengisian khusus indikator KPI Kurikulum OBE, Klasterisasi Mandiri, dan Akreditasi Program.'
-  },
-  {
-    id: 'user-kpi-lppm',
-    code: '15',
-    email: 'lppm@itpln.ac.id',
-    password: 'password',
-    name: 'Lembaga Penelitian & Pengabdian kepada Masyarakat',
-    shortName: 'PIC LPPM',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit LPPM',
-    badge: 'PIC: LPPM',
-    allowedPortals: ['kpi'],
-    picCodes: ['LPPM'],
-    unit: 'Lembaga Penelitian & Pengabdian kepada Masyarakat (LPPM)',
-    avatar: 'LPM',
-    description: 'Hak pengisian khusus indikator KPI Penelitian, Publikasi Ilmiah, Sitasi, PKM, HKI, dan Kapasitas Dosen.'
-  },
-  {
-    id: 'user-kpi-sdm',
-    code: '16',
-    email: 'sdm@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Sumber Daya Manusia (SDM & BSDM)',
-    shortName: 'PIC SDM/BSDM',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit SDM & BSDM',
-    badge: 'PIC: SDM, BSDM',
-    allowedPortals: ['kpi'],
-    picCodes: ['SDM', 'BSDM'],
-    unit: 'Biro Sumber Daya Manusia (SDM, BSDM)',
-    avatar: 'SDM',
-    description: 'Hak pengisian khusus indikator KPI Peningkatan Kualitas Dosen dan Integrasi Siakad & SimKug.'
-  },
-  {
-    id: 'user-kpi-bkan',
-    code: '17',
-    email: 'bkan@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Kerja Sama Akademik Nasional',
-    shortName: 'PIC BKAN',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BKAN',
-    badge: 'PIC: BKAN',
-    allowedPortals: ['kpi'],
-    picCodes: ['BKAN'],
-    unit: 'Biro Kerja Sama Akademik Nasional (BKAN)',
-    avatar: 'BKN',
-    description: 'Hak pengisian khusus indikator KPI Kerja Sama Akademik dengan Industri dan Perguruan Tinggi.'
-  },
-  {
-    id: 'user-kpi-bpti',
-    code: '18',
-    email: 'bpti@itpln.ac.id',
-    password: 'password',
-    name: 'Biro Pengembangan Teknologi Informasi',
-    shortName: 'PIC BPTI',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit BPTI',
-    badge: 'PIC: BPTI',
-    allowedPortals: ['kpi'],
-    picCodes: ['BPTI'],
-    unit: 'Biro Pengembangan Teknologi Informasi (BPTI)',
-    avatar: 'BTI',
-    description: 'Hak pengisian khusus indikator KPI Integrasi Siakad & SimKug.'
-  },
-  {
-    id: 'user-kpi-spi',
-    code: '19',
-    email: 'spi@itpln.ac.id',
-    password: 'password',
-    name: 'Satuan Pengawasan Intern, Akuntansi & WBS',
-    shortName: 'PIC SPI/Audit',
-    role: 'kpi_only',
-    roleTitle: 'PIC Unit SPI, Akuntansi & WBS',
-    badge: 'PIC: SPI, Akuntansi, WBS',
-    allowedPortals: ['kpi'],
-    picCodes: ['SPI', 'Akuntansi', 'WBS'],
-    unit: 'Satuan Pengawasan Intern (SPI, Akuntansi, WBS)',
-    avatar: 'SPI',
-    description: 'Hak pengisian khusus indikator KPI Tindaklanjut Rekomendasi Audit & Temuan.'
-  }
-];
-
-const getStoredUsers = () => {
-  try {
-    const stored = JSON.parse(localStorage.getItem('prp_users') || '[]');
-    return Array.isArray(stored) ? stored : [];
-  } catch {
-    return [];
-  }
-};
-
-const AuthContext = createContext(null);
-export const portalsForRole = (role) => role === 'superadmin_prp' || role === 'dual' ? ['iku', 'kpi'] : role === 'iku_only' ? ['iku'] : role === 'kpi_only' ? ['kpi'] : [];
-export const readMergedUsers = () => {
-  const merged = new Map(MOCK_ACCOUNTS.map((user) => [user.email.toLowerCase(), { ...user, status: 'Aktif' }]));
-  getStoredUsers().forEach((user) => {
-    if (typeof user.email !== 'string') return;
-    const email = user.email.toLowerCase();
-    const base = merged.get(email);
-    const picCodes = Array.isArray(user.picCodes)
-      ? user.picCodes
-      : (Array.isArray(base?.picCodes) ? base.picCodes : []);
-    merged.set(email, { ...base, ...user, email, picCodes });
-  });
-  return [...merged.values()].map((user) => ({
-    ...user,
-    picCodes: Array.isArray(user.picCodes) ? user.picCodes : [],
-    allowedPortals: portalsForRole(user.role),
-  }));
-};
+function isSessionConsistent(account, sessionUser) {
+  if (!account || account.status !== 'Aktif') return false;
+  if (readSystemConfig().maintenanceMode && account.role !== 'superadmin_prp') return false;
+  if (account.mustChangePassword && !sessionUser?.mustChangePassword) return false;
+  if (account.password && sessionUser?.password && account.password !== sessionUser.password) return false;
+  return true;
+}
 
 export function AuthProvider({ children }) {
   const changedPasswordActor = useRef(null);
@@ -353,8 +28,9 @@ export function AuthProvider({ children }) {
     try {
       const savedUser = localStorage.getItem('performa_user');
       const saved = savedUser ? JSON.parse(savedUser) : null;
-      const account = readMergedUsers().find((user) => user.email === saved?.email);
-      return account && account.status === 'Aktif' && account.password === saved.password && (!readSystemConfig().maintenanceMode || account.role === 'superadmin_prp') ? account : null;
+      if (!saved?.email) return null;
+      const account = readMergedUsers().find((user) => user.email === saved.email.toLowerCase());
+      return isSessionConsistent(account, saved) ? (saved.password && !account.password ? { ...account, password: saved.password } : account) : null;
     } catch {
       return null;
     }
@@ -365,14 +41,19 @@ export function AuthProvider({ children }) {
       if (event.type === 'storage' && event.key && !['prp_users', 'prp_system_config', 'performa_user'].includes(event.key)) return;
       setCurrentUser((previous) => {
         if (!previous) return null;
-        const account = readMergedUsers().find((user) => user.email === previous.email);
-        if (!account || account.status !== 'Aktif' || account.password !== previous.password || (readSystemConfig().maintenanceMode && account.role !== 'superadmin_prp') || (event.type === 'storage' && event.key === 'performa_user' && !event.newValue)) return null;
-        return JSON.stringify(account) === JSON.stringify(previous) ? previous : account;
+        if (event.type === 'storage' && event.key === 'performa_user' && !event.newValue) return null;
+        const account = readMergedUsers().find((user) => user.email === previous.email.toLowerCase());
+        if (!isSessionConsistent(account, previous)) return null;
+        const merged = previous.password && !account.password ? { ...account, password: previous.password } : account;
+        return JSON.stringify(merged) === JSON.stringify(previous) ? previous : merged;
       });
     };
     window.addEventListener('prp-admin-updated', revalidate);
     window.addEventListener('storage', revalidate);
-    return () => { window.removeEventListener('prp-admin-updated', revalidate); window.removeEventListener('storage', revalidate); };
+    return () => {
+      window.removeEventListener('prp-admin-updated', revalidate);
+      window.removeEventListener('storage', revalidate);
+    };
   }, []);
 
   const [activeWorkspace, setActiveWorkspace] = useState(() => {
@@ -382,8 +63,7 @@ export function AuthProvider({ children }) {
       if (savedUserRaw) {
         const parsed = JSON.parse(savedUserRaw);
         if (parsed.role === 'iku_only') return 'iku';
-        if (parsed.role === 'kpi_only') return 'kpi';
-        if (parsed.role === 'superadmin_prp') return 'kpi';
+        if (parsed.role === 'kpi_only' || parsed.role === 'spi' || parsed.role === 'superadmin_prp') return 'kpi';
       }
       return savedWorkspace === 'kpi' ? 'kpi' : 'iku';
     } catch {
@@ -396,41 +76,45 @@ export function AuthProvider({ children }) {
       const savedContext = localStorage.getItem('performa_context');
       if (savedContext === 'prp' || savedContext === 'iku' || savedContext === 'kpi') return savedContext;
       const savedUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
-      return savedUser?.role === 'superadmin_prp' ? 'prp' : savedUser?.role === 'kpi_only' ? 'kpi' : 'iku';
+      return savedUser?.role === 'superadmin_prp' ? 'prp' : (savedUser?.role === 'kpi_only' || savedUser?.role === 'spi') ? 'kpi' : 'iku';
     } catch {
       return 'iku';
     }
   });
 
-  useEffect(() => {
-    if (!currentUser) return;
+  const effectiveWorkspace = useMemo(() => {
+    if (!currentUser) return activeWorkspace;
     const portals = portalsForRole(currentUser.role);
-    if (!portals.includes(activeWorkspace)) setActiveWorkspace(portals[0] || 'iku');
-    if ((activeContext === 'prp' && currentUser.role !== 'superadmin_prp') || (activeContext !== 'prp' && !portals.includes(activeContext))) setActiveContext(portals[0] || 'iku');
-  }, [currentUser, activeWorkspace, activeContext]);
+    if (currentUser.role === 'iku_only') return 'iku';
+    if (currentUser.role === 'kpi_only' || currentUser.role === 'spi') return 'kpi';
+    return portals.includes(activeWorkspace) ? activeWorkspace : (portals[0] || 'iku');
+  }, [currentUser, activeWorkspace]);
+
+  const effectiveContext = useMemo(() => {
+    if (!currentUser) return activeContext;
+    if (currentUser.role === 'superadmin_prp' && activeContext === 'prp') return 'prp';
+    const portals = portalsForRole(currentUser.role);
+    if (activeContext !== 'prp' && portals.includes(activeContext)) return activeContext;
+    return currentUser.role === 'superadmin_prp' ? 'prp' : (portals[0] || 'iku');
+  }, [currentUser, activeContext]);
 
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('performa_user', JSON.stringify(currentUser));
-      if (currentUser.role === 'iku_only' && activeWorkspace !== 'iku') {
-        setActiveWorkspace('iku');
-      } else if (currentUser.role === 'kpi_only' && activeWorkspace !== 'kpi') {
-        setActiveWorkspace('kpi');
-      }
     } else {
       localStorage.removeItem('performa_user');
     }
-  }, [currentUser, activeWorkspace]);
+  }, [currentUser]);
 
   useEffect(() => {
-    if (activeWorkspace) {
-      localStorage.setItem('performa_workspace', activeWorkspace);
+    if (effectiveWorkspace) {
+      localStorage.setItem('performa_workspace', effectiveWorkspace);
     }
-  }, [activeWorkspace]);
+  }, [effectiveWorkspace]);
 
   useEffect(() => {
-    localStorage.setItem('performa_context', activeContext);
-  }, [activeContext]);
+    localStorage.setItem('performa_context', effectiveContext);
+  }, [effectiveContext]);
 
   const login = (email, password) => {
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -440,50 +124,59 @@ export function AuthProvider({ children }) {
       (acc) => acc.email.toLowerCase() === cleanEmail
     );
 
-    if (!matchedUser || matchedUser.status !== 'Aktif' || cleanPass !== matchedUser.password || (readSystemConfig().maintenanceMode && matchedUser.role !== 'superadmin_prp')) {
+    const maintenanceBlocked = readSystemConfig().maintenanceMode && matchedUser?.role !== 'superadmin_prp';
+    const passwordMatches = Boolean(matchedUser) && (
+      matchedUser.password ? cleanPass === matchedUser.password : Boolean(cleanPass)
+    );
+
+    if (!matchedUser || matchedUser.status !== 'Aktif' || !passwordMatches || maintenanceBlocked) {
       writeAudit('LOGIN_GAGAL', 'Login ditolak', cleanEmail);
       return {
         success: false,
         message: 'Email atau kata sandi tidak sesuai atau akun sedang nonaktif.'
       };
     }
-    setCurrentUser(matchedUser);
+
+    const sessionUser = { ...matchedUser, password: matchedUser.password || cleanPass };
+    setCurrentUser(sessionUser);
     writeAudit('LOGIN_BERHASIL', 'Login berhasil', cleanEmail);
-    loginViaBackend(cleanEmail, cleanPass).then(() => {
+
+    loginViaBackend(cleanEmail, cleanPass).then((res) => {
+      if (res?.handledByBackend && !res.success && !matchedUser.password) {
+        setCurrentUser(null);
+        return;
+      }
       connectRealtimeEngine();
     });
 
     if (matchedUser.role === 'iku_only') {
-      setCurrentUser(matchedUser);
       setActiveWorkspace('iku');
       setActiveContext('iku');
       return {
         success: true,
-        user: matchedUser,
+        user: sessionUser,
         requiresWorkspaceChoice: false,
         targetWorkspace: 'iku'
       };
     }
 
-    if (matchedUser.role === 'kpi_only') {
-      setCurrentUser(matchedUser);
+    if (matchedUser.role === 'kpi_only' || matchedUser.role === 'spi') {
       setActiveWorkspace('kpi');
       setActiveContext('kpi');
       return {
         success: true,
-        user: matchedUser,
+        user: sessionUser,
         requiresWorkspaceChoice: false,
         targetWorkspace: 'kpi'
       };
     }
 
     if (matchedUser.role === 'superadmin_prp') {
-      setCurrentUser(matchedUser);
       setActiveWorkspace('kpi');
       setActiveContext('prp');
       return {
         success: true,
-        user: matchedUser,
+        user: sessionUser,
         requiresWorkspaceChoice: false,
         targetWorkspace: 'admin'
       };
@@ -491,7 +184,7 @@ export function AuthProvider({ children }) {
 
     return {
       success: true,
-      user: matchedUser,
+      user: sessionUser,
       requiresWorkspaceChoice: true,
       targetWorkspace: null
     };
@@ -519,12 +212,19 @@ export function AuthProvider({ children }) {
 
   const updateProfile = (changes) => {
     if (!currentUser) return;
-    const safe = Object.fromEntries(['name', 'shortName', 'avatar', 'unit'].filter((key) => typeof changes[key] === 'string').map((key) => [key, changes[key]]));
-    const account = readMergedUsers().find((user) => user.email === currentUser.email);
-    if (!account) return;
+    const safe = Object.fromEntries(
+      ['name', 'shortName', 'avatar', 'unit']
+        .filter((key) => typeof changes[key] === 'string')
+        .map((key) => [key, changes[key].trim()])
+    );
+    const account = readMergedUsers().find((user) => user.email === currentUser.email.toLowerCase()) || currentUser;
     const next = { ...account, ...safe };
-    localStorage.setItem('prp_users', JSON.stringify([...getStoredUsers().filter((user) => user.email !== next.email), next]));
-    setCurrentUser(next);
+    localStorage.setItem(
+      'prp_users',
+      JSON.stringify([...getStoredUsers().filter((user) => user.email?.toLowerCase() !== next.email.toLowerCase()), next])
+    );
+    setCurrentUser(currentUser.password && !next.password ? { ...next, password: currentUser.password } : next);
+    updateOwnProfileViaBackend(safe);
     notifyAdminUpdated();
     writeAudit('PROFIL_DIPERBARUI', 'Profil diperbarui', next.email);
   };
@@ -532,14 +232,16 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!currentUser?.email) return undefined;
     let cleanup = () => {};
+    let active = true;
     if (!getAccessToken()) {
       loginViaBackend(currentUser.email, currentUser.password || 'password').then(() => {
-        cleanup = connectRealtimeEngine();
+        if (active) cleanup = connectRealtimeEngine();
       });
     } else {
       cleanup = connectRealtimeEngine();
     }
     return () => {
+      active = false;
       if (typeof cleanup === 'function') cleanup();
     };
   }, [currentUser?.email, currentUser?.password]);
@@ -566,8 +268,8 @@ export function AuthProvider({ children }) {
 
   const value = {
     currentUser,
-    activeWorkspace,
-    activeContext,
+    activeWorkspace: effectiveWorkspace,
+    activeContext: effectiveContext,
     login,
     completeDualLogin,
     switchWorkspace,
@@ -581,29 +283,40 @@ export function AuthProvider({ children }) {
 
   const changePassword = (event) => {
     event.preventDefault();
-    if (newPassword.length < minimumPasswordLength() || newPassword !== confirmation || newPassword === currentUser.password) {
-      setPasswordError(`Gunakan password baru minimal ${minimumPasswordLength()} karakter dan konfirmasi yang sama.`);
+    if (
+      newPassword.length < minimumPasswordLength()
+      || newPassword !== confirmation
+      || (currentUser?.password && newPassword === currentUser.password)
+    ) {
+      setPasswordError(`Gunakan password baru minimal ${minimumPasswordLength()} karakter, berbeda dari password lama, dan konfirmasi yang sama.`);
       return;
     }
-    const account = readMergedUsers().find((user) => user.email === currentUser.email);
-    if (!account || account.password !== currentUser.password || account.status !== 'Aktif') { logout(); return; }
+    const account = readMergedUsers().find((user) => user.email === currentUser.email.toLowerCase());
+    if (!account || account.status !== 'Aktif' || (account.password && currentUser.password && account.password !== currentUser.password)) {
+      logout();
+      return;
+    }
     const next = { ...account, password: newPassword, mustChangePassword: false };
-    localStorage.setItem('prp_users', JSON.stringify([...getStoredUsers().filter((user) => user.email !== next.email), next]));
+    localStorage.setItem(
+      'prp_users',
+      JSON.stringify([...getStoredUsers().filter((user) => user.email?.toLowerCase() !== next.email.toLowerCase()), next])
+    );
+    changeOwnPasswordViaBackend(currentUser.password || '', newPassword);
     setCurrentUser(next);
     changedPasswordActor.current = next.email;
-    setNewPassword(''); setConfirmation(''); setPasswordError('');
+    setNewPassword('');
+    setConfirmation('');
+    setPasswordError('');
   };
 
   useEffect(() => {
-    if (currentUser && !currentUser.mustChangePassword && newPassword === '' && confirmation === '') {
-      if (changedPasswordActor.current) {
-        const actor = changedPasswordActor.current;
-        changedPasswordActor.current = null;
-        writeAudit('PASSWORD_DIUBAH', 'Password wajib berhasil diganti', actor);
-      }
+    if (currentUser && !currentUser.mustChangePassword && changedPasswordActor.current) {
+      const actor = changedPasswordActor.current;
+      changedPasswordActor.current = null;
+      writeAudit('PASSWORD_DIUBAH', 'Password wajib berhasil diganti', actor);
       notifyAdminUpdated();
     }
-  }, [currentUser, newPassword, confirmation]);
+  }, [currentUser]);
 
   return (
     <AuthContext.Provider value={value}>
@@ -620,9 +333,7 @@ export function AuthProvider({ children }) {
           }}
         >
           <form
-            onSubmit={(event) => {
-              changePassword(event);
-            }}
+            onSubmit={changePassword}
             aria-label="Ganti password wajib"
             style={{
               background: '#FFFFFF',
@@ -671,10 +382,10 @@ export function AuthProvider({ children }) {
               </p>
             )}
             <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '0.35rem' }}>
-              <button type="button" className="ent-btn" onClick={logout}>
+              <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={logout}>
                 Keluar
               </button>
-              <button type="submit" className="ent-btn ent-btn-teal">
+              <button type="submit" className="ent-btn ent-btn-teal" style={{ minHeight: '44px' }}>
                 Simpan Password Baru
               </button>
             </div>
@@ -685,12 +396,4 @@ export function AuthProvider({ children }) {
       )}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

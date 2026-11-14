@@ -4,8 +4,9 @@ import {
   Check, ExternalLink, Eye, Download, FileText, Image as ImageIcon,
   Link2, Search, ShieldCheck, X, Layers, History, CheckCircle2,
 } from 'lucide-react';
-import { useAuth } from '../../auth/context/AuthContext';
-import KPIDataEntrySheet, { KPI_SECTIONS_CONFIG, EvidencePreviewModal } from './KPIDataEntrySheet';
+import { useAuth } from '../../auth/hooks/useAuth';
+import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
+import KPIDataEntrySheet, { EvidencePreviewModal } from './KPIDataEntrySheet';
 import {
   KPI_TRANSITIONS,
   readKpiWorkflow,
@@ -68,6 +69,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
   const [filter, setFilter] = useState('');
   const [note, setNote] = useState('');
   const [complete, setComplete] = useState(false);
+  const [pendingUnlock, setPendingUnlock] = useState(null);
   const [error, setError] = useState('');
 
   const selected = controlledSelected !== undefined ? controlledSelected : localSelected;
@@ -116,11 +118,14 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
   useEffect(() => {
     if (!record || !form) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && !previewDoc) updateSelected(null);
+      if (event.key === 'Escape') {
+        if (pendingUnlock) setPendingUnlock(null);
+        else if (!previewDoc) updateSelected(null);
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [record, form, previewDoc, updateSelected]);
+  }, [record, form, previewDoc, pendingUnlock, updateSelected]);
 
   const mutate = (action) => {
     setError('');
@@ -168,6 +173,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             <button
               type="button"
               className="ent-btn ent-btn-primary"
+              style={{ minHeight: '44px' }}
               onClick={() => setShowIntegratedSheet((prev) => !prev)}
             >
               <Layers size={14} />
@@ -577,9 +583,18 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         key={status}
                         type="button"
                         className={`ent-btn ${status === 'APPROVED' ? 'ent-btn-teal' : status === 'LOCKED' ? 'ent-btn-primary' : ''}`}
+                        style={{ minHeight: '44px' }}
                         disabled={(status === 'APPROVED' && !complete) || (status !== 'APPROVED' && status !== 'LOCKED' && !note.trim())}
                         onClick={() => {
-                          if (record.status === 'LOCKED' && !window.confirm('Buka kembali submission yang sudah dikunci? Unit dapat mengubah data lagi.')) return;
+                          if (record.status === 'LOCKED') {
+                            setPendingUnlock({
+                              formId: form.id,
+                              email: record.email,
+                              status,
+                              nextNote: note || 'Submission dibuka kembali oleh PRP',
+                            });
+                            return;
+                          }
                           mutate(() => reviewUnitKpi(form.id, record.email, status, note || 'Disetujui dan terverifikasi oleh PRP', currentUser));
                         }}
                       >
@@ -792,6 +807,65 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
         evidence={previewDoc}
         onClose={() => setPreviewDoc(null)}
       />
+
+      {pendingUnlock && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="kpi-unlock-title"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setPendingUnlock(null);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1300,
+            background: 'rgba(6, 44, 61, 0.58)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: 'min(440px, 100%)',
+              background: '#FFFFFF',
+              borderRadius: '10px',
+              border: '1px solid #D8E4EA',
+              boxShadow: '0 24px 48px rgba(7, 37, 52, 0.22)',
+              padding: '1.35rem',
+            }}
+          >
+            <h3
+              id="kpi-unlock-title"
+              style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
+            >
+              Buka Kunci Submission KPI
+            </h3>
+            <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
+              Buka kembali submission yang sudah dikunci untuk <strong>{pendingUnlock.email}</strong>? Unit dapat mengubah data capaian lagi.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
+              <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setPendingUnlock(null)}>
+                Batal
+              </button>
+              <button
+                type="button"
+                className="ent-btn ent-btn-primary"
+                style={{ minHeight: '44px' }}
+                onClick={() => {
+                  const target = pendingUnlock;
+                  setPendingUnlock(null);
+                  mutate(() => reviewUnitKpi(target.formId, target.email, target.status, target.nextNote, currentUser));
+                }}
+              >
+                Ya, Buka Kunci
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

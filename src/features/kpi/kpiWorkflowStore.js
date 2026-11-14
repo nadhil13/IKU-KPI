@@ -1,5 +1,5 @@
 /** Snapshot formulir KPI terdistribusi, pembatasan hak input PIC, bukti per baris, dan papan integrasi terpusat. */
-import { MOCK_ACCOUNTS } from '../auth/context/AuthContext';
+import { MOCK_ACCOUNTS } from '../auth/authAccounts';
 import {
   createId,
   normalizeKpiSections,
@@ -37,8 +37,106 @@ export const readKpiWorkflow = () => ({
   submissions: {},
   evidence: {},
   drafts: {},
-  ...read(KEY, { forms: [], submissions: {}, evidence: {}, drafts: {} }),
+  adminOverrides: {},
+  revisions: {},
+  ...read(KEY, { forms: [], submissions: {}, evidence: {}, drafts: {}, adminOverrides: {}, revisions: {} }),
 });
+
+const NOTIF_KEY = 'prp_notifications_v1';
+const EMAIL_OUTBOX_KEY = 'prp_email_outbox_v1';
+
+function dispatchWorkflowNotification({
+  kind = 'SYSTEM',
+  title = 'Pembaruan Sistem KPI',
+  message = '',
+  targetType = 'ALL',
+  targetEmails = [],
+  targetRoles = [],
+  targetPicCodes = [],
+  actionUrl = '/internal/kpi',
+  actionLabel = 'Buka Tabel KPI',
+  meta = {},
+  actor = null,
+  sendEmail = false,
+  emailRecipients = [],
+  emailSubject = '',
+  emailBody = '',
+} = {}) {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const now = new Date().toISOString();
+    const cleanEmails = (targetEmails || []).map((e) => String(e || '').trim().toLowerCase()).filter(Boolean);
+    const cleanRoles = (targetRoles || []).map((r) => String(r || '').trim()).filter(Boolean);
+    const cleanPics = (targetPicCodes || []).map((p) => String(p || '').trim().toUpperCase()).filter(Boolean);
+    const recipients = (emailRecipients.length ? emailRecipients : cleanEmails)
+      .map((e) => String(e || '').trim().toLowerCase())
+      .filter(Boolean);
+    let emailRecord = null;
+    if (sendEmail && recipients.length > 0) {
+      const outbox = read(EMAIL_OUTBOX_KEY, []);
+      emailRecord = {
+        id: createId('email'),
+        messageId: `<${String(kind || 'system').toLowerCase()}-${Date.now()}@performa.itpln.ac.id>`,
+        subject: String(emailSubject || `[PORTAL KPI ITPLN] ${title}`).trim(),
+        body: String(emailBody || message || title).trim(),
+        toEmails: recipients,
+        recipients,
+        recipientLabel: recipients.join(', '),
+        kind,
+        actionUrl,
+        indicatorCode: meta?.targetId || '',
+        period: meta?.period || '',
+        meta,
+        actorEmail: actor?.email || 'prp@itpln.ac.id',
+        actorName: actor?.name || 'Admin PRP ITPLN',
+        status: 'TERKIRIM_TERCATAT',
+        transport: 'SMTP_GATEWAY_READY',
+        sentAt: now,
+      };
+      localStorage.setItem(EMAIL_OUTBOX_KEY, JSON.stringify([emailRecord, ...(Array.isArray(outbox) ? outbox : [])].slice(0, 400)));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('prp-email-outbox-updated'));
+      }
+    }
+    let resolvedTargetValue = '';
+    if (targetType === 'USER') resolvedTargetValue = cleanEmails.join(', ');
+    else if (targetType === 'PIC') resolvedTargetValue = cleanPics.join(', ');
+    else if (targetType === 'ROLE') resolvedTargetValue = cleanRoles.join(', ');
+
+    const existing = read(NOTIF_KEY, []);
+    const entry = {
+      id: createId('notif'),
+      kind,
+      title: String(title || '').trim(),
+      message: String(message || '').trim(),
+      targetType,
+      targetValue: resolvedTargetValue,
+      targetEmails: cleanEmails,
+      targetRoles: cleanRoles,
+      targetPicCodes: cleanPics,
+      actionUrl: String(actionUrl || '/internal/kpi'),
+      actionLabel: String(actionLabel || 'Buka Halaman Terkait'),
+      indicatorCode: meta?.targetId || '',
+      period: meta?.period || '',
+      meta: meta && typeof meta === 'object' ? meta : {},
+      actorEmail: actor?.email || 'prp@itpln.ac.id',
+      actorName: actor?.name || 'Admin PRP',
+      createdAt: now,
+      readBy: [],
+      emailSent: Boolean(emailRecord),
+      emailAuditId: emailRecord?.id || null,
+      emailRecordId: emailRecord?.id || null,
+      emailRecipients: recipients,
+    };
+    localStorage.setItem(NOTIF_KEY, JSON.stringify([entry, ...(Array.isArray(existing) ? existing : [])].slice(0, 400)));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('prp-notifications-updated'));
+    }
+    return entry;
+  } catch {
+    return null;
+  }
+}
 
 const config = () => read('prp_system_config', {});
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -73,7 +171,7 @@ function owner(form, user) {
     form?.units?.some((unit) => unit.email === normalizedEmail)
     || getKpiUnits().some((unit) => unit.email === normalizedEmail)
   );
-  if (!normalizedEmail || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only') || !form || !isRegisteredUnit) {
+  if (!normalizedEmail || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only' && user.role !== 'dual') || !form || !isRegisteredUnit) {
     throw new Error('Formulir tidak ditujukan ke akun ini.');
   }
   inputAllowed(form);
@@ -263,6 +361,8 @@ export function reviewUnitEvidence(formId, email, evidenceId, status, note = '',
     ? { ...e, status, note: note.trim(), reviewedAt: new Date().toISOString(), reviewedBy: actor?.email || null }
     : e));
   const record = state.submissions[key];
+  const form = state.forms.find((f) => f.id === formId);
+  const reviewedEv = entries.find((e) => e.id === evidenceId);
   write({
     ...state,
     evidence: { ...state.evidence, [key]: next },
@@ -274,6 +374,26 @@ export function reviewUnitEvidence(formId, email, evidenceId, status, note = '',
       },
     },
   });
+  if (email) {
+    dispatchWorkflowNotification({
+      kind: status === 'REJECTED' ? 'REVISION' : 'SYSTEM',
+      title: status === 'REJECTED'
+        ? `Bukti Capaian Ditolak (${reviewedEv?.label || evidenceId})`
+        : `Bukti Capaian Terverifikasi (${reviewedEv?.label || evidenceId})`,
+      message: status === 'REJECTED'
+        ? `Admin PRP menolak bukti "${reviewedEv?.label || evidenceId}" dengan catatan: ${note.trim()}`
+        : `Bukti "${reviewedEv?.label || evidenceId}" telah diverifikasi oleh Admin PRP.`,
+      targetType: 'USER',
+      targetEmails: [email],
+      actionUrl: `/internal/kpi?period=${encodeURIComponent(form?.period || '2026')}&focusItem=${encodeURIComponent(reviewedEv?.indicatorId || '')}`,
+      actionLabel: 'Buka Baris Indikator',
+      meta: { formId, evidenceId, indicatorId: reviewedEv?.indicatorId || null, status },
+      actor,
+      sendEmail: status === 'REJECTED',
+      emailRecipients: [email],
+      emailSubject: `[PORTAL KPI ITPLN] ${status === 'REJECTED' ? 'Penolakan Bukti Capaian KPI' : 'Verifikasi Bukti Capaian KPI'}`,
+    });
+  }
 }
 
 const write = (state, options = {}) => {
@@ -327,13 +447,121 @@ export function subscribeKpiWorkflow(callback) {
   };
 }
 
+export function doesFormMatchPeriod(form, period) {
+  if (!form || !period) return false;
+  const target = String(period).trim();
+  const formPeriod = String(form.period || '').trim();
+  if (!target || !formPeriod) return false;
+  if (formPeriod.toLowerCase() === target.toLowerCase() || form.id === target) return true;
+  const targetYearMatch = target.match(/\b(20\d{2})\b/);
+  const formYearMatch = formPeriod.match(/\b(20\d{2})\b/);
+  if (targetYearMatch && formYearMatch && targetYearMatch[1] === formYearMatch[1]) {
+    if (/^\d{4}$/.test(target) || /^\d{4}$/.test(formPeriod)) return true;
+  }
+  return false;
+}
+
+export function getFormForPeriod(period, state = readKpiWorkflow(), { fallbackToLatest = true } = {}) {
+  if (!state?.forms?.length) return null;
+  if (!period) return state.forms[state.forms.length - 1];
+  const exact = [...state.forms].reverse().find((f) => String(f.period || '').trim().toLowerCase() === String(period).trim().toLowerCase() || f.id === period);
+  if (exact) return exact;
+  const matched = [...state.forms].reverse().find((f) => doesFormMatchPeriod(f, period));
+  if (matched) return matched;
+  return fallbackToLatest ? state.forms[state.forms.length - 1] : null;
+}
+
+export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
+  const rawPeriods = read('prp_periods', []);
+  const sysDeadline = config().submissionDeadline || null;
+  const now = new Date();
+  const byYear = new Map();
+
+  const evaluateStatus = (periodObj, yearStr) => {
+    if (!periodObj) {
+      const isCurrentYear = String(yearStr) === String(new Date().getFullYear());
+      const deadlinePassed = sysDeadline && now > new Date(sysDeadline);
+      const isOpen = isCurrentYear && !deadlinePassed;
+      return {
+        year: String(yearStr),
+        id: `PER-${yearStr}`,
+        label: `Periode Evaluasi ${yearStr}`,
+        status: isOpen ? 'Active' : 'Archived',
+        inputOpen: isOpen,
+        isLocked: !isOpen,
+        lockReason: !isOpen ? (deadlinePassed ? 'Melewati Tenggat Waktu' : 'Periode Historis / Terkunci') : 'Terbuka untuk Pengisian',
+        deadline: sysDeadline,
+      };
+    }
+    const startOk = Boolean(periodObj.syncedAt && periodObj.inputOpen === true)
+      || !periodObj.start
+      || now >= new Date(`${periodObj.start}T00:00:00`);
+    const endOk = !periodObj.end || now <= new Date(`${periodObj.end}T23:59:59.999`);
+    const deadline = periodObj.submissionDeadline || sysDeadline;
+    const deadlineOk = !deadline || now <= new Date(deadline);
+    const isOpen = periodObj.status === 'Active' && periodObj.inputOpen !== false && startOk && endOk && deadlineOk;
+    let lockReason = 'Terbuka untuk Pengisian';
+    if (!isOpen) {
+      if (periodObj.status !== 'Active' || periodObj.inputOpen === false) lockReason = 'Dinonaktifkan / Dikunci Admin PRP';
+      else if (!deadlineOk || !endOk) lockReason = 'Tenggat Waktu Berakhir';
+      else if (!startOk) lockReason = 'Belum Dibuka';
+    }
+    return {
+      year: String(yearStr),
+      id: periodObj.id || `PER-${yearStr}`,
+      label: periodObj.label || `Periode Evaluasi ${yearStr}`,
+      status: periodObj.status || (isOpen ? 'Active' : 'Archived'),
+      inputOpen: isOpen,
+      isLocked: !isOpen,
+      lockReason,
+      deadline,
+      start: periodObj.start || null,
+      end: periodObj.end || null,
+    };
+  };
+
+  (Array.isArray(rawPeriods) ? rawPeriods : []).forEach((p) => {
+    const ym = String(p.start || p.label || p.id || '').match(/\b(20\d{2})\b/);
+    const yearKey = ym ? ym[1] : String(p.id || p.label || '2026');
+    const prev = byYear.get(yearKey);
+    const evaluated = evaluateStatus(p, yearKey);
+    if (!prev || (!prev.inputOpen && evaluated.inputOpen)) {
+      byYear.set(yearKey, evaluated);
+    }
+  });
+
+  (state?.forms || []).forEach((f) => {
+    const ym = String(f.period || '').match(/\b(20\d{2})\b/);
+    const yearKey = ym ? ym[1] : String(f.period || '2026');
+    if (!byYear.has(yearKey)) {
+      byYear.set(yearKey, evaluateStatus(null, yearKey));
+    }
+  });
+
+  ['2027', '2026', '2025', '2024'].forEach((yr) => {
+    if (!byYear.has(yr)) {
+      byYear.set(yr, evaluateStatus(null, yr));
+    }
+  });
+
+  return [...byYear.values()].sort((a, b) => String(b.year).localeCompare(String(a.year)));
+}
+
 export function syncActiveKpiFormSections(sections, options = {}) {
   if (!Array.isArray(sections) || !sections.length) return null;
   const normalized = normalizeKpiSections(sections);
   const state = readKpiWorkflow();
   if (!state.forms.length) return null;
-  const lastIdx = state.forms.length - 1;
-  const latestForm = state.forms[lastIdx];
+  let targetIdx = state.forms.length - 1;
+  if (options.period) {
+    for (let i = state.forms.length - 1; i >= 0; i -= 1) {
+      if (doesFormMatchPeriod(state.forms[i], options.period)) {
+        targetIdx = i;
+        break;
+      }
+    }
+  }
+  const latestForm = state.forms[targetIdx];
   const prevJson = JSON.stringify(latestForm.sections || []);
   const nextJson = JSON.stringify(normalized);
   const units = getKpiUnits();
@@ -349,7 +577,7 @@ export function syncActiveKpiFormSections(sections, options = {}) {
     updatedAt: new Date().toISOString(),
     updatedBy: options.actor || 'Superadmin PRP',
   };
-  const nextForms = state.forms.map((f, idx) => (idx === lastIdx ? updatedForm : f));
+  const nextForms = state.forms.map((f, idx) => (idx === targetIdx ? updatedForm : f));
   write(
     { ...state, forms: nextForms },
     {
@@ -361,13 +589,120 @@ export function syncActiveKpiFormSections(sections, options = {}) {
   return updatedForm;
 }
 
+export function syncPeriodMasterTable(sections, {
+  period = String(new Date().getFullYear()),
+  actor = null,
+  openPeriod = true,
+  lockPreviousPeriods = false,
+  note = '',
+} = {}) {
+  maintenance();
+  reviewer(actor);
+  const normalized = normalizeKpiSections(sections);
+  if (validateKpiSections(normalized).issues.some((issue) => issue.level === 'error')) {
+    throw new Error('Perbaiki rumus atau pelanggaran aturan struktur wajib sebelum menyinkronkan periode.');
+  }
+  const state = readKpiWorkflow();
+  const units = getKpiUnits();
+  if (!units.length) throw new Error('Belum ada akun unit KPI aktif.');
+
+  const targetPeriod = String(period || new Date().getFullYear()).trim();
+  const yearMatch = targetPeriod.match(/\b(20\d{2})\b/);
+  const targetYear = yearMatch ? yearMatch[1] : targetPeriod;
+
+  let existingIdx = -1;
+  for (let i = state.forms.length - 1; i >= 0; i -= 1) {
+    if (doesFormMatchPeriod(state.forms[i], targetPeriod)) {
+      existingIdx = i;
+      break;
+    }
+  }
+
+  let syncedForm;
+  let nextForms;
+  if (existingIdx >= 0) {
+    const prevForm = state.forms[existingIdx];
+    syncedForm = {
+      ...prevForm,
+      period: targetPeriod,
+      sections: normalized,
+      units,
+      structureRevision: (Number(prevForm.structureRevision) || 1) + 1,
+      syncedAt: new Date().toISOString(),
+      syncedBy: actor?.email || 'prp@itpln.ac.id',
+    };
+    nextForms = state.forms.map((f, idx) => (idx === existingIdx ? syncedForm : f));
+  } else {
+    syncedForm = {
+      id: createId('form'),
+      version: state.forms.length + 1,
+      period: targetPeriod,
+      sections: normalized,
+      units,
+      structureRevision: 1,
+      sentAt: new Date().toISOString(),
+      syncedAt: new Date().toISOString(),
+      syncedBy: actor?.email || 'prp@itpln.ac.id',
+    };
+    nextForms = [...state.forms, syncedForm];
+  }
+
+  if (typeof localStorage !== 'undefined') {
+    const rawPeriods = read('prp_periods', []);
+    const list = Array.isArray(rawPeriods) ? [...rawPeriods] : [];
+    const periodIdx = list.findIndex((p) => String(p.id) === targetPeriod || String(p.label) === targetPeriod || String(p.start || '').startsWith(targetYear));
+    const nextPeriodRecord = {
+      id: periodIdx >= 0 ? list[periodIdx].id : `PER-${targetYear}`,
+      label: periodIdx >= 0 ? list[periodIdx].label : `Periode Evaluasi KPI ${targetPeriod}`,
+      start: periodIdx >= 0 && list[periodIdx].start ? list[periodIdx].start : `${targetYear}-01-01`,
+      end: periodIdx >= 0 && list[periodIdx].end ? list[periodIdx].end : `${targetYear}-12-31`,
+      status: openPeriod ? 'Active' : (periodIdx >= 0 ? list[periodIdx].status : 'Archived'),
+      inputOpen: Boolean(openPeriod),
+      syncedAt: new Date().toISOString(),
+      structureRevision: syncedForm.structureRevision,
+    };
+    const updatedPeriods = list.map((p, idx) => {
+      if (idx === periodIdx) return { ...p, ...nextPeriodRecord };
+      if (lockPreviousPeriods && openPeriod) {
+        return { ...p, status: 'Archived', inputOpen: false };
+      }
+      return p;
+    });
+    if (periodIdx < 0) {
+      updatedPeriods.unshift(nextPeriodRecord);
+    }
+    localStorage.setItem('prp_periods', JSON.stringify(updatedPeriods));
+  }
+
+  write({ ...state, forms: nextForms });
+  publishKpiSections(normalized, {
+    actor: actor?.email || 'Superadmin PRP',
+    snapshot: true,
+    note: note || `Sinkronisasi Master Tabel Periode ${targetPeriod} (${syncedForm.id})`,
+  });
+
+  dispatchWorkflowNotification({
+    kind: 'STRUCTURE_SYNC',
+    title: `Master Tabel KPI Periode ${targetPeriod} Disinkronkan`,
+    message: note
+      || `Admin PRP telah menyinkronkan struktur Master Tabel KPI untuk periode ${targetPeriod} (${openPeriod ? 'Status: AKTIF / Terbuka untuk Diisi' : 'Status: TERKUNCI / Arsip'}). Data historis periode sebelumnya tetap tersimpan utuh.`,
+    targetType: 'ALL',
+    actionUrl: `/internal/kpi?period=${encodeURIComponent(targetYear)}`,
+    actionLabel: `Buka Tabel Periode ${targetPeriod}`,
+    meta: { formId: syncedForm.id, period: targetPeriod, openPeriod },
+    actor,
+  });
+
+  return syncedForm;
+}
+
 export function getKpiUnits() {
   const accounts = new Map();
   [...MOCK_ACCOUNTS, ...read('prp_users', [])].forEach((user) => {
     if (user?.email) accounts.set(user.email.toLowerCase(), user);
   });
   return [...accounts.values()]
-    .filter((user) => user.role === 'kpi_only' && user.status !== 'Nonaktif')
+    .filter((user) => (user.role === 'kpi_only' || user.role === 'dual') && user.status !== 'Nonaktif')
     .map((user) => ({
       email: user.email.toLowerCase(),
       name: user.unit || user.name,
@@ -492,12 +827,33 @@ export function distributeKpiForm(sections, { period = String(new Date().getFull
   };
   write({ ...state, forms: [...state.forms, form] });
   publishKpiSections(normalized, { actor: actor?.email || 'Superadmin PRP', snapshot: true, note: `Distribusi periode ${period} (${form.id})` });
+  dispatchWorkflowNotification({
+    kind: 'STRUCTURE_SYNC',
+    title: `Formulir Evaluasi KPI Periode ${period} Didistribusikan`,
+    message: `Admin PRP telah mendistribusikan struktur tabel KPI periode ${period} ke seluruh unit kerja PIC. Silakan buka lembar kerja untuk mengisi capaian unit Anda.`,
+    targetType: 'ALL',
+    actionUrl: `/internal/kpi?period=${encodeURIComponent(period)}`,
+    actionLabel: 'Buka Lembar Kerja KPI',
+    meta: { formId: form.id, period },
+    actor,
+  });
   return form;
 }
 
-export function getUnitKpiForm(email, state = readKpiWorkflow()) {
+export function getUnitKpiForm(email, state = readKpiWorkflow(), period = null) {
   const normalizedEmail = email?.toLowerCase();
   if (!normalizedEmail || !state.forms?.length) return null;
+  if (period) {
+    const periodMatch = [...state.forms].reverse().find(
+      (form) => doesFormMatchPeriod(form, period) && form.units?.some((unit) => unit.email === normalizedEmail),
+    );
+    if (periodMatch) return periodMatch;
+    const isActiveKpiUnitForPeriod = getKpiUnits().some((unit) => unit.email === normalizedEmail);
+    if (isActiveKpiUnitForPeriod) {
+      const anyPeriodForm = [...state.forms].reverse().find((form) => doesFormMatchPeriod(form, period));
+      if (anyPeriodForm) return anyPeriodForm;
+    }
+  }
   const directMatch = [...state.forms].reverse().find((form) => form.units?.some((unit) => unit.email === normalizedEmail));
   if (directMatch) return directMatch;
   const isActiveKpiUnit = getKpiUnits().some((unit) => unit.email === normalizedEmail);
@@ -506,6 +862,218 @@ export function getUnitKpiForm(email, state = readKpiWorkflow()) {
 
 export function readUnitSubmission(formId, email, state = readKpiWorkflow()) {
   return state.submissions[submissionKey(formId, email)] || null;
+}
+
+export function readAdminKpiOverride(formId, state = readKpiWorkflow()) {
+  if (!formId) return { values: {}, notes: {}, updatedAt: null, updatedBy: null };
+  return state.adminOverrides?.[formId] || { values: {}, notes: {}, updatedAt: null, updatedBy: null };
+}
+
+export function saveAdminKpiOverride(formId, actor, { values = {}, notes = {} } = {}) {
+  maintenance();
+  reviewer(actor);
+  const state = readKpiWorkflow();
+  const form = state.forms.find((entry) => entry.id === formId) || state.forms[state.forms.length - 1];
+  if (!form) throw new Error('Formulir KPI tidak ditemukan.');
+
+  const prevOverride = state.adminOverrides?.[form.id] || { values: {}, notes: {} };
+  const nextValues = { ...(prevOverride.values || {}) };
+  Object.entries(values || {}).forEach(([subKey, rawVal]) => {
+    const str = String(rawVal ?? '').trim();
+    if (str === '') {
+      delete nextValues[subKey];
+    } else {
+      nextValues[subKey] = rawVal;
+    }
+  });
+
+  const nextNotes = { ...(prevOverride.notes || {}) };
+  Object.entries(notes || {}).forEach(([itemId, rawNote]) => {
+    const str = String(rawNote ?? '').trim();
+    if (str === '') {
+      delete nextNotes[itemId];
+    } else {
+      nextNotes[itemId] = str;
+    }
+  });
+
+  const overrideRecord = {
+    formId: form.id,
+    values: nextValues,
+    notes: nextNotes,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actor?.name || 'Admin PRP',
+    updatedByEmail: actor?.email || 'prp@itpln.ac.id',
+  };
+
+  write({
+    ...state,
+    adminOverrides: {
+      ...(state.adminOverrides || {}),
+      [form.id]: overrideRecord,
+    },
+  });
+
+  return overrideRecord;
+}
+
+export function readKpiRevisions(formId, state = readKpiWorkflow()) {
+  if (!formId) return { items: {}, sections: {} };
+  const record = state.revisions?.[formId];
+  return {
+    items: record?.items || {},
+    sections: record?.sections || {},
+  };
+}
+
+export function saveKpiRevisionComment(formId, actor, {
+  scope = 'ITEM',
+  targetId = '',
+  comment = '',
+  resolved = false,
+} = {}) {
+  maintenance();
+  reviewer(actor);
+  const state = readKpiWorkflow();
+  const form = state.forms.find((entry) => entry.id === formId) || state.forms[state.forms.length - 1];
+  if (!form) throw new Error('Formulir KPI tidak ditemukan.');
+  const normalizedTarget = String(targetId || '').trim();
+  if (!normalizedTarget) throw new Error('Target item atau bagian revisi wajib dipilih.');
+
+  const trimmedComment = String(comment || '').trim();
+  const prevFormRev = state.revisions?.[form.id] || { items: {}, sections: {} };
+  const nextItems = { ...(prevFormRev.items || {}) };
+  const nextSections = { ...(prevFormRev.sections || {}) };
+  const now = new Date().toISOString();
+
+  let targetLabel = normalizedTarget;
+  let affectedPics = [];
+  let affectedItems = [];
+
+  if (scope === 'SECTION') {
+    const sec = (form.sections || []).find((s) => s.code === normalizedTarget);
+    targetLabel = sec ? `Bagian ${sec.code} (${sec.title})` : `Bagian ${normalizedTarget}`;
+    affectedItems = sec?.items || [];
+    affectedPics = normalizePicCodes(affectedItems.flatMap((it) => it.pics || []));
+    if (!trimmedComment || resolved) {
+      delete nextSections[normalizedTarget];
+    } else {
+      nextSections[normalizedTarget] = {
+        scope: 'SECTION',
+        targetId: normalizedTarget,
+        label: targetLabel,
+        comment: trimmedComment,
+        status: 'NEEDS_REVISION',
+        updatedAt: now,
+        authorEmail: actor?.email || 'prp@itpln.ac.id',
+        authorName: actor?.name || 'Admin PRP',
+      };
+    }
+  } else {
+    let foundSec = null;
+    let foundItem = null;
+    (form.sections || []).forEach((s) => {
+      (s.items || []).forEach((it) => {
+        if (it.id === normalizedTarget) {
+          foundSec = s;
+          foundItem = it;
+        }
+      });
+    });
+    targetLabel = foundItem
+      ? `Indikator ${foundSec.code}.${foundItem.no} (${foundItem.indikator})`
+      : `Indikator ${normalizedTarget}`;
+    affectedItems = foundItem ? [foundItem] : [];
+    affectedPics = foundItem ? normalizePicCodes(foundItem.pics || foundItem.picDisplay || []) : [];
+
+    if (!trimmedComment || resolved) {
+      delete nextItems[normalizedTarget];
+    } else {
+      nextItems[normalizedTarget] = {
+        scope: 'ITEM',
+        targetId: normalizedTarget,
+        sectionCode: foundSec?.code || '',
+        indicatorNo: foundItem?.no || '',
+        label: targetLabel,
+        comment: trimmedComment,
+        picCodes: affectedPics,
+        status: 'NEEDS_REVISION',
+        updatedAt: now,
+        authorEmail: actor?.email || 'prp@itpln.ac.id',
+        authorName: actor?.name || 'Admin PRP',
+      };
+    }
+  }
+
+  const nextSubmissions = { ...(state.submissions || {}) };
+  const affectedUnitEmails = new Set();
+
+  if (trimmedComment && !resolved && affectedItems.length > 0) {
+    (form.units || []).forEach((unit) => {
+      const fakeUser = { role: 'kpi_only', status: 'Aktif', email: unit.email, picCodes: unit.picCodes, unit: unit.name };
+      const matchesUnit = affectedItems.some((it) => canUserEditKpiItem(it, fakeUser));
+      if (matchesUnit) {
+        affectedUnitEmails.add(unit.email.toLowerCase());
+        const sKey = submissionKey(form.id, unit.email);
+        const existingSub = nextSubmissions[sKey];
+        if (existingSub && ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(existingSub.status)) {
+          const ev = readUnitEvidence(form.id, unit.email, state);
+          nextSubmissions[sKey] = {
+            ...existingSub,
+            status: 'NEEDS_REVISION',
+            revisionNote: `[${targetLabel}] ${trimmedComment}`,
+            reviewedAt: now,
+            history: history(existingSub, 'NEEDS_REVISION', `Catatan Revisi PRP (${targetLabel}): ${trimmedComment}`, actor, ev),
+          };
+        }
+      }
+    });
+  }
+
+  write({
+    ...state,
+    submissions: nextSubmissions,
+    revisions: {
+      ...(state.revisions || {}),
+      [form.id]: {
+        items: nextItems,
+        sections: nextSections,
+      },
+    },
+  });
+
+  if (trimmedComment && !resolved) {
+    const recipientEmails = [...affectedUnitEmails];
+    const focusParam = scope === 'ITEM' ? `&focusItem=${encodeURIComponent(normalizedTarget)}` : `&focusSection=${encodeURIComponent(normalizedTarget)}`;
+    dispatchWorkflowNotification({
+      kind: 'REVISION',
+      title: `Catatan Revisi PRP: ${targetLabel}`,
+      message: `Admin PRP memberikan catatan revisi pada ${targetLabel}: "${trimmedComment}". Silakan perbaiki isian atau bukti pendukung Anda.`,
+      targetType: recipientEmails.length > 0 ? 'USER' : (affectedPics.length > 0 ? 'PIC' : 'ALL'),
+      targetEmails: recipientEmails,
+      targetPicCodes: affectedPics,
+      actionUrl: `/internal/kpi?period=${encodeURIComponent(form.period || '2026')}${focusParam}`,
+      actionLabel: 'Perbaiki Baris Indikator',
+      meta: {
+        formId: form.id,
+        period: form.period,
+        scope,
+        targetId: normalizedTarget,
+        picCodes: affectedPics,
+      },
+      actor,
+      sendEmail: recipientEmails.length > 0,
+      emailRecipients: recipientEmails,
+      emailSubject: `[REVISI KPI ITPLN - Periode ${form.period}] ${targetLabel}`,
+      emailBody: `Yth. Bapak/Ibu PIC (${affectedPics.join(', ') || 'Unit Kerja'}),\n\nTim Admin PRP ITPLN telah mengirimkan catatan revisi evaluasi KPI pada:\nTarget: ${targetLabel}\nPeriode: ${form.period}\nCatatan Revisi: "${trimmedComment}"\n\nSilakan masuk ke Portal Kinerja ITPLN untuk menindaklanjuti revisi tersebut.`,
+    });
+  }
+
+  return {
+    items: nextItems,
+    sections: nextSections,
+    notifiedEmails: [...affectedUnitEmails],
+  };
 }
 
 export function clearUnitKpiDraft(formId, user, { clearPendingEvidence = false } = {}) {
@@ -613,7 +1181,9 @@ const STATUS_PRIORITY = {
 };
 
 export function readIntegratedKpiBoard(formId, state = readKpiWorkflow()) {
-  const form = state.forms.find((entry) => entry.id === formId) || state.forms[state.forms.length - 1] || null;
+  const form = state.forms.find((entry) => entry.id === formId)
+    || getFormForPeriod(formId, state, { fallbackToLatest: true })
+    || null;
   if (!form) {
     return {
       form: null,
@@ -626,8 +1196,12 @@ export function readIntegratedKpiBoard(formId, state = readKpiWorkflow()) {
       filledIndicatorCount: 0,
       totalIndicatorCount: 0,
       unitStatuses: [],
+      revisions: { items: {}, sections: {} },
     };
   }
+
+  const adminOverride = state.adminOverrides?.[form.id] || { values: {}, notes: {} };
+  const formRevisions = state.revisions?.[form.id] || { items: {}, sections: {} };
 
   const candidates = [];
   (form.units || []).forEach((unit) => {
@@ -703,9 +1277,31 @@ export function readIntegratedKpiBoard(formId, state = readKpiWorkflow()) {
         };
       }
 
+      let overriddenAnySub = false;
+      (item.subrows || []).forEach((sub) => {
+        const overrideVal = adminOverride.values?.[sub.key];
+        if (overrideVal !== undefined && String(overrideVal).trim() !== '') {
+          mergedValues[sub.key] = overrideVal;
+          overriddenAnySub = true;
+        }
+      });
+      if (overriddenAnySub) {
+        contributorsByItem[item.id] = {
+          email: adminOverride.updatedByEmail || 'prp@itpln.ac.id',
+          unit: contributorsByItem[item.id]?.unit ? `${contributorsByItem[item.id].unit} (Override PRP)` : 'Override Admin PRP',
+          status: contributorsByItem[item.id]?.status || 'APPROVED',
+          timestamp: adminOverride.updatedAt || new Date().toISOString(),
+          picCodes: contributorsByItem[item.id]?.picCodes || item.pics || ['PRP'],
+          isAdminOverride: true,
+        };
+      }
+
       const noteWinner = permittedCandidates.find((cand) => String(cand.notes?.[item.id] ?? '').trim() !== '');
       if (noteWinner) {
         mergedNotes[item.id] = String(noteWinner.notes[item.id]).trim();
+      }
+      if (adminOverride.notes?.[item.id] && String(adminOverride.notes[item.id]).trim() !== '') {
+        mergedNotes[item.id] = String(adminOverride.notes[item.id]).trim();
       }
     });
   });
@@ -757,6 +1353,10 @@ export function readIntegratedKpiBoard(formId, state = readKpiWorkflow()) {
     filledIndicatorCount,
     totalIndicatorCount,
     unitStatuses,
+    revisions: {
+      items: formRevisions.items || {},
+      sections: formRevisions.sections || {},
+    },
   };
 }
 
@@ -934,5 +1534,34 @@ export function reviewUnitKpi(formId, email, status, note = '', actor) {
     history: history(record, status, note.trim(), actor, evidence),
   };
   write({ ...state, submissions: { ...state.submissions, [key]: next } });
+
+  if (email) {
+    const isRev = ['NEEDS_REVISION', 'REJECTED'].includes(status);
+    const statusLabelMap = {
+      APPROVED: 'Disetujui (Approved)',
+      NEEDS_REVISION: 'Perlu Revisi (Needs Revision)',
+      REJECTED: 'Ditolak (Rejected)',
+      LOCKED: 'Dikunci Permanen (Locked)',
+    };
+    const statusLabel = statusLabelMap[status] || status;
+    dispatchWorkflowNotification({
+      kind: isRev ? 'REVISION' : 'SYSTEM',
+      title: `Status Pengajuan KPI: ${statusLabel}`,
+      message: isRev
+        ? `Admin PRP meminta revisi pada pengajuan KPI unit ${record.unit || email}: "${note.trim()}"`
+        : `Pengajuan evaluasi KPI unit ${record.unit || email} telah diperbarui menjadi ${statusLabel}.${note.trim() ? ` Catatan: ${note.trim()}` : ''}`,
+      targetType: 'USER',
+      targetEmails: [email],
+      actionUrl: `/internal/kpi?period=${encodeURIComponent(form?.period || '2026')}`,
+      actionLabel: isRev ? 'Buka & Perbaiki Isian KPI' : 'Lihat Hasil Evaluasi KPI',
+      meta: { formId, status, note: note.trim() },
+      actor,
+      sendEmail: true,
+      emailRecipients: [email],
+      emailSubject: `[PORTAL KPI ITPLN] Status Evaluasi KPI Unit ${record.unit || email}: ${statusLabel}`,
+      emailBody: `Yth. Bapak/Ibu PIC ${record.unit || email},\n\nStatus pengajuan evaluasi KPI Anda pada Periode ${form?.period || '2026'} telah diperbarui oleh Tim Admin PRP menjadi: ${statusLabel}.\n${note.trim() ? `Catatan Verifikator PRP: "${note.trim()}"\n` : ''}\nSilakan masuk ke Portal Kinerja ITPLN untuk melihat rinciannya.`,
+    });
+  }
+
   return next;
 }

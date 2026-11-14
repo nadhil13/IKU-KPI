@@ -253,7 +253,7 @@
 }
 
 .tp-fields input::placeholder {
-  color: #64748B;
+  color: #475569;
 }
 
 .tp-fields input:focus,
@@ -326,7 +326,7 @@
 }
 
 .tp-search input::placeholder {
-  color: #64748B;
+  color: #475569;
 }
 
 .tp-toolbar select {

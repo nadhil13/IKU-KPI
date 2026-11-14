@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { readMergedUsers, useAuth } from '../context/AuthContext';
+import { readMergedUsers } from '../authAccounts';
+import { useAuth } from '../hooks/useAuth';
 
 const CAMERA_PRESETS = [
   { scale: 1.05, xPercent: -1.5, yPercent: -1.0 },
@@ -24,8 +25,24 @@ export default function Login() {
   const navigate = useNavigate();
   const { login, completeDualLogin, mockAccounts } = useAuth();
 
-  const allAccounts = useMemo(() => readMergedUsers().filter((acc) => acc.status !== 'Nonaktif'), []);
-  const kpiAccounts = useMemo(() => allAccounts.filter((acc) => acc.role === 'kpi_only'), [allAccounts]);
+  const [usersRevision, setUsersRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setUsersRevision((n) => n + 1);
+    window.addEventListener('prp-admin-updated', refresh);
+    window.addEventListener('storage', refresh);
+    window.addEventListener('performa:state-updated', refresh);
+    return () => {
+      window.removeEventListener('prp-admin-updated', refresh);
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener('performa:state-updated', refresh);
+    };
+  }, []);
+
+  const allAccounts = useMemo(() => {
+    void usersRevision;
+    return readMergedUsers().filter((acc) => acc.status !== 'Nonaktif');
+  }, [usersRevision]);
+  const kpiAccounts = useMemo(() => allAccounts.filter((acc) => acc.role === 'kpi_only' || acc.role === 'dual' || acc.role === 'spi'), [allAccounts]);
 
   const [selectedIdx, setSelectedIdx] = useState(2);
   const [email, setEmail] = useState(mockAccounts[2].email);
@@ -54,7 +71,7 @@ export default function Login() {
 
   const primaryTabIndex = activeAccount.role === 'iku_only'
     ? 0
-    : activeAccount.role === 'kpi_only'
+    : activeAccount.role === 'kpi_only' || activeAccount.role === 'spi'
       ? 1
       : 2;
 
@@ -66,19 +83,20 @@ export default function Login() {
   const isKpiActive =
     step === 'workspace_gate' && hoveredGate
       ? hoveredGate === 'kpi'
-      : activeAccount.role === 'kpi_only' || ['dual', 'superadmin_prp'].includes(activeAccount.role);
+      : activeAccount.role === 'kpi_only' || activeAccount.role === 'spi' || ['dual', 'superadmin_prp'].includes(activeAccount.role);
 
   const handleSelectScenario = useCallback(
     (tabIdx) => {
       if (tabIdx < 0 || tabIdx > 2) return;
-      const targetAcc = mockAccounts[tabIdx];
-      if (!targetAcc) return;
+      const baseAcc = mockAccounts[tabIdx];
+      if (!baseAcc) return;
+      const mergedAcc = allAccounts.find((acc) => acc.email.toLowerCase() === baseAcc.email.toLowerCase()) || baseAcc;
       setSelectedIdx(tabIdx);
-      setEmail(targetAcc.email);
-      setPassword(targetAcc.password);
+      setEmail(mergedAcc.email);
+      setPassword(mergedAcc.password || '');
       setErrorMessage('');
     },
-    [mockAccounts],
+    [allAccounts, mockAccounts],
   );
 
   const handleSelectKpiUnitAccount = (targetEmail) => {
@@ -422,7 +440,7 @@ export default function Login() {
           outline-offset: 2px;
         }
         .corp-input::placeholder {
-          color: #64748b;
+          color: #475569;
         }
         input:-webkit-autofill,
         input:-webkit-autofill:hover,
@@ -586,7 +604,7 @@ export default function Login() {
               marginBottom: '1.1rem',
             }}
           >
-            Institut Teknologi PLN // Gerbang Sesi Internal
+            Institut Teknologi PLN · Gerbang Sesi Internal
           </div>
 
           <h2
@@ -622,12 +640,10 @@ export default function Login() {
             ref={hudCardRef}
             className="stagger-left"
             style={{
-              border: '1px solid rgba(197, 222, 232, 0.32)',
+              border: '1px solid rgba(197, 222, 232, 0.34)',
               borderRadius: '8px',
               padding: '1.25rem 1.35rem',
-              background: 'rgba(6, 44, 61, 0.82)',
-              backdropFilter: 'blur(14px)',
-              WebkitBackdropFilter: 'blur(14px)',
+              background: 'rgba(6, 44, 61, 0.94)',
               boxShadow: '0 20px 40px rgba(4, 24, 34, 0.32)',
               position: 'relative',
               overflow: 'hidden',
@@ -687,7 +703,7 @@ export default function Login() {
                     fontFamily: "'Outfit', sans-serif",
                   }}
                 >
-                  {activeAccount.code || `0${primaryTabIndex + 1}`} // {activeAccount.roleTitle || activeAccount.name}
+                  {activeAccount.code || `0${primaryTabIndex + 1}`} · {activeAccount.roleTitle || activeAccount.name}
                 </div>
               </div>
 
@@ -791,9 +807,11 @@ export default function Login() {
                 </div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 700, fontFamily: "'Outfit', sans-serif", color: '#ffffff' }}>
                   {isKpiActive
-                    ? (activeAccount.role === 'kpi_only' && activeAccount.picCodes?.length
-                      ? `Hak Input PIC: ${activeAccount.picCodes.join(', ')}`
-                      : 'Akses Penuh PRP')
+                    ? (activeAccount.role === 'spi'
+                      ? 'Audit SPI (View Only & Ekspor)'
+                      : ((activeAccount.role === 'kpi_only' || activeAccount.role === 'dual') && activeAccount.picCodes?.length
+                        ? `Hak Input PIC: ${activeAccount.picCodes.join(', ')}`
+                        : 'Akses Penuh PRP'))
                     : 'Tidak Termasuk Peran'}
                 </div>
               </div>

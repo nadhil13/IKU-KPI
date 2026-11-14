@@ -12,8 +12,14 @@ import {
   Users,
   ShieldAlert,
 } from 'lucide-react';
-import { useAuth, readMergedUsers } from '../../auth/context/AuthContext';
-import { MASTER_KPI_PICS } from '../../kpi/kpiSchema';
+import { readMergedUsers } from '../../auth/authAccounts';
+import { useAuth } from '../../auth/hooks/useAuth';
+import { MASTER_KPI_PICS, readMasterPicCatalog } from '../../kpi/kpiSchema';
+import {
+  pushRealtimeNotification,
+  readEmailOutbox,
+  buildMailtoHref,
+} from '../notificationStore';
 import {
   getActiveBroadcastsForUser,
   sendRealtimeBroadcast,
@@ -69,6 +75,18 @@ const QUICK_TEMPLATES = [
     actionLabel: 'Buka Lembar Kerja KPI',
   },
   {
+    id: 'tpl-single-account',
+    label: 'Notifikasi Khusus 1 Akun (Targeted)',
+    priority: 'URGENT',
+    targetType: 'USER',
+    targetValue: 'bakt@itpln.ac.id',
+    title: 'Tindak Lanjut Revisi & Bukti Capaian Khusus Unit Anda',
+    message:
+      'Mohon segera memeriksa catatan revisi dari Admin PRP dan memperbarui angka capaian serta lampiran bukti pada baris indikator milik unit Anda.',
+    actionUrl: '/internal/kpi',
+    actionLabel: 'Buka Indikator Unit Anda',
+  },
+  {
     id: 'tpl-evidence-check',
     label: 'Lampirkan Bukti Per Baris',
     priority: 'IMPORTANT',
@@ -94,11 +112,19 @@ const QUICK_TEMPLATES = [
   },
 ];
 
-function formatBroadcastTargetLabel(b) {
+function getActiveKpiUnitAccountCount() {
+  return readMergedUsers().filter(
+    (u) => u.status !== 'Nonaktif' && (u.role === 'kpi_only' || u.role === 'dual'),
+  ).length;
+}
+
+function formatBroadcastTargetLabel(b, kpiCount = getActiveKpiUnitAccountCount()) {
   if (!b) return 'Semua Akun';
   if (b.targetType === 'ALL') return 'Semua Akun (IKU & PIC KPI)';
   if (b.targetType === 'ROLE') {
-    return b.targetValue === 'iku_only' ? 'Otoritas Khusus IKU' : 'Seluruh Unit PIC KPI (16 Unit)';
+    return b.targetValue === 'iku_only'
+      ? 'Otoritas Khusus IKU'
+      : `Seluruh Unit PIC KPI (${kpiCount} Akun/Unit)`;
   }
   if (b.targetType === 'PIC') return `Khusus PIC: ${b.targetValue}`;
   if (b.targetType === 'USER') return `Akun Tujuan: ${b.targetValue}`;
@@ -187,10 +213,15 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
                 border: 'none',
                 color: '#FFFFFF',
                 cursor: 'pointer',
-                padding: '4px',
+                minWidth: '44px',
+                minHeight: '44px',
+                margin: '-10px -10px -10px 0',
+                display: 'inline-grid',
+                placeItems: 'center',
+                borderRadius: '6px',
               }}
             >
-              <X size={15} />
+              <X size={16} />
             </button>
           </div>
           <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '0.9rem', marginTop: '0.3rem' }}>
@@ -331,8 +362,8 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
                 type="button"
                 onClick={() => acknowledgeRealtimeBroadcast(b.id, currentUser)}
                 style={{
-                  minHeight: '38px',
-                  padding: '0.4rem 0.85rem',
+                  minHeight: '44px',
+                  padding: '0.45rem 0.9rem',
                   borderRadius: '6px',
                   background: '#094E68',
                   border: '1px solid #094E68',
@@ -354,8 +385,8 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
                   type="button"
                   onClick={onOpenManager}
                   style={{
-                    minHeight: '38px',
-                    padding: '0.4rem 0.72rem',
+                    minHeight: '44px',
+                    padding: '0.45rem 0.85rem',
                     borderRadius: '6px',
                     background: '#FFFFFF',
                     border: '1px solid #CBD5E1',
@@ -386,22 +417,28 @@ export function BroadcastComposerModal({ open, onClose }) {
   const [targetValue, setTargetValue] = useState('');
   const [actionUrl, setActionUrl] = useState('/internal');
   const [actionLabel, setActionLabel] = useState('Buka Lembar Kerja');
+  const [sendEmail, setSendEmail] = useState(true);
   const [feedback, setFeedback] = useState('');
   const [sending, setSending] = useState(false);
 
   const allAccounts = readMergedUsers().filter((u) => u.status !== 'Nonaktif');
+  const picCatalog = readMasterPicCatalog();
+  const emailOutbox = readEmailOutbox();
 
   useEffect(() => {
     if (!open) return undefined;
     const unsub = subscribeBroadcasts(() => {
       setBroadcastVersion((v) => v + 1);
     });
+    const onNotif = () => setBroadcastVersion((v) => v + 1);
+    window.addEventListener('prp-notifications-updated', onNotif);
     const onKey = (event) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       unsub();
+      window.removeEventListener('prp-notifications-updated', onNotif);
       window.removeEventListener('keydown', onKey);
     };
   }, [open, onClose]);
@@ -425,7 +462,7 @@ export function BroadcastComposerModal({ open, onClose }) {
     setTargetType(nextType);
     if (nextType === 'ALL') setTargetValue('');
     else if (nextType === 'ROLE') setTargetValue('kpi_only');
-    else if (nextType === 'PIC') setTargetValue(MASTER_KPI_PICS[0]?.code || 'BAKT');
+    else if (nextType === 'PIC') setTargetValue(picCatalog[0]?.code || MASTER_KPI_PICS[0]?.code || 'BAKT');
     else if (nextType === 'USER') setTargetValue(allAccounts.find((a) => a.role === 'kpi_only')?.email || 'bakt@itpln.ac.id');
   };
 
@@ -449,9 +486,25 @@ export function BroadcastComposerModal({ open, onClose }) {
         },
         currentUser,
       );
+      pushRealtimeNotification({
+        kind: 'BROADCAST',
+        title,
+        message,
+        priority: priority === 'URGENT' ? 'URGENT' : 'INFO',
+        targetType,
+        targetValue,
+        actionUrl,
+        actionLabel,
+        senderName: currentUser?.name || 'Admin PRP',
+        senderEmail: currentUser?.email || 'superadmin@itpln.ac.id',
+        sendEmail,
+        emailSubject: `[SIARAN PRP ITPLN] ${title}`,
+      });
       setTitle('');
       setMessage('');
-      setFeedback(`Siaran "${created.title}" berhasil dikirim secara realtime ke ${formatBroadcastTargetLabel(created)}.`);
+      setFeedback(
+        `Siaran "${created.title}" berhasil dikirim secara realtime ke ${formatBroadcastTargetLabel(created)}${sendEmail ? ' dan tercatat di Audit Trail Email Resmi.' : '.'}`,
+      );
     } catch (err) {
       setFeedback(err.message || 'Gagal mengirim siaran.');
     } finally {
@@ -528,7 +581,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                   textTransform: 'uppercase',
                 }}
               >
-                PUSAT KOMANDO REALTIME // DIREKTORAT PRP
+                PUSAT KOMANDO REALTIME · DIREKTORAT PRP
               </div>
               <h2
                 style={{
@@ -549,8 +602,8 @@ export function BroadcastComposerModal({ open, onClose }) {
             onClick={onClose}
             aria-label="Tutup dialog siaran"
             style={{
-              minHeight: '38px',
-              padding: '0.4rem 0.75rem',
+              minHeight: '44px',
+              padding: '0.45rem 0.85rem',
               borderRadius: '6px',
               border: '1px solid #CBD5E1',
               background: '#FFFFFF',
@@ -589,8 +642,8 @@ export function BroadcastComposerModal({ open, onClose }) {
                   type="button"
                   onClick={() => applyTemplate(tpl)}
                   style={{
-                    minHeight: '36px',
-                    padding: '0.38rem 0.75rem',
+                    minHeight: '44px',
+                    padding: '0.42rem 0.82rem',
                     borderRadius: '6px',
                     background: '#EDF3F6',
                     border: '1px solid #B8CAD4',
@@ -654,7 +707,9 @@ export function BroadcastComposerModal({ open, onClose }) {
                       fontWeight: 600,
                     }}
                   >
-                    <option value="kpi_only">Seluruh Unit PIC KPI (16 Unit Kerja)</option>
+                    <option value="kpi_only">
+                      Seluruh Unit PIC KPI ({getActiveKpiUnitAccountCount()} Akun/Unit Kerja)
+                    </option>
                     <option value="iku_only">Otoritas Khusus IKU Institusi</option>
                   </select>
                 </label>
@@ -677,7 +732,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                       fontWeight: 600,
                     }}
                   >
-                    {MASTER_KPI_PICS.map((u) => (
+                    {picCatalog.map((u) => (
                       <option key={u.code} value={u.code}>
                         {u.code} ({u.name})
                       </option>
@@ -688,7 +743,7 @@ export function BroadcastComposerModal({ open, onClose }) {
 
               {targetType === 'USER' && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 700, color: '#072534' }}>
-                  <span>Pilih Akun Tujuan</span>
+                  <span>Pilih Akun Khusus Tujuan (Hanya 1 Akun)</span>
                   <select
                     value={targetValue}
                     onChange={(e) => setTargetValue(e.target.value)}
@@ -770,6 +825,18 @@ export function BroadcastComposerModal({ open, onClose }) {
                   resize: 'vertical',
                 }}
               />
+            </label>
+
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.76rem', fontWeight: 700, color: '#072534', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={sendEmail}
+                onChange={(e) => setSendEmail(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#094E68' }}
+              />
+              <span>
+                Sertakan Pengiriman &amp; Rekam Jejak Email Resmi (Audit Trail Email ke Akun Bagian Terkait)
+              </span>
             </label>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -897,6 +964,103 @@ export function BroadcastComposerModal({ open, onClose }) {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #D8E4EA', paddingTop: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+              <h3 style={{ margin: 0, fontFamily: 'Outfit, sans-serif', fontSize: '0.92rem', fontWeight: 800, color: '#072534' }}>
+                Rekam Jejak Notifikasi Email Revisi &amp; Broadcast ({emailOutbox.length})
+              </h3>
+              <span style={{ fontSize: '0.68rem', color: '#475569', fontFamily: 'var(--ent-mono)' }}>
+                INTEGRASI AUDIT TRAIL EMAIL · IT/BBTI READY
+              </span>
+            </div>
+
+            {emailOutbox.length === 0 ? (
+              <div
+                style={{
+                  padding: '0.85rem',
+                  borderRadius: '6px',
+                  background: '#F7FAFB',
+                  border: '1px dashed #CBD5E1',
+                  fontSize: '0.76rem',
+                  color: '#475569',
+                  textAlign: 'center',
+                }}
+              >
+                Belum ada rekam jejak pengiriman email revisi atau broadcast pada sesi ini.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '220px', overflowY: 'auto' }}>
+                {emailOutbox.slice(0, 12).map((mail) => (
+                  <div
+                    key={mail.id}
+                    style={{
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '6px',
+                      border: '1px solid #D8E4EA',
+                      background: '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            fontSize: '0.6rem',
+                            fontWeight: 800,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            background: '#F0FDF4',
+                            border: '1px solid #86EFAC',
+                            color: '#14532D',
+                            fontFamily: 'var(--ent-mono)',
+                          }}
+                        >
+                          {mail.status || 'LOGGED_AND_DISPATCHED'}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#094E68' }}>
+                          Ke: {(mail.toEmails || []).join(', ')}
+                        </span>
+                        <span style={{ fontSize: '0.66rem', color: '#475569' }}>
+                          {mail.sentAt ? new Date(mail.sentAt).toLocaleString('id-ID') : ''}
+                        </span>
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#072534', marginTop: '0.18rem' }}>
+                        {mail.subject}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#334155', marginTop: '0.1rem' }}>
+                        {mail.body}
+                      </div>
+                    </div>
+                    <a
+                      href={buildMailtoHref(mail)}
+                      style={{
+                        minHeight: '34px',
+                        padding: '0.3rem 0.65rem',
+                        borderRadius: '6px',
+                        border: '1px solid #094E68',
+                        background: '#F7FAFB',
+                        color: '#094E68',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                      }}
+                    >
+                      <span>Buka Klien Email</span>
+                      <ArrowUpRight size={12} />
+                    </a>
+                  </div>
+                ))}
               </div>
             )}
           </div>

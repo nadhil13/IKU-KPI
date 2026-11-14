@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Panduan Fitur PERFORMA ITPLN: Superadmin PRP dan PIC KPI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Palet dan tipografi diambil dari DESIGN.md agar dokumen sejalan dengan aplikasi. */
+  :root {
+    --ink: #072534;
+    --navy: #094E68;
+    --muted: #334155;
+    --subtle: #475569;
+    --teal: #0E7480;
+    --teal-line: #1B9AAA;
+    --border: #D8E4EA;
+    --surface: #F7FAFB;
+    --surface-muted: #EDF3F6;
+    --midnight: #062C3D;
+    --mono: 'JetBrains Mono', Consolas, monospace;
+    --head: 'Outfit', 'Segoe UI', sans-serif;
+    --body: 'Inter', 'Segoe UI', sans-serif;
+  }
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+    @bottom-left { content: "PERFORMA ITPLN · Panduan Fitur Superadmin PRP dan PIC KPI"; font: 7.5pt 'Inter', sans-serif; color: #475569; }
+    @bottom-right { content: counter(page); font: 600 8pt 'JetBrains Mono', monospace; color: #094E68; }
+  }
+  @page cover { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }
+
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: var(--body); font-size: 9.6pt; line-height: 1.6; color: var(--ink); }
+
+  /* Sampul: satu-satunya blok gelap, mengikuti aturan jangkar gelap di DESIGN.md. */
+  .cover { page: cover; height: 297mm; background: var(--midnight); color: #fff; padding: 30mm 22mm 24mm; display: flex; flex-direction: column; justify-content: space-between; break-after: page; }
+  .cover .code { font-family: var(--mono); font-size: 9pt; color: #94B8C7; }
+  .cover h1 { font-family: var(--head); font-weight: 800; font-size: 40pt; line-height: 1.04; letter-spacing: -0.035em; margin: 10mm 0 6mm; max-width: 150mm; }
+  .cover h1 span { color: #6FD3DE; }
+  .cover p.lead { font-size: 12pt; line-height: 1.55; color: #D6E6EC; max-width: 135mm; margin: 0; }
+  .cover .bar { height: 3px; width: 46mm; background: var(--teal-line); margin-top: 12mm; }
+  .cover dl { display: grid; grid-template-columns: 34mm 1fr; gap: 2.5mm 6mm; font-size: 9pt; margin: 0; border-top: 1px solid #1E4A5C; padding-top: 7mm; }
+  .cover dt { font-family: var(--mono); color: #94B8C7; }
+  .cover dd { margin: 0; color: #fff; }
+
+  h2 { font-family: var(--head); font-weight: 700; font-size: 21pt; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 3mm; color: var(--ink); }
+  h3 { font-family: var(--head); font-weight: 700; font-size: 13pt; letter-spacing: -0.02em; margin: 7mm 0 2mm; color: var(--navy); break-after: avoid; }
+  h4 { font-family: var(--head); font-weight: 600; font-size: 10.5pt; margin: 4.5mm 0 1.2mm; color: var(--ink); break-after: avoid; }
+  p { margin: 0 0 2.4mm; }
+  ul, ol { margin: 0 0 2.6mm; padding-left: 5mm; }
+  li { margin-bottom: 0.9mm; }
+  code, .k { font-family: var(--mono); font-size: 8.3pt; background: var(--surface-muted); color: var(--navy); padding: 0.2mm 1.2mm; border-radius: 3px; }
+  .ui { font-weight: 600; color: var(--ink); }
+
+  .part { break-before: page; }
+  .part-head { border-bottom: 2px solid var(--ink); padding-bottom: 4mm; margin-bottom: 5mm; }
+  .part-head .code { font-family: var(--mono); font-size: 8.5pt; color: var(--teal); margin-bottom: 2mm; }
+  .part-head p { color: var(--muted); font-size: 10.5pt; max-width: 150mm; margin: 0; }
+
+  .route { font-family: var(--mono); font-size: 8pt; color: var(--subtle); margin: -1mm 0 2.5mm; }
+
+  table { width: 100%; border-collapse: collapse; margin: 1.5mm 0 4mm; font-size: 8.6pt; break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th { text-align: left; font-weight: 600; background: var(--surface-muted); color: var(--ink); padding: 1.8mm 2.2mm; border-bottom: 1px solid var(--border); }
+  td { padding: 1.7mm 2.2mm; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td:first-child { font-weight: 500; }
+  .num td:first-child { font-family: var(--mono); font-size: 8pt; color: var(--navy); white-space: nowrap; }
+
+  .note { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3mm 4mm; margin: 2mm 0 4mm; font-size: 9pt; color: var(--muted); break-inside: avoid; }
+  .note strong { color: var(--ink); }
+
+  /* Chip status memakai warna semantik dari DESIGN.md; fungsinya membedakan status, bukan hiasan. */
+  .st { font-family: var(--mono); font-size: 7.6pt; font-weight: 600; padding: 0.3mm 1.6mm; border-radius: 4px; border: 1px solid; white-space: nowrap; }
+  .st-ok { color: #14532D; background: #F0FDF4; border-color: #86EFAC; }
+  .st-rev { color: #78350F; background: #FFFBEB; border-color: #FCD34D; }
+  .st-no { color: #7F1D1D; background: #FEF2F2; border-color: #FCA5A5; }
+  .st-n { color: var(--navy); background: var(--surface-muted); border-color: var(--border); }
+
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 1.6mm; margin: 2mm 0 4mm; font-size: 8.5pt; }
+  .flow .arrow { color: var(--subtle); font-family: var(--mono); }
+
+  .toc { columns: 2; column-gap: 10mm; font-size: 9.4pt; margin-top: 4mm; }
+  .toc .grp { break-inside: avoid; margin-bottom: 4mm; }
+  .toc .grp b { display: block; font-family: var(--head); font-size: 11pt; color: var(--navy); margin-bottom: 1mm; }
+  .toc ol { padding-left: 0; list-style: none; margin: 0; }
+  .toc li { border-bottom: 1px dotted var(--border); padding: 0.8mm 0; margin: 0; }
+  .toc li span { font-family: var(--mono); font-size: 8pt; color: var(--teal); margin-right: 2mm; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 3.5mm 4mm; break-inside: avoid; }
+  .card h4 { margin-top: 0; }
+  .keep { break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<!-- ============ SAMPUL ============ -->
+<section class="cover">
+  <div>
+    <div class="code">PERFORMA ITPLN // DOKUMEN PANDUAN FITUR</div>
+    <h1>Fitur Superadmin PRP <span>dan PIC KPI</span></h1>
+    <p class="lead">Apa saja yang bisa dilakukan tiap peran, di menu mana, dengan aturan apa, dan apa yang terjadi pada data setelah tombol ditekan.</p>
+    <div class="bar"></div>
+  </div>
+  <dl>
+    <dt>Sistem</dt><dd>PERFORMA ITPLN, tata kelola IKU dan KPI</dd>
+    <dt>Peran dibahas</dt><dd>Superadmin PRP (<span style="font-family:var(--mono)">superadmin_prp</span>) dan PIC KPI (<span style="font-family:var(--mono)">kpi_only</span>)</dd>
+    <dt>Sumber</dt><dd>Kode sumber repositori IKU-KPI-main dan catatan SUPERADMIN_PRP_AUDIT.md</dd>
+    <dt>Tanggal</dt><dd>11 November 2026</dd>
+  </dl>
+</section>
+
+<!-- ============ DAFTAR ISI ============ -->
+<section>
+  <div class="part-head">
+    <div class="code">00 // DAFTAR ISI</div>
+    <h2>Isi dokumen</h2>
+    <p>Bagian A menjelaskan dasar yang berlaku untuk semua peran. Bagian B dan C membahas tiap peran menu demi menu. Bagian D berisi alur status, jejak audit, dan batasan sistem yang perlu diketahui sebelum dipakai.</p>
+  </div>
+  <div class="toc">
+    <div class="grp"><b>A. Dasar</b><ol>
+      <li><span>A.1</span>Peran di sistem</li>
+      <li><span>A.2</span>Login dan ganti password wajib</li>
+      <li><span>A.3</span>Fitur bersama di kerangka halaman</li>
+      <li><span>A.4</span>Tempat data disimpan</li>
+    </ol></div>
+    <div class="grp"><b>B. Superadmin PRP</b><ol>
+      <li><span>B.1</span>Pengalih konteks PRP, IKU, KPI</li>
+      <li><span>B.2</span>Ikhtisar Eksekutif</li>
+      <li><span>B.3</span>Desainer Tabel KPI</li>
+      <li><span>B.4</span>Pusat Review Unit</li>
+      <li><span>B.5</span>Periode dan Tenggat</li>
+      <li><span>B.6</span>Audit Trail</li>
+      <li><span>B.7</span>Kebijakan Sistem</li>
+      <li><span>B.8</span>Submission 8 IKU</li>
+      <li><span>B.9</span>Organisasi dan Unit PIC</li>
+      <li><span>B.10</span>Manajemen Pengguna</li>
+      <li><span>B.11</span>Siaran Realtime</li>
+      <li><span>B.12</span>Ruang kerja IKU dan KPI</li>
+      <li><span>B.13</span>Ekspor dan impor tata kelola</li>
+    </ol></div>
+    <div class="grp"><b>C. PIC KPI</b><ol>
+      <li><span>C.1</span>Akun dan hak isi per baris</li>
+      <li><span>C.2</span>Menu yang terlihat</li>
+      <li><span>C.3</span>Lembar Kerja KPI</li>
+      <li><span>C.4</span>Format isian dan rumus</li>
+      <li><span>C.5</span>Bukti capaian dan keterangan</li>
+      <li><span>C.6</span>Simpan otomatis dan submit</li>
+      <li><span>C.7</span>Revisi, penolakan, dan kunci</li>
+      <li><span>C.8</span>Struktur Unit, Panduan, Profil</li>
+      <li><span>C.9</span>Yang tidak bisa dilakukan PIC</li>
+    </ol></div>
+    <div class="grp"><b>D. Referensi</b><ol>
+      <li><span>D.1</span>Siklus status submission</li>
+      <li><span>D.2</span>Pembagian tugas PRP dan PIC</li>
+      <li><span>D.3</span>Kode aksi audit</li>
+      <li><span>D.4</span>Batasan sistem saat ini</li>
+    </ol></div>
+  </div>
+</section>
+
+<!-- ============ BAGIAN A ============ -->
+<section class="part">
+  <div class="part-head">
+    <div class="code">A // DASAR</div>
+    <h2>Hal yang berlaku untuk semua peran</h2>
+    <p>Sebelum masuk ke menu, pahami dulu siapa melakukan apa, bagaimana login bekerja, dan di mana data disimpan. Ketiganya memengaruhi hampir semua fitur di bagian B dan C.</p>
+  </div>
+
+  <h3>A.1 Peran di sistem</h3>
+  <table>
+    <thead><tr><th style="width:26%">Kode peran</th><th style="width:28%">Nama di layar</th><th>Cakupan</th></tr></thead>
+    <tbody>
+      <tr><td><code>superadmin_prp</code></td><td>Superadmin PRP</td><td>Akses penuh ke PRP, IKU, dan KPI. Satu peran ini memegang semua wewenang administrator. PRP, IKU, dan KPI di sidebar adalah konteks kerja, bukan tiga peran terpisah.</td></tr>
+      <tr><td><code>kpi_only</code></td><td>Otoritas KPI (Unit/PIC)</td><td>Mengisi baris KPI yang kode PIC-nya cocok dengan akun. Melihat baris unit lain tanpa bisa mengubahnya.</td></tr>
+      <tr><td><code>iku_only</code></td><td>Otoritas Khusus IKU</td><td>Mengisi dan mengirim 8 IKU. Tidak dibahas rinci di dokumen ini.</td></tr>
+      <tr><td><code>dual</code></td><td>(warisan)</td><td>Masih dirujuk di kode, tetapi tidak bisa dipilih saat membuat akun.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>A.2 Login dan ganti password wajib</h3>
+  <p>Halaman <span class="ui">Masuk Portal Kinerja</span> punya tiga tab profil: <span class="ui">01. PIC IKU</span>, <span class="ui">02. PIC KPI</span>, dan <span class="ui">03. Admin PRP</span>. Pada tab PIC KPI ada dropdown untuk memilih akun unit, yang langsung mengisi email dan kata sandi. Mengetik email yang dikenali juga memindahkan tab secara otomatis.</p>
+  <ul>
+    <li>Login gagal karena email salah, kata sandi salah, akun nonaktif, atau mode pemeliharaan (untuk selain superadmin) memunculkan pesan yang sama: "Email atau kata sandi tidak sesuai atau akun sedang nonaktif."</li>
+    <li>Bila backend tersambung, server mengunci login 5 menit setelah 5 kali gagal (HTTP 429). Sesi berlaku 12 jam lewat cookie HttpOnly.</li>
+    <li>Sesi otomatis berakhir bila akun dinonaktifkan, kata sandinya direset admin, atau mode pemeliharaan menyala.</li>
+  </ul>
+  <div class="note"><strong>Ganti password wajib.</strong> Setelah admin mereset password sebuah akun, pemiliknya akan melihat layar <span class="ui">Perbarui Kata Sandi Sementara</span> saat login berikutnya. Ruang kerja tidak bisa dibuka sebelum password baru disimpan. Panjang minimum mengikuti Kebijakan Sistem (8 sampai 64 karakter, default 8), dan password baru tidak boleh sama dengan yang lama. Di luar alur ini, tidak ada formulir ganti password sukarela.</div>
+
+  <h3>A.3 Fitur bersama di kerangka halaman</h3>
+  <table>
+    <thead><tr><th style="width:28%">Fitur</th><th>Fungsi</th></tr></thead>
+    <tbody>
+      <tr><td>Navigasi cepat (Ctrl+K)</td><td>Palet perintah untuk lompat ke modul dengan mengetik nama atau kode rute. Isinya menyesuaikan peran. Panah atas/bawah memilih, Enter membuka, Esc menutup.</td></tr>
+      <tr><td>Indikator REALTIME</td><td>Menunjukkan apakah aplikasi tersambung ke server (<code>server-sse</code>) atau hanya menyinkronkan antar tab di peramban yang sama (<code>local-bus</code>).</td></tr>
+      <tr><td>Install &amp; Notif HP</td><td>Membuka panduan pasang aplikasi (PWA) di Android atau iPhone, meminta izin notifikasi, menjeda atau menyalakan lagi notifikasi, dan mengirim notifikasi uji. Prioritas mendesak memakai getaran lebih panjang dan tetap tampil sampai disentuh.</td></tr>
+      <tr><td>Lonceng ANTREAN &amp; AKTIVITAS</td><td>Menampilkan 4 entri audit terakhir dan jumlah submission KPI yang menunggu review.</td></tr>
+      <tr><td>Banner siaran</td><td>Siaran dari PRP muncul di atas konten, paling banyak 3 sekaligus. Siaran baru juga tampil sebagai toast selama 7 detik.</td></tr>
+      <tr><td>Profil Sesi Saya</td><td>Mengubah nama tampilan. Email terkunci. Menampilkan modul yang diizinkan dan dibatasi untuk akun.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>A.4 Tempat data disimpan</h3>
+  <p>Penyimpanan utama ada di <code>localStorage</code> peramban. Bila backend di <code>/api/v1</code> bisa dihubungi, data juga disinkronkan ke database SQLite dan disebarkan ke perangkat lain lewat SSE. Bila tidak, aplikasi tetap berjalan, tetapi data hanya ada di peramban itu.</p>
+  <table>
+    <thead><tr><th style="width:38%">Kunci penyimpanan</th><th>Isi</th><th style="width:22%">Yang boleh menulis</th></tr></thead>
+    <tbody>
+      <tr><td><code>prp_kpi_distribution_v1</code></td><td>Formulir KPI, submission unit, bukti, draf</td><td>PRP dan PIC (baris sendiri)</td></tr>
+      <tr><td><code>prp_kpi_config</code></td><td>Struktur tabel KPI yang sudah terbit</td><td>Hanya PRP</td></tr>
+      <tr><td><code>prp_kpi_validation_rules</code></td><td>Aturan validasi struktur KPI</td><td>Hanya PRP</td></tr>
+      <tr><td><code>prp_iku_submissions_v1</code></td><td>Submission 8 IKU</td><td>PRP dan PIC IKU</td></tr>
+      <tr><td><code>prp_periods</code></td><td>Periode evaluasi</td><td>Hanya PRP</td></tr>
+      <tr><td><code>prp_system_config</code></td><td>Kebijakan sistem global</td><td>Hanya PRP</td></tr>
+      <tr><td><code>prp_organization</code></td><td>Direktori organisasi dan kode PIC</td><td>Hanya PRP</td></tr>
+      <tr><td><code>prp_users</code></td><td>Akun pengguna</td><td>PRP (pengguna hanya nama sendiri)</td></tr>
+      <tr><td><code>prp_audit</code></td><td>Log audit lokal, maksimal 500 entri</td><td>Ditulis otomatis</td></tr>
+    </tbody>
+  </table>
+  <p>Server menolak penulisan ke kunci khusus PRP dari peran lain dan mencatatnya sebagai <code>SECURITY_VIOLATION</code>.</p>
+</section>
+
+<!-- ============ BAGIAN B ============ -->
+<section class="part">
+  <div class="part-head">
+    <div class="code">B // SUPERADMIN PRP</div>
+    <h2>Fitur Superadmin PRP</h2>
+    <p>Superadmin PRP menyusun tabel KPI, membuka dan menutup periode, mengelola akun dan organisasi, meninjau semua submission IKU dan KPI, lalu memutuskan setuju, revisi, tolak, atau kunci. Akun bawaan: <code>admin@itpln.ac.id</code>.</p>
+  </div>
+
+  <h3>B.1 Pengalih konteks PRP, IKU, KPI</h3>
+  <p>Di sidebar ada blok <span class="ui">KONTEKS OTORITAS</span> dengan tiga tombol: <span class="ui">PRP</span>, <span class="ui">01·IKU</span>, dan <span class="ui">02·KPI</span>. Konteks menentukan menu yang tampil.</p>
+  <table>
+    <thead><tr><th style="width:16%">Konteks</th><th>Menu yang tampil</th></tr></thead>
+    <tbody>
+      <tr><td>PRP</td><td><b>Tata Kelola Pusat</b> (akordeon PRP Control Center): Ikhtisar Eksekutif, Desainer Tabel KPI, Pusat Review Unit (dengan angka antrean), Periode &amp; Tenggat, Audit Trail, Kebijakan Sistem.<br><b>Operasional &amp; Direktori</b>: Submission 8 IKU, Organisasi &amp; Unit PIC, Manajemen Pengguna.</td></tr>
+      <tr><td>IKU</td><td>Capaian 8 IKU, Submission IKU, Struktur &amp; PIC IKU, Dokumen &amp; Regulasi.</td></tr>
+      <tr><td>KPI</td><td>Lembar Kerja KPI, Struktur Unit &amp; PIC, Panduan &amp; Referensi.</td></tr>
+    </tbody>
+  </table>
+  <p>Menu <span class="ui">Profil Sesi Saya</span>, tautan <span class="ui">Portal Publik</span>, dan tombol <span class="ui">Keluar</span> selalu tampil. Pada konteks PRP, membuka <code>/internal</code> langsung diarahkan ke Ikhtisar Eksekutif.</p>
+
+  <h3>B.2 Ikhtisar Eksekutif</h3>
+  <div class="route">/internal/admin</div>
+  <p>Halaman ringkasan hanya baca. Isinya empat sel ringkasan (antrean review, distribusi KPI, akun, periode), jurnal 8 entri audit terbaru dengan tombol <span class="ui">Log Lengkap</span>, dan indeks enam modul. Dua tombol di atas membawa admin langsung ke <span class="ui">Pusat Review</span> dan <span class="ui">Desainer KPI</span>.</p>
+
+  <h3>B.3 Desainer Tabel KPI</h3>
+  <div class="route">/internal/admin/governance?tab=kpi-builder</div>
+  <p>Di sini PRP membangun tabel KPI yang nanti diisi unit: bagian (perspektif), baris indikator, isian, bobot, target, satuan, rumus, dan PIC penanggung jawab tiap baris. Struktur bawaan berisi 4 bagian (A sampai D) dengan 29 pemetaan PIC.</p>
+
+  <h4>Aksi utama di kepala halaman</h4>
+  <table>
+    <thead><tr><th style="width:28%">Tombol</th><th>Yang terjadi</th></tr></thead>
+    <tbody>
+      <tr><td>Periode</td><td>Teks bebas, default tahun berjalan. Wajib diisi sebelum distribusi.</td></tr>
+      <tr><td>Reset Default</td><td>Setelah konfirmasi, draf dikembalikan ke struktur resmi ITPLN beserta 29 pemetaan PIC, lalu langsung disinkronkan ke unit.</td></tr>
+      <tr><td>Sinkronkan Baris Realtime</td><td>Menerbitkan struktur dan memperbarui formulir aktif semua unit tanpa menghapus isian yang sudah ada. Membuat snapshot riwayat.</td></tr>
+      <tr><td>Kirim ke Unit Kerja</td><td>Membuat versi formulir baru dan mendistribusikannya ke semua akun unit KPI aktif. Ditolak bila masih ada error wajib, periode kosong, belum ada akun unit aktif, atau mode pemeliharaan menyala.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Bilah alat</h4>
+  <ul>
+    <li>Statistik jumlah indikator, bagian, unit terhubung, dan total skor simulasi. Indikator bobot menunjukkan total bobot capaian terhadap target dan selisihnya.</li>
+    <li><span class="ui">Live sync ke unit</span> (default menyala): setiap perubahan diterbitkan otomatis ke unit selama tidak ada error wajib. Setiap terbit menaikkan nomor versi konfigurasi.</li>
+    <li><span class="ui">Preview user</span>: melihat tabel seperti yang dilihat unit, dalam mode baca. <span class="ui">Kosongkan simulasi</span> menghapus angka uji coba.</li>
+    <li><span class="ui">Validasi &amp; Aturan PRP</span>: membuka panel kanan dengan jumlah error (merah) dan peringatan (kuning).</li>
+  </ul>
+
+  <h4>Bilah rumus</h4>
+  <p>Pilih baris di tabel, lalu atur cara perhitungannya. Ada 11 tipe perhitungan:</p>
+  <table class="num">
+    <thead><tr><th style="width:8%">No</th><th>Tipe perhitungan</th><th style="width:44%">Cara hitung</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Rumus bebas (ala Excel)</td><td>Rumus ditulis sendiri oleh PRP</td></tr>
+      <tr><td>2</td><td>Realisasi / Target</td><td>I1 dibagi target</td></tr>
+      <tr><td>3</td><td>Rasio dua isian</td><td>I1 dibagi I2</td></tr>
+      <tr><td>4</td><td>Rasio isian terhadap target %</td><td>(I1/I2 x 100) dibagi target</td></tr>
+      <tr><td>5</td><td>Jumlah dua isian / Target</td><td>(I1 + I2) dibagi target</td></tr>
+      <tr><td>6</td><td>Tracer study (6 komponen + responden)</td><td>Jumlah I1 sampai I6, dibagi I7, dibagi target</td></tr>
+      <tr><td>7</td><td>Isian utama + keterangan</td><td>I1 dibagi target, I2 hanya catatan</td></tr>
+      <tr><td>8</td><td>Kepatuhan tanggal (1 batas waktu)</td><td>Tepat waktu: penalti 0. Terlambat: penalti penuh</td></tr>
+      <tr><td>9</td><td>Kepatuhan tanggal (2 semester)</td><td>Penalti setengah bobot per semester yang terlambat</td></tr>
+      <tr><td>10</td><td>Kepatuhan persentase (target 100%)</td><td>Penalti = (100 - I1)% x bobot</td></tr>
+      <tr><td>11</td><td>Rasio temuan audit belum ditindaklanjuti</td><td>Penalti = (I1/I2) x bobot</td></tr>
+    </tbody>
+  </table>
+  <p>Kolom fx menerima operator <code>+ - * / ^ %</code>, kurung, perbandingan, dan fungsi <code>SUM</code>, <code>AVG</code>, <code>MIN</code>, <code>MAX</code>, <code>ROUND</code>, <code>IF</code>, <code>ABS</code>. Referensi yang tersedia: <code>I1</code> sampai <code>In</code> (isian), <code>T</code> (target), <code>B</code> (bobot). Saat kolom fx aktif, klik sel di baris lain untuk menyisipkan referensinya, misalnya <code>A1_I1</code>. Rumus dihitung tanpa <code>eval</code>, dan pembagian dengan nol dianggap isian belum lengkap.</p>
+  <p>Di bawah bilah rumus ada field <span class="ui">Keterangan rumus</span> (tampil ke unit), <span class="ui">PIC Penanggung Jawab</span>, dan batas waktu untuk tipe kepatuhan tanggal.</p>
+
+  <h4>Mengedit tabel</h4>
+  <ul>
+    <li><b>Bagian</b>: ubah kode, judul, dan bobot bagian. Tombol <span class="ui">Samakan</span> muncul bila bobot bagian berbeda dari jumlah bobot barisnya. Centang <span class="ui">Penalti</span> untuk bagian pengurang skor. Bagian terakhir tidak bisa dihapus.</li>
+    <li><b>PIC per baris</b>: tombol <span class="ui">Atur PIC</span> membuka pencarian master PIC dengan chip pilihan, plus label tampilan kustom.</li>
+    <li><b>Isian</b>: ubah label, ganti jenis ke teks/tanggal, naikkan, turunkan, sisipkan, atau hapus (minimal satu isian per baris).</li>
+    <li><b>Menu baris</b>: sisipkan indikator, tambah sub-indikator (1a, 1b), tambah isian, duplikat, pindah ke atas/bawah, hapus.</li>
+    <li><span class="ui">Tambah bagian KPI</span> membuat bagian baru dengan huruf berikutnya.</li>
+    <li>Draf tersimpan otomatis di peramban.</li>
+  </ul>
+
+  <h4>Panel Validasi &amp; Aturan PRP</h4>
+  <p>Panel ini memeriksa struktur sebelum dikirim. Klik pesan untuk lompat ke baris terkait.</p>
+  <div class="two">
+    <div class="card">
+      <h4>Selalu error (memblokir kirim)</h4>
+      <ul>
+        <li>Kode bagian ganda</li>
+        <li>Jumlah isian kurang dari minimum tipe rumus</li>
+        <li>Sintaks rumus bebas salah</li>
+        <li>Rumus memakai T padahal target 0 atau kurang</li>
+        <li>Batas waktu kepatuhan belum diisi</li>
+        <li>Kunci isian ganda</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Selalu peringatan (tetap bisa kirim)</h4>
+      <ul>
+        <li>Bagian tanpa baris indikator</li>
+        <li>Rumus kepatuhan di luar bagian penalti</li>
+      </ul>
+    </div>
+  </div>
+  <p style="margin-top:3mm">Aturan yang bisa diatur PRP:</p>
+  <table>
+    <thead><tr><th>Pengaturan</th><th style="width:36%">Pilihan</th><th style="width:18%">Default</th></tr></thead>
+    <tbody>
+      <tr><td>Target total bobot capaian positif</td><td>Angka</td><td>100</td></tr>
+      <tr><td>Kebijakan selisih total bobot</td><td>Peringatan / Wajib tepat / Nonaktif</td><td>Peringatan</td></tr>
+      <tr><td>Bobot bagian vs total baris</td><td>Peringatan / Wajib tepat / Nonaktif</td><td>Peringatan</td></tr>
+      <tr><td>Maks. bobot penalti</td><td>Angka</td><td>12,5</td></tr>
+      <tr><td>Kebijakan penalti</td><td>Nonaktif / Peringatan / Wajib</td><td>Nonaktif</td></tr>
+      <tr><td>Kelengkapan PIC per baris</td><td>Opsional / Peringatan / Wajib</td><td>Opsional</td></tr>
+      <tr><td>Wajib bukti capaian per baris saat unit submit</td><td>Centang</td><td>Menyala</td></tr>
+      <tr><td>Peringatkan bila narasi rumusan kosong</td><td>Centang</td><td>Mati</td></tr>
+    </tbody>
+  </table>
+  <p><span class="ui">Simpan Aturan PRP</span> dan <span class="ui">Reset</span> sama-sama tercatat di audit sebagai <code>ATURAN_VALIDASI_KPI</code>. Bagian <span class="ui">Riwayat Snapshot Konfigurasi</span> menyimpan 15 versi terakhir. Memulihkan snapshot memuatnya ke draf dan langsung menyinkronkan ke semua unit.</p>
+
+  <h3>B.4 Pusat Review Unit</h3>
+  <div class="route">/internal/admin/governance?tab=submissions</div>
+  <p>Tempat PRP memeriksa semua kiriman unit. Halaman ini terdiri dari empat blok.</p>
+
+  <h4>Daftar Submission Lintas Modul (IKU &amp; KPI)</h4>
+  <p>Satu tabel untuk IKU dan KPI sekaligus, urut dari yang terbaru diperbarui. Ringkasan di atas menghitung jumlah rekaman, yang menunggu review, perlu revisi, dan dikunci. Filter: pencarian (unit, PIC, email, periode), modul, dan status. Kolomnya: Modul, Unit Kerja, Periode, Status, Kelengkapan, Bukti Pendukung, Diperbarui, Aksi. Tombol <span class="ui">Tinjau Detail</span> membuka halaman IKU untuk baris IKU, atau modal review untuk baris KPI.</p>
+
+  <h4>Papan Integrasi KPI Lintas Unit</h4>
+  <p>Menampilkan skor institusi gabungan (dari 100), cakupan indikator terisi, status pengajuan unit, dan jumlah bukti terverifikasi. Tabel rekonsiliasi bisa dibuka dan ditutup. Bila beberapa unit mengisi baris yang sama, nilai yang dipakai mengikuti urutan status: Dikunci, Disetujui, Dikirim, Perlu revisi, Draft, Ditolak.</p>
+
+  <h4>Monitoring Submission &amp; Verifikasi Bukti KPI</h4>
+  <p>Satu tabel per versi formulir, berisi tiap akun unit, kode PIC dan jumlah barisnya, status, bukti, dan skor kontribusi. Bila belum ada formulir sama sekali, tersedia tombol <span class="ui">Inisialisasi Formulir 29 Indikator &amp; PIC ITPLN</span>.</p>
+
+  <h4>Modal review KPI</h4>
+  <p>Dibuka lewat <span class="ui">Tinjau &amp; Verifikasi</span>. Isinya:</p>
+  <ul>
+    <li>Kolom <span class="ui">Catatan pemeriksaan PRP</span>. Wajib diisi untuk menolak bukti, minta revisi, atau menolak submission.</li>
+    <li>Centang konfirmasi "Saya telah memeriksa kesesuaian capaian, bukti fisik/digital, dan keterangan unit." Wajib untuk menyetujui.</li>
+    <li>Tombol keputusan: <span class="ui">Setujui Submission</span>, <span class="ui">Minta Revisi</span>, <span class="ui">Tolak Submission</span>, <span class="ui">Kunci Final</span>. Pada submission terkunci, tombolnya berganti menjadi <span class="ui">Buka Kembali (Unlock)</span> dengan konfirmasi.</li>
+    <li>Daftar bukti: pratinjau, unduh, atau buka tautan. Saat status Dikirim, tiap bukti bisa diverifikasi atau ditolak. <span class="ui">Verifikasi Semua Bukti</span> memproses semuanya sekaligus.</li>
+    <li>Ringkasan keterangan per baris, riwayat status lengkap dengan snapshot data, dan lembar KPI hanya baca dengan baris milik unit itu disorot.</li>
+  </ul>
+  <div class="note"><strong>Syarat menyetujui.</strong> Semua bukti harus berstatus Terverifikasi. Bila bukti diwajibkan, setiap baris PIC di pengajuan itu harus punya minimal satu bukti terverifikasi. Review tidak bisa dilakukan selama mode pemeliharaan menyala, termasuk oleh superadmin.</div>
+
+  <h3>B.5 Periode dan Tenggat</h3>
+  <div class="route">/internal/admin/governance?tab=periods</div>
+  <p>Mengatur periode evaluasi yang berlaku untuk KPI dan IKU. Hanya satu periode yang boleh Aktif.</p>
+  <ul>
+    <li><span class="ui">+ Tambah Periode Baru</span> membuat periode berstatus Draft dengan input tertutup.</li>
+    <li>Field per periode: nama, tanggal mulai, tanggal akhir, tenggat (opsional, tanggal dan jam), status (Active, Draft, Archived), dan centang <span class="ui">Input dibuka</span>.</li>
+    <li>Tidak ada tombol simpan. Perubahan tersimpan saat field ditinggalkan, lalu dicatat sebagai <code>PERIODE_EVALUASI</code>.</li>
+    <li>Tenggat harus berada di dalam rentang tanggal periode.</li>
+    <li>Periode tidak bisa dihapus.</li>
+  </ul>
+  <div class="note"><strong>Perhatikan.</strong> Menjadikan satu periode Aktif akan mengarsipkan semua periode lain, termasuk yang masih Draft.</div>
+  <p>Unit hanya bisa mengisi bila periode berstatus Aktif, input dibuka, tanggal hari ini ada di dalam rentang, dan tenggat belum lewat. Bila periode tidak punya tenggat, sistem memakai tenggat global dari Kebijakan Sistem.</p>
+
+  <h3>B.6 Audit Trail</h3>
+  <div class="route">/internal/admin/governance?tab=audit</div>
+  <p>Log semua aktivitas, maksimal 500 entri lokal, terbaru di atas. Filter: pencarian teks, jenis aksi, pelaku, rentang tanggal, dan <span class="ui">Reset Filter</span>. <span class="ui">Ekspor CSV</span> dan <span class="ui">Ekspor JSON</span> hanya mengekspor entri yang lolos filter, dan ekspor itu sendiri tercatat sebagai <code>EXPORT_AUDIT</code>. Daftar kode aksi ada di D.3.</p>
+
+  <h3>B.7 Kebijakan Sistem</h3>
+  <div class="route">/internal/admin/governance?tab=settings</div>
+  <table>
+    <thead><tr><th style="width:36%">Parameter</th><th>Fungsi</th></tr></thead>
+    <tbody>
+      <tr><td>Nama Institusi Resmi</td><td>Wajib, maksimal 200 karakter.</td></tr>
+      <tr><td>Panjang Minimum Kata Sandi</td><td>Bilangan bulat 8 sampai 64. Dipakai saat membuat akun dan saat ganti password wajib.</td></tr>
+      <tr><td>Tenggat Pengisian Global</td><td>Opsional. Berlaku bila periode aktif tidak punya tenggat sendiri.</td></tr>
+      <tr><td>Bukti pendukung wajib (HTTPS)</td><td>Mewajibkan bukti pada pengisian.</td></tr>
+      <tr><td>Mode pemeliharaan sistem</td><td>Hanya superadmin yang bisa login. Semua perubahan submission dibekukan, termasuk review, verifikasi bukti, dan distribusi formulir oleh superadmin.</td></tr>
+    </tbody>
+  </table>
+  <p><span class="ui">Simpan Kebijakan Sistem</span> mencatat perubahan sebagai <code>KONFIGURASI_SISTEM</code>. Bila tidak ada yang berubah, sistem memberi tahu dan tidak menyimpan.</p>
+
+  <h3>B.8 Submission 8 IKU</h3>
+  <div class="route">/internal/iku-submissions</div>
+  <p>Halaman review untuk 8 IKU. Capaian dihitung sebagai Aktual dibagi Target dikali 100%. Ini perhitungan generik, bukan rumus resmi per indikator kementerian.</p>
+  <ul>
+    <li>Pilih <span class="ui">Periode Evaluasi</span>, lalu <span class="ui">Pilih Submission Unit Kerja</span>. Tautan dari Pusat Review sudah membawa pilihan ini.</li>
+    <li>Delapan kartu IKU.01 sampai IKU.08 menampilkan capaian, catatan unit, dan tautan bukti. Superadmin hanya membaca isiannya. Yang bisa mengisi hanya akun PIC IKU.</li>
+    <li>Saat status Dikirim, tiap bukti bisa diverifikasi atau ditolak. Keduanya butuh alasan di panel keputusan.</li>
+    <li><span class="ui">Panel Keputusan &amp; Verifikasi PRP</span>: alasan wajib, centang konfirmasi untuk menyetujui, lalu tombol Setujui, Minta/Buka Revisi, Tolak, Kunci Final, atau Buka Kembali.</li>
+    <li>Riwayat perubahan menyimpan setiap keputusan beserta snapshot data. Halaman memuat ulang data setiap 30 detik.</li>
+  </ul>
+
+  <h3>B.9 Organisasi dan Unit PIC</h3>
+  <div class="route">/internal/team</div>
+  <p>Direktori unit kerja, fakultas, biro, dan tim, beserta kode PIC yang dipakai di kolom PIC tabel KPI dan di akun pengguna.</p>
+  <ul>
+    <li><span class="ui">Muat 22 Master PIC ITPLN</span> menambahkan kode master yang belum ada: PPA, BAKT, BAG, BKU, PJM, PRP, BPKA, BKK, BKAI, BPIK, BKM, BSAR, BPAD, FAK, LPPM, SDM, BSDM, BKAN, BPTI, SPI, Akuntansi, WBS.</li>
+    <li><span class="ui">Tambah Entitas / PIC</span>: kategori (terkunci setelah dibuat), nama (maksimal 120 karakter), kode PIC (maksimal 24), organisasi induk, dan akun penanggung jawab. Akun nonaktif tidak bisa dipilih.</li>
+    <li>Kartu kategori di atas berfungsi sebagai filter. Ada juga pencarian dan dropdown kategori.</li>
+    <li>Edit dan hapus per baris. Entitas yang masih punya anak tidak bisa dihapus.</li>
+    <li>Semua perubahan tercatat sebagai <code>STRUKTUR_ORGANISASI</code>.</li>
+  </ul>
+
+  <h3>B.10 Manajemen Pengguna</h3>
+  <div class="route">/internal/users</div>
+  <p>Mengelola akun dan hak input PIC.</p>
+  <ul>
+    <li>Kartu ringkasan: total akun, akun unit PIC KPI aktif, dan <span class="ui">Akun Administrator</span> yang bisa diklik untuk menyaring akun superadmin.</li>
+    <li>Pencarian (nama, email, kode PIC) dan filter peran.</li>
+    <li>Tabel: identitas dan unit, peran, kode PIC, aktivitas terakhir, status dan tindakan. Akun sendiri diberi tanda "Sesi Aktif Anda".</li>
+  </ul>
+  <table>
+    <thead><tr><th style="width:22%">Tindakan</th><th>Perilaku</th></tr></thead>
+    <tbody>
+      <tr><td>Tambah / Edit</td><td>Nama, email, kata sandi (boleh kosong saat edit), peran, status. Akun <code>kpi_only</code> wajib punya minimal satu kode PIC. Default akun baru: <code>kpi_only</code> dengan PIC BAKT.</td></tr>
+      <tr><td>Reset</td><td>Membuat password sementara acak minimal 16 karakter dan menampilkannya sekali. Pemilik akun wajib menggantinya saat login berikutnya.</td></tr>
+      <tr><td>Nonaktifkan / Aktifkan</td><td>Akun nonaktif tidak bisa login, dan sesinya yang sedang berjalan diakhiri.</td></tr>
+      <tr><td>Hapus</td><td>Tidak tersedia untuk akun bawaan dan akun sendiri.</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><strong>Perlindungan akun administrator.</strong> Email, peran, dan status akun sendiri tidak bisa diubah. Email akun bawaan terkunci. Superadmin aktif terakhir tidak bisa dihapus, dinonaktifkan, atau diturunkan perannya. Setiap simpan juga memperbarui daftar unit pada formulir KPI aktif.</div>
+
+  <h3>B.11 Siaran Realtime</h3>
+  <p>Tombol <span class="ui">Siaran Realtime</span> di header hanya ada untuk superadmin. Fungsinya mengirim instruksi ke akun atau unit tertentu.</p>
+  <table>
+    <thead><tr><th style="width:28%">Field</th><th>Pilihan</th></tr></thead>
+    <tbody>
+      <tr><td>Tujuan penerima</td><td>Semua akun; berdasarkan peran (seluruh PIC KPI atau otoritas IKU); kode unit PIC tertentu; atau akun email tertentu (hanya akun aktif).</td></tr>
+      <tr><td>Tingkat prioritas</td><td>Mendesak (banner merah dan toast), Penting, Informasi umum. Default: Mendesak.</td></tr>
+      <tr><td>Judul dan isi pesan</td><td>Keduanya wajib.</td></tr>
+    </tbody>
+  </table>
+  <p>Tiga template satu klik tersedia: <span class="ui">Segera Input &amp; Submit KPI</span>, <span class="ui">Lampirkan Bukti Per Baris</span>, dan <span class="ui">Pengingat Capaian 8 IKU</span>. Template juga mengisi tautan aksi, yang tidak punya field sendiri di formulir.</p>
+  <p>Daftar <span class="ui">Siaran Aktif</span> menunjukkan berapa akun sudah menekan konfirmasi baca. Tombol <span class="ui">Hentikan</span> menonaktifkan siaran. Penerima melihat siaran di banner dan menekan <span class="ui">Siap Tindak Lanjut</span> untuk konfirmasi. Tanpa backend, siaran hanya sampai ke tab lain di peramban yang sama.</p>
+
+  <h3>B.12 Ruang kerja IKU dan KPI</h3>
+  <p>Pada konteks 01·IKU, <code>/internal</code> menampilkan matriks capaian 8 IKU dari submission terbaru di periode terpilih, dengan tanda Belum diisi, Memenuhi target, Terverifikasi, atau Di bawah target. Pada konteks 02·KPI, tampil lembar kerja KPI lengkap dengan ringkasan skor per bagian dan skor bersih, plus ekspor Excel dan PDF.</p>
+  <div class="note"><strong>Lembar KPI superadmin adalah ruang uji coba.</strong> Isian dan tombol <span class="ui">Submit Lembar Kerja</span> di sini hanya mengubah data lokal peramban admin. Hasilnya tidak masuk Pusat Review dan tidak dihitung sebagai pengajuan unit.</div>
+
+  <h3>B.13 Ekspor dan impor tata kelola</h3>
+  <p>Di kepala halaman Tata Kelola ada <span class="ui">Ekspor JSON</span> yang mengunduh <code>prp-governance.json</code> berisi periode dan audit. <span class="ui">Impor JSON</span> hanya memakai data periode dari file, memvalidasinya dengan aturan B.5, dan mengabaikan isi audit di file. Impor tercatat sebagai <code>PERIODE_EVALUASI</code>.</p>
+</section>
+
+<!-- ============ BAGIAN C ============ -->
+<section class="part">
+  <div class="part-head">
+    <div class="code">C // PIC KPI</div>
+    <h2>Fitur PIC KPI</h2>
+    <p>PIC KPI adalah akun unit kerja yang mengisi baris indikator sesuai kode PIC-nya, melampirkan bukti, lalu mengirim ke PRP. PIC bisa melihat isian unit lain, tetapi hanya bisa mengubah baris miliknya sendiri.</p>
+  </div>
+
+  <h3>C.1 Akun dan hak isi per baris</h3>
+  <p>Setiap akun <code>kpi_only</code> punya satu atau lebih kode PIC. Sebuah baris bisa diisi bila kode PIC baris itu beririsan dengan kode PIC akun. Pencocokan tidak membedakan huruf besar kecil, dan pemisah <code>,</code> <code>;</code> <code>/</code> <code>+</code> <code>&amp;</code> serta kata "dan" dikenali.</p>
+  <table>
+    <thead><tr><th style="width:40%">Akun demo</th><th>Kode PIC</th></tr></thead>
+    <tbody>
+      <tr><td><code>kpi@itpln.ac.id</code></td><td>BAKT, BAG</td></tr>
+      <tr><td><code>bakt@</code>, <code>bag@</code>, <code>ppa@</code>, <code>bku@</code>, <code>pjm@</code></td><td>Sesuai nama akun</td></tr>
+      <tr><td><code>prp.unit@</code></td><td>PRP</td></tr>
+      <tr><td><code>bpka@</code>, <code>bkk@</code>, <code>bkai@</code>, <code>fak@</code>, <code>lppm@</code>, <code>bkan@</code>, <code>bpti@</code></td><td>Sesuai nama akun</td></tr>
+      <tr><td><code>bpik@</code> (PIC Admisi)</td><td>BPIK, BKM, BSAR, BPAD</td></tr>
+      <tr><td><code>sdm@</code></td><td>SDM, BSDM</td></tr>
+      <tr><td><code>spi@</code></td><td>SPI, Akuntansi, WBS</td></tr>
+    </tbody>
+  </table>
+  <p>Semua email di atas berdomain <code>itpln.ac.id</code>. Akun berstatus Nonaktif tidak bisa mengisi apa pun.</p>
+  <div class="note"><strong>Baris tanpa PIC.</strong> Di aplikasi, baris yang belum diberi PIC boleh diisi semua akun KPI. Server justru menolak isian di baris seperti itu. Agar isian tidak hilang saat sinkronisasi, PRP sebaiknya memastikan setiap baris punya PIC.</div>
+
+  <h3>C.2 Menu yang terlihat</h3>
+  <table>
+    <thead><tr><th style="width:30%">Menu</th><th style="width:22%">Rute</th><th>Keterangan</th></tr></thead>
+    <tbody>
+      <tr><td>Lembar Kerja KPI</td><td><code>/internal</code></td><td>Menu utama untuk mengisi dan mengirim</td></tr>
+      <tr><td>Struktur Unit &amp; PIC</td><td><code>/internal/team</code></td><td>Direktori organisasi, hanya baca</td></tr>
+      <tr><td>Panduan &amp; Referensi</td><td><code>/internal/documents</code></td><td>Dokumen pedoman yang bisa diunduh</td></tr>
+      <tr><td>Profil Sesi Saya</td><td><code>/internal/profile</code></td><td>Nama tampilan dan cakupan akses</td></tr>
+      <tr><td>Capaian 8 IKU</td><td>(terkunci)</td><td>Tampil dengan ikon kunci. Klik memunculkan dialog akses dibatasi.</td></tr>
+    </tbody>
+  </table>
+  <p>Setelah login, PIC langsung masuk ke Lembar Kerja KPI tanpa memilih ruang kerja. Palet Ctrl+K hanya berisi modul di atas dan Beranda Publik.</p>
+
+  <h3>C.3 Lembar Kerja KPI</h3>
+  <div class="route">/internal</div>
+
+  <h4>Kepala halaman</h4>
+  <ul>
+    <li>Pemilih periode dengan label AKTIF, ARSIP, atau DRAFT. Bila input ditutup atau periode diarsip, muncul tanda <span class="ui">PERIODE TERKUNCI</span> dan lembar hanya bisa dibaca.</li>
+    <li>Ringkasan per bagian A sampai D: bobot, skor, dan jumlah butir terisi. Kartu terakhir menampilkan skor bersih dari 100.</li>
+  </ul>
+
+  <h4>Struktur indikator bawaan</h4>
+  <p>Struktur ini bisa berubah bila PRP menerbitkan versi baru.</p>
+  <table>
+    <thead><tr><th style="width:30%">Bagian</th><th>Indikator dan PIC</th></tr></thead>
+    <tbody>
+      <tr><td>A. Keberlanjutan<br><small>bobot 25</small></td><td>A.1a PPA; A.1b sampai A.4 BAKT, BAG; A.5 BKU; A.6 PJM, PRP</td></tr>
+      <tr><td>B. Mahasiswa<br><small>bobot 26</small></td><td>B.1a Tracer Study dan B.1b BPKA; B.2 BKK; B.3 EDOM dan B.4 PJM, PRP; B.5 BKAI; B.6 BPIK, BKM, BSAR, BPAD</td></tr>
+      <tr><td>C. Bisnis Internal, Learning &amp; Development<br><small>bobot 49</small></td><td>C.1 OBE FAK, PJM; C.2a sampai C.2g klasterisasi (penelitian, publikasi, sitasi, PkM, HKI, kapasitas dosen, akreditasi) LPPM dan FAK; C.3 SDM; C.4 BKAN</td></tr>
+      <tr><td>D. Kepatuhan<br><small>penalti sampai -12,5</small></td><td>D.1 RKA BAG; D.2 Laporan Keuangan BAKT; D.3 dua semester PRP; D.4 integrasi BPTI, BSDM; D.5 temuan audit SPI, PJM, Akuntansi, WBS</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Banner status</h4>
+  <p>Banner di atas tabel menunjukkan status, kode PIC akun, berapa indikator yang bisa diedit, berapa isian sudah terisi, dan berapa indikator unit lain yang hanya bisa dilihat. Bila bukti belum lengkap, banner menyebut baris mana yang kurang. Persentase <span class="ui">KELENGKAPAN TUGAS PIC</span> dan tombol <span class="ui">Submit ke Sistem Pusat</span> juga ada di sini.</p>
+
+  <h4>Bilah alat</h4>
+  <table>
+    <thead><tr><th style="width:30%">Kontrol</th><th>Fungsi</th></tr></thead>
+    <tbody>
+      <tr><td>Tab bagian</td><td>Semua bagian, atau satu bagian A sampai D.</td></tr>
+      <tr><td>Cakupan baris</td><td><span class="ui">Semua Indikator</span> atau <span class="ui">Tugas PIC Saya</span>.</td></tr>
+      <tr><td>Penanda simpan</td><td>"Tersimpan (jam)" setelah simpan otomatis.</td></tr>
+      <tr><td>Lompat ke Isian Kosong</td><td>Memindahkan kursor ke sel milik akun yang belum diisi.</td></tr>
+      <tr><td>Simulasi PIC</td><td>Mengisi angka contoh, keterangan, dan tautan bukti contoh. Hanya untuk uji coba. Hapus sebelum submit sungguhan.</td></tr>
+      <tr><td>Kosongkan</td><td>Menghapus isian dan keterangan akun ini, serta bukti yang belum terverifikasi.</td></tr>
+      <tr><td>Export Excel (.xls)</td><td>Mengunduh tabel lengkap semua bagian dan semua unit, termasuk skor akhir.</td></tr>
+      <tr><td>Export PDF Resmi</td><td>Membuka jendela cetak A4 mendatar. Izinkan pop-up bila diminta.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Tabel per bagian</h4>
+  <p>Kolom: No, Indikator Kinerja, Formula, Penanggung Jawab (PIC), Rumusan Mencapai Capaian, Isian, Bobot, Target, Satuan, Capaian &amp; Skor, Bukti Capaian &amp; Keterangan.</p>
+  <ul>
+    <li>Kode PIC milik akun disorot dengan tanda <span class="ui">Hak Input Anda</span>. Baris lain bertanda <span class="ui">View Only</span>.</li>
+    <li>Baris yang baru ditambahkan PRP diberi tanda <span class="ui">BARU (REALTIME PRP)</span>.</li>
+    <li>Bila rekan PIC di baris yang sama sudah mengisi dan sel Anda masih kosong, tombol <span class="ui">Pakai isian rekan PIC</span> menyalin nilainya.</li>
+    <li>Enter atau panah bawah pindah ke sel PIC berikutnya. Panah atas kembali ke sel sebelumnya.</li>
+    <li>Kaki tabel menampilkan skor bagian, kontribusi PIC Anda, dan skor institusi gabungan.</li>
+  </ul>
+
+  <h3>C.4 Format isian dan rumus</h3>
+  <div class="two">
+    <div class="card">
+      <h4>Angka</h4>
+      <ul>
+        <li>Awalan "Rp" dan akhiran "%" diabaikan.</li>
+        <li>Format Indonesia: <code>1.234,5</code> dan <code>2.000</code>.</li>
+        <li>Format Inggris: <code>1,234.5</code>.</li>
+        <li>Isian berhuruf ditandai merah dan memblokir submit.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Tanggal</h4>
+      <ul>
+        <li><code>2026-11-28</code></li>
+        <li><code>28-Nov-26</code> atau <code>28 November 2026</code></li>
+        <li><code>November 2026</code> (dibaca akhir bulan)</li>
+        <li><code>28/11/2026</code></li>
+      </ul>
+    </div>
+  </div>
+  <p style="margin-top:3mm">Capaian tiap baris dibatasi 0 sampai 100%, dan skor tidak bisa melebihi bobot baris. Skor bersih adalah A + B + C ditambah penalti D (bernilai negatif), lalu dibatasi 0 sampai 100. Rincian tipe rumus ada di tabel B.3. Pada baris rumus bebas, kolom Formula menampilkan keterangan yang ditulis PRP.</p>
+
+  <h3>C.5 Bukti capaian dan keterangan</h3>
+  <p>Setiap baris punya kolom bukti dan keterangan. PIC bisa melihat bukti dari rekan PIC di baris yang sama, tetapi hanya bisa menghapus bukti miliknya.</p>
+  <div class="two">
+    <div class="card">
+      <h4>Unggah PDF/Gambar</h4>
+      <ul>
+        <li>Format PDF, PNG, JPG, atau WEBP</li>
+        <li>Ukuran maksimal 2,5 MB</li>
+        <li>Judul bukti opsional, default nama file</li>
+        <li>Berkas disimpan di peramban</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Tautkan Link Drive</h4>
+      <ul>
+        <li>Harus diawali <code>https://</code></li>
+        <li>Tidak boleh memuat username atau password di URL</li>
+        <li>Disarankan untuk berkas di atas 2,5 MB</li>
+      </ul>
+    </div>
+  </div>
+  <p style="margin-top:3mm">Status bukti: <span class="st st-n">Menunggu Verifikasi</span> <span class="st st-ok">Terverifikasi</span> <span class="st st-no">Ditolak</span>. Bila ditolak, catatan PRP tampil di bawah bukti. Bukti hanya bisa ditambah atau dihapus selama belum dikirim, atau saat status Perlu revisi.</p>
+  <p>Tombol <span class="ui">Pratinjau</span> membuka berkas di dalam aplikasi, dengan opsi unduh. Kolom keterangan dipakai untuk catatan realisasi tiap baris.</p>
+
+  <h3>C.6 Simpan otomatis dan submit</h3>
+  <p>Setiap ketikan langsung disimpan di peramban. Sekitar setengah detik setelah berhenti mengetik, draf dikirim ke data bersama. Hanya isian di baris milik akun yang ikut tersimpan.</p>
+  <p>Saat <span class="ui">Submit ke Sistem Pusat</span> ditekan, sistem memeriksa berurutan:</p>
+  <ol>
+    <li>Akun punya baris tugas PIC.</li>
+    <li>Tidak ada isian dengan format salah.</li>
+    <li>Semua isian wajib di baris PIC sudah terisi dan rumusnya bisa dihitung (pembagi bukan nol).</li>
+    <li>Setiap baris PIC punya bukti, bila aturan bukti wajib menyala (default menyala).</li>
+    <li>Sistem tidak sedang dalam pemeliharaan.</li>
+    <li>Periode Aktif, input dibuka, tanggal masih dalam rentang periode.</li>
+    <li>Tenggat belum lewat.</li>
+    <li>Formulir memang ditujukan ke akun ini dan belum terkunci.</li>
+  </ol>
+  <p>Bila semua lolos, status menjadi <span class="st st-n">Sudah Dikirim ke Pusat</span>. Riwayat dan snapshot dicatat, lalu status semua bukti dikembalikan ke Menunggu Verifikasi agar PRP memeriksanya.</p>
+
+  <h3>C.7 Revisi, penolakan, dan kunci</h3>
+  <table>
+    <thead><tr><th style="width:30%">Status di layar</th><th>Arti bagi PIC</th></tr></thead>
+    <tbody>
+      <tr><td><span class="st st-n">Belum Diisi</span></td><td>Belum ada isian.</td></tr>
+      <tr><td><span class="st st-n">Sedang Dikerjakan</span></td><td>Draf. Bisa diisi dan diubah.</td></tr>
+      <tr><td><span class="st st-n">Sudah Dikirim ke Pusat</span></td><td>Terkunci, menunggu review PRP.</td></tr>
+      <tr><td><span class="st st-rev">Perlu Revisi</span></td><td>Terbuka lagi. Catatan PRP tampil di banner. Perbaiki isian atau bukti, lalu submit ulang.</td></tr>
+      <tr><td><span class="st st-ok">Disetujui PRP</span></td><td>Terkunci. Data dipakai sebagai nilai resmi.</td></tr>
+      <tr><td><span class="st st-no">Ditolak PRP</span></td><td>Terkunci. PIC menunggu PRP membuka revisi.</td></tr>
+      <tr><td><span class="st st-ok">Dikunci Final</span></td><td>Terkunci permanen sampai PRP membukanya kembali.</td></tr>
+    </tbody>
+  </table>
+  <p>PIC tidak bisa membuka kunci sendiri. Setiap pembukaan dilakukan PRP dengan mengembalikan status ke Perlu revisi.</p>
+  <p>Saat PRP mengubah struktur tabel, PIC melihat toast seperti "+n baris indikator baru ditambahkan oleh Admin PRP secara realtime". Bila notifikasi HP diizinkan, pemberitahuan juga muncul di layar ponsel.</p>
+
+  <h3>C.8 Struktur Unit, Panduan, Profil</h3>
+  <h4>Struktur Unit &amp; PIC</h4>
+  <p>Direktori organisasi yang sama dengan milik PRP, dalam mode baca. Ada kartu filter kategori, katalog 22 kode PIC resmi, pencarian, dan tabel berisi entitas, kode PIC, kategori, induk, dan akun penanggung jawab. Tidak ada tombol tambah, edit, atau hapus.</p>
+  <h4>Panduan &amp; Referensi</h4>
+  <p>Daftar dokumen yang bisa diunduh: "IKU Perguruan Tinggi (2026.06.23)" dan "Buku Panduan IKU Diktisaintek Berdampak V1.1". Saat ini belum ada dokumen khusus KPI di halaman ini.</p>
+  <h4>Profil Sesi Saya</h4>
+  <p>PIC bisa mengubah nama tampilan. Email terkunci. Panel Cakupan Otorisasi menunjukkan Modul KPI <b>diizinkan</b>, sedangkan Modul 8 IKU serta Tata Kelola &amp; Manajemen Pengguna <b>dibatasi</b>.</p>
+
+  <h3>C.9 Yang tidak bisa dilakukan PIC</h3>
+  <ul>
+    <li>Membuka halaman IKU, Tata Kelola PRP, atau Manajemen Pengguna. Rute tersebut dialihkan ke Profil.</li>
+    <li>Mengubah baris, sub-isian, atau bukti milik PIC lain.</li>
+    <li>Menyetujui, menolak, mengunci, atau memverifikasi bukti.</li>
+    <li>Mendesain tabel KPI, mengubah periode, kebijakan, organisasi, atau akun.</li>
+    <li>Mengirim siaran.</li>
+  </ul>
+  <p>Bila tersambung ke server, percobaan pelanggaran ditolak dengan HTTP 403 dan dicatat sebagai <code>SECURITY_VIOLATION</code>. Server juga mengembalikan status bukti ke Menunggu Verifikasi bila PIC mencoba mengubahnya sendiri.</p>
+</section>
+
+<!-- ============ BAGIAN D ============ -->
+<section class="part">
+  <div class="part-head">
+    <div class="code">D // REFERENSI</div>
+    <h2>Alur status, audit, dan batasan</h2>
+    <p>Bagian ini dipakai sebagai rujukan cepat saat ada pertanyaan siapa boleh mengubah status apa, aksi mana yang tercatat, dan hal apa yang belum ditangani sistem.</p>
+  </div>
+
+  <h3>D.1 Siklus status submission</h3>
+  <p>Aturan ini sama untuk IKU dan KPI.</p>
+  <div class="flow">
+    <span class="st st-n">DRAFT</span><span class="arrow">-&gt;</span>
+    <span class="st st-n">SUBMITTED</span><span class="arrow">-&gt;</span>
+    <span class="st st-ok">APPROVED</span><span class="arrow">-&gt;</span>
+    <span class="st st-ok">LOCKED</span>
+  </div>
+  <table>
+    <thead><tr><th style="width:26%">Dari</th><th style="width:34%">Ke</th><th>Oleh</th></tr></thead>
+    <tbody>
+      <tr><td>DRAFT, NEEDS_REVISION</td><td>SUBMITTED</td><td>Unit (PIC)</td></tr>
+      <tr><td>SUBMITTED</td><td>APPROVED, NEEDS_REVISION, REJECTED</td><td>Superadmin PRP</td></tr>
+      <tr><td>APPROVED</td><td>LOCKED, NEEDS_REVISION</td><td>Superadmin PRP</td></tr>
+      <tr><td>REJECTED</td><td>NEEDS_REVISION</td><td>Superadmin PRP</td></tr>
+      <tr><td>LOCKED</td><td>NEEDS_REVISION (Buka Kembali)</td><td>Superadmin PRP, dengan konfirmasi</td></tr>
+    </tbody>
+  </table>
+  <p>NEEDS_REVISION dan REJECTED wajib disertai alasan. APPROVED wajib centang konfirmasi dan semua bukti terverifikasi. Status bukti berjalan dari PENDING ke VERIFIED atau REJECTED.</p>
+
+  <h3>D.2 Pembagian tugas PRP dan PIC</h3>
+  <table>
+    <thead><tr><th style="width:36%">Tahap</th><th style="width:32%">Superadmin PRP</th><th>PIC KPI</th></tr></thead>
+    <tbody>
+      <tr><td>Siapkan periode</td><td>Buat dan aktifkan periode, buka input, atur tenggat</td><td>-</td></tr>
+      <tr><td>Siapkan akun dan PIC</td><td>Buat akun, petakan kode PIC</td><td>Login, ganti password bila diminta</td></tr>
+      <tr><td>Susun tabel KPI</td><td>Desain baris, rumus, bobot, PIC; kirim ke unit</td><td>Melihat baris baru secara realtime</td></tr>
+      <tr><td>Isi capaian</td><td>Memantau kelengkapan di Pusat Review</td><td>Isi baris sendiri, lampirkan bukti, tulis keterangan</td></tr>
+      <tr><td>Kirim</td><td>Menerima di antrean review</td><td>Submit ke Sistem Pusat</td></tr>
+      <tr><td>Periksa</td><td>Verifikasi bukti, setujui, revisi, tolak</td><td>Membaca catatan PRP, memperbaiki, submit ulang</td></tr>
+      <tr><td>Tutup</td><td>Kunci final, buka kembali bila perlu</td><td>Data terkunci, hanya baca</td></tr>
+    </tbody>
+  </table>
+
+  <h3>D.3 Kode aksi audit</h3>
+  <table>
+    <thead><tr><th style="width:26%">Kelompok</th><th>Kode</th></tr></thead>
+    <tbody>
+      <tr><td>Sesi dan akun</td><td><code>LOGIN_BERHASIL</code> <code>LOGIN_GAGAL</code> <code>LOGIN_TERKUNCI</code> <code>LOGOUT_SESI</code> <code>PASSWORD_DIUBAH</code> <code>PROFIL_DIPERBARUI</code> <code>TAMBAH_AKUN</code> <code>EDIT_AKUN</code> <code>HAPUS_AKUN</code> <code>AKTIFKAN_AKUN</code> <code>NONAKTIFKAN_AKUN</code> <code>RESET_PASSWORD</code></td></tr>
+      <tr><td>Konfigurasi</td><td><code>KONFIGURASI_SISTEM</code> <code>STRUKTUR_ORGANISASI</code> <code>PERIODE_EVALUASI</code> <code>ATURAN_VALIDASI_KPI</code> <code>EXPORT_AUDIT</code></td></tr>
+      <tr><td>Workflow KPI</td><td><code>KPI_WORKFLOW</code>; di server <code>KPI_WORKFLOW_PRP</code> <code>KPI_UNIT_SYNC</code> <code>SYNC_CONFIG_PRP</code></td></tr>
+      <tr><td>Workflow IKU</td><td><code>IKU_SAVE_DRAFT</code> <code>IKU_SUBMIT</code> <code>IKU_APPROVED</code> <code>IKU_NEEDS_REVISION</code> <code>IKU_REJECTED</code> <code>IKU_LOCKED</code> <code>IKU_EVIDENCE_VERIFIED</code> <code>IKU_EVIDENCE_REJECTED</code></td></tr>
+      <tr><td>Siaran</td><td><code>BROADCAST_DIKIRIM</code> <code>BROADCAST_DIARSIPKAN</code> (hanya di server)</td></tr>
+      <tr><td>Keamanan</td><td><code>SECURITY_VIOLATION</code> <code>PENGGUNA_DISINKRONKAN</code></td></tr>
+    </tbody>
+  </table>
+  <p>Yang tidak tercatat: ekspor JSON tata kelola, penerbitan struktur KPI oleh live sync, konfirmasi baca siaran, dan siaran saat backend tidak tersambung.</p>
+
+  <h3>D.4 Batasan sistem saat ini</h3>
+  <p>Catatan berikut berasal dari kode dan dokumen audit internal. Sistem ini masih berstatus prototipe dan belum siap untuk data produksi.</p>
+  <table class="num">
+    <thead><tr><th style="width:7%">No</th><th>Batasan</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Data tersimpan di localStorage. Tanpa backend, data hanya ada di satu peramban dan bisa diubah lewat alat pengembang.</td></tr>
+      <tr><td>2</td><td>Pembatasan peran di tampilan bukan pengganti otorisasi server. Reset password masih bersifat demonstrasi, jangan pakai password pribadi.</td></tr>
+      <tr><td>3</td><td>Audit lokal dibatasi 500 entri dan bisa diubah. Hanya audit di server yang dirantai hash, dan belum ada tampilan untuk memeriksanya.</td></tr>
+      <tr><td>4</td><td>Bukti IKU hanya berupa tautan HTTPS. Bukti KPI menerima berkas sampai 2,5 MB yang disimpan di peramban.</td></tr>
+      <tr><td>5</td><td>Belum ada tingkat kewenangan terpisah untuk membuka kunci. Superadmin yang sama bisa mengunci dan membuka.</td></tr>
+      <tr><td>6</td><td>Capaian IKU memakai perhitungan generik Aktual/Target, bukan rumus resmi tiap indikator.</td></tr>
+      <tr><td>7</td><td>Mode pemeliharaan juga membekukan review dan distribusi oleh superadmin.</td></tr>
+      <tr><td>8</td><td>Live sync menaikkan nomor versi konfigurasi pada setiap perubahan kecil.</td></tr>
+      <tr><td>9</td><td>Periode tidak bisa dihapus. Mengaktifkan satu periode mengarsipkan semua periode lain.</td></tr>
+      <tr><td>10</td><td>Formulir siaran belum punya field tautan aksi dan tanggal kedaluwarsa, walau server mendukung kedaluwarsa.</td></tr>
+      <tr><td>11</td><td>Baris KPI tanpa PIC diterima di aplikasi tetapi ditolak server.</td></tr>
+      <tr><td>12</td><td>Belum ada formulir ganti password sukarela. Password hanya diganti setelah reset admin.</td></tr>
+      <tr><td>13</td><td>Penyelesaian konflik bila dua perangkat menulis saat offline belum jelas. Server tampaknya menimpa per kunci data setelah validasi.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</body>
+</html>

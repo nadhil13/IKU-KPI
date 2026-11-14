@@ -20,6 +20,9 @@ import {
   listAllUsers,
   verifyUserCredentials,
   syncUsersListFromAdmin,
+  deleteUserByEmail,
+  updateUserProfileByEmail,
+  changeUserPasswordByEmail,
   createSessionRecord,
   revokeSessionRecord,
   isSessionActive,
@@ -43,6 +46,7 @@ import {
 import {
   validateAndMergeKpiWorkflowForUnit,
   syncActiveFormWithPublishedSections,
+  filterKpiWorkflowForCaller,
 } from '../modules/kpi/kpiAccessPolicy.js';
 import {
   validateAndMergeIkuSubmissionsForUnit,
@@ -61,6 +65,8 @@ const ALLOWED_SYNC_KEYS = new Set([
   ...SUPERADMIN_ONLY_KEYS,
   'prp_kpi_distribution_v1',
   'prp_iku_submissions_v1',
+  'prp_notifications_v1',
+  'prp_email_outbox_v1',
 ]);
 
 function sendJson(res, status, data, extraHeaders = {}) {
@@ -264,17 +270,79 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
+    // 4b. POST /api/v1/auth/profile (Pembaruan profil mandiri oleh pengguna terautentikasi)
+    if (pathname === '/api/v1/auth/profile' && req.method === 'POST') {
+      const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk memperbarui profil.' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const updatedUser = updateUserProfileByEmail(caller.email, body || {});
+      if (!updatedUser) {
+        sendJson(res, 404, { ok: false, error: 'Akun pengguna tidak ditemukan.' });
+        return true;
+      }
+      const syncedUsers = listAllUsers();
+      writeKvStore('prp_users', syncedUsers, caller.email);
+      publishRealtimeEvent('state:updated', {
+        updatedKeys: ['prp_users'],
+        actor: { email: caller.email, name: updatedUser.name, role: updatedUser.role, picCodes: updatedUser.picCodes },
+        stores: { prp_users: syncedUsers },
+        users: syncedUsers,
+        audit: listAuditLogs(40),
+        at: new Date().toISOString(),
+      });
+      sendJson(res, 200, { ok: true, user: updatedUser });
+      return true;
+    }
+
+    // 4c. POST /api/v1/auth/password (Pembaruan kata sandi mandiri oleh pengguna terautentikasi)
+    if (pathname === '/api/v1/auth/password' && req.method === 'POST') {
+      const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk mengubah kata sandi.' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const newPassword = String(body?.newPassword || '');
+      const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
+      const sysConfig = readKvStore('prp_system_config', {}).value || {};
+      const minLen = Number(sysConfig.passwordMinLength) || 8;
+      if (newPassword.length < minLen) {
+        sendJson(res, 400, { ok: false, error: `Kata sandi baru minimal ${minLen} karakter.` });
+        return true;
+      }
+      if (currentPassword) {
+        const verified = verifyUserCredentials(caller.email, currentPassword);
+        if (!verified.ok) {
+          sendJson(res, 403, { ok: false, error: 'Kata sandi saat ini tidak sesuai.' });
+          return true;
+        }
+      }
+      const updatedUser = changeUserPasswordByEmail(caller.email, newPassword);
+      sendJson(res, 200, { ok: true, user: updatedUser });
+      return true;
+    }
+
     // 5. GET /api/v1/bootstrap
     if (pathname === '/api/v1/bootstrap' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       const { stores, meta } = readAllKvStores();
       const users = listAllUsers();
+      const safeStores = { ...stores };
+      if (Array.isArray(safeStores.prp_users)) {
+        safeStores.prp_users = users;
+      }
+      if (safeStores.prp_kpi_distribution_v1) {
+        safeStores.prp_kpi_distribution_v1 = filterKpiWorkflowForCaller(safeStores.prp_kpi_distribution_v1, caller);
+      }
       const broadcasts = listBroadcastsForUser(caller);
       const audit = listAuditLogs(200);
       sendJson(res, 200, {
         ok: true,
         authenticatedAs: caller ? { email: caller.email, role: caller.role, picCodes: caller.picCodes } : null,
-        stores,
+        stores: safeStores,
         meta,
         users,
         broadcasts,
@@ -300,6 +368,51 @@ export async function handleApiRequest(req, res) {
       for (const [storeKey, incomingVal] of Object.entries(incomingStores)) {
         if (!ALLOWED_SYNC_KEYS.has(storeKey)) continue;
 
+        if (storeKey === 'prp_notifications_v1' || storeKey === 'prp_email_outbox_v1') {
+          if (Array.isArray(incomingVal)) {
+            const existingList = readKvStore(storeKey, []).value;
+            const mergedMap = new Map();
+            (Array.isArray(existingList) ? existingList : []).forEach((item) => {
+              if (item?.id) mergedMap.set(item.id, item);
+            });
+            incomingVal.forEach((item) => {
+              if (!item?.id) return;
+              const prev = mergedMap.get(item.id);
+              if (!prev) {
+                mergedMap.set(item.id, item);
+              } else {
+                const readBy = Array.from(new Set([
+                  ...(Array.isArray(prev.readBy) ? prev.readBy : []),
+                  ...(Array.isArray(item.readBy) ? item.readBy : []),
+                ]));
+                mergedMap.set(item.id, { ...prev, ...item, readBy });
+              }
+            });
+            const mergedList = Array.from(mergedMap.values())
+              .sort((a, b) => String(b.createdAt || b.sentAt || '').localeCompare(String(a.createdAt || a.sentAt || '')))
+              .slice(0, 250);
+            const result = writeKvStore(storeKey, mergedList, caller.email);
+            if (result.changed) {
+              updatedKeys.push(storeKey);
+            }
+          }
+          continue;
+        }
+
+        if (caller.role === 'spi') {
+          appendAuditLog(
+            'SECURITY_VIOLATION',
+            `Percobaan ubah data ${storeKey} oleh akun Auditor SPI (${caller.email})`,
+            caller.email,
+            ip,
+          );
+          sendJson(res, 403, {
+            ok: false,
+            error: 'Akun Auditor SPI bersifat Hanya Lihat (Read-Only) dan tidak diizinkan mengubah data kinerja.',
+          });
+          return true;
+        }
+
         if (SUPERADMIN_ONLY_KEYS.has(storeKey)) {
           if (caller.role !== 'superadmin_prp') {
             appendAuditLog(
@@ -314,10 +427,11 @@ export async function handleApiRequest(req, res) {
             });
             return true;
           }
+          let valueToPersist = incomingVal;
           if (storeKey === 'prp_users' && Array.isArray(incomingVal)) {
-            syncUsersListFromAdmin(incomingVal, caller.email);
+            valueToPersist = syncUsersListFromAdmin(incomingVal, caller.email);
           }
-          const result = writeKvStore(storeKey, incomingVal, caller.email);
+          const result = writeKvStore(storeKey, valueToPersist, caller.email);
           if (result.changed) {
             updatedKeys.push(storeKey);
             appendAuditLog('SYNC_CONFIG_PRP', `Pembaruan ${storeKey} (v${result.version})`, caller.email, ip);
@@ -398,10 +512,15 @@ export async function handleApiRequest(req, res) {
         });
       }
 
+      const responseStores = { ...stores };
+      if (responseStores.prp_kpi_distribution_v1) {
+        responseStores.prp_kpi_distribution_v1 = filterKpiWorkflowForCaller(responseStores.prp_kpi_distribution_v1, caller);
+      }
+
       sendJson(res, 200, {
         ok: true,
         updatedKeys,
-        stores,
+        stores: responseStores,
         meta,
         audit: listAuditLogs(80),
         serverTime: new Date().toISOString(),
@@ -495,6 +614,36 @@ export async function handleApiRequest(req, res) {
       }
       publishRealtimeEvent('broadcast:deleted', { broadcastId, at: new Date().toISOString() });
       sendJson(res, 200, { ok: true, broadcastId });
+      return true;
+    }
+
+    // 11. DELETE /api/v1/users/:email (Superadmin PRP)
+    const delUserMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)$/);
+    if (delUserMatch && req.method === 'DELETE') {
+      const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller || caller.role !== 'superadmin_prp') {
+        sendJson(res, 403, { ok: false, error: 'Hanya Superadmin PRP yang berwenang menghapus akun pengguna.' });
+        return true;
+      }
+      const targetEmail = decodeURIComponent(delUserMatch[1]).toLowerCase();
+      if (targetEmail === caller.email.toLowerCase()) {
+        sendJson(res, 400, { ok: false, error: 'Akun sendiri tidak dapat dihapus.' });
+        return true;
+      }
+      const removed = deleteUserByEmail(targetEmail, caller.email);
+      if (removed) {
+        const syncedUsers = listAllUsers();
+        writeKvStore('prp_users', syncedUsers, caller.email);
+        publishRealtimeEvent('state:updated', {
+          updatedKeys: ['prp_users'],
+          actor: { email: caller.email, name: caller.name, role: caller.role },
+          stores: { prp_users: syncedUsers },
+          users: syncedUsers,
+          audit: listAuditLogs(40),
+          at: new Date().toISOString(),
+        });
+      }
+      sendJson(res, 200, { ok: true, removed });
       return true;
     }
 

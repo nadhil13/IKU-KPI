@@ -377,7 +377,7 @@ export default function EnterpriseArchitecture() {
               display: 'inline-block',
             }}
           >
-            03 // ARSITEKTUR HAK AKSES SSO
+            ARSITEKTUR HAK AKSES SSO
           </div>
 
           <h2
