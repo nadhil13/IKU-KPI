@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   PanelLeftClose,
   PanelLeftOpen,
+  RefreshCw,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -49,6 +50,9 @@ import {
   requestOsNotificationPermission,
   setOsNotificationEnabledByUser,
   dispatchOsNotification,
+  bindAutomaticNotificationActivation,
+  applyPwaUpdateNow,
+  checkForAppUpdate,
 } from '../lib/pwaNotifications';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -107,10 +111,15 @@ export default function InternalLayout() {
   useEffect(() => subscribeRealtimeStatus(setRtStatus), []);
   useEffect(() => subscribePwaState(setPwaState), []);
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) return undefined;
     initPwaAndNotifications((targetUrl) => {
       if (targetUrl) navigate(targetUrl);
     });
+    checkForAppUpdate().catch(() => undefined);
+    const unbindGesture = bindAutomaticNotificationActivation();
+    return () => {
+      unbindGesture();
+    };
   }, [currentUser, navigate]);
 
   const layoutRef = useRef(null);
@@ -799,8 +808,10 @@ export default function InternalLayout() {
         <div
           className="sidebar-stagger"
           style={{
-            height: '60px',
-            padding: '0 1.1rem',
+            height: 'calc(60px + env(safe-area-inset-top, 0px))',
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingLeft: 'max(1.1rem, env(safe-area-inset-left, 0px))',
+            paddingRight: '1.1rem',
             borderBottom: '1px solid #D8E4EA',
             background: '#ffffff',
             display: 'flex',
@@ -1425,7 +1436,10 @@ export default function InternalLayout() {
         {/* Sidebar Footer */}
         <div
           style={{
-            padding: '0.75rem 0.85rem',
+            paddingTop: '0.75rem',
+            paddingRight: '0.85rem',
+            paddingBottom: 'max(0.75rem, calc(0.65rem + env(safe-area-inset-bottom, 0px)))',
+            paddingLeft: 'max(0.85rem, env(safe-area-inset-left, 0px))',
             borderTop: '1px solid #D8E4EA',
             background: '#ffffff',
             display: 'grid',
@@ -1466,25 +1480,27 @@ export default function InternalLayout() {
           background: '#ffffff',
         }}
       >
-        {/* Top Header (60px, Solid Clean Surface) */}
+        {/* Top Header (60px + Safe-Area Notch, Solid Clean Surface) */}
         <header
           className="header-stagger"
           style={{
             position: 'relative',
-            height: '60px',
+            height: 'calc(60px + env(safe-area-inset-top, 0px))',
             flexShrink: 0,
             background: '#ffffff',
-            padding: '0 clamp(0.9rem, 2.5vw, 2.25rem)',
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingLeft: 'max(clamp(0.65rem, 2.5vw, 2.25rem), env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(clamp(0.65rem, 2.5vw, 2.25rem), env(safe-area-inset-right, 0px))',
             borderBottom: '1px solid #D8E4EA',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            gap: '0.75rem',
+            gap: windowWidth <= 420 ? '0.35rem' : '0.75rem',
             zIndex: 30,
           }}
         >
           {/* Left: Hamburger + Breadcrumb */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: windowWidth <= 420 ? '0.42rem' : '0.65rem', minWidth: 0, flex: '1 1 0' }}>
             <button
               type="button"
               onClick={handleToggleSidebar}
@@ -1522,22 +1538,24 @@ export default function InternalLayout() {
               )}
             </button>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0, overflow: 'hidden' }}>
-              <span
-                style={{
-                  fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.64rem',
-                  fontWeight: 700,
-                  padding: '3px 7px',
-                  borderRadius: '4px',
-                  background: '#094E68',
-                  color: '#ffffff',
-                  letterSpacing: '0.06em',
-                  flexShrink: 0,
-                }}
-              >
-                {breadcrumb.code}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, overflow: 'hidden', flex: '1 1 0' }}>
+              {windowWidth > 380 && (
+                <span
+                  style={{
+                    fontFamily: 'var(--ent-mono)',
+                    fontSize: '0.64rem',
+                    fontWeight: 700,
+                    padding: '3px 7px',
+                    borderRadius: '4px',
+                    background: '#094E68',
+                    color: '#ffffff',
+                    letterSpacing: '0.06em',
+                    flexShrink: 0,
+                  }}
+                >
+                  {breadcrumb.code}
+                </span>
+              )}
               {(windowWidth > 1240 || (!isMobile && !desktopSidebarOpen && windowWidth > 860)) && (
                 <>
                   <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>
@@ -1563,7 +1581,7 @@ export default function InternalLayout() {
           </div>
 
           {/* Right: Realtime Status + Broadcast Button + Activity Bell + User Session Identity */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: windowWidth <= 420 ? '0.32rem' : '0.5rem', flexShrink: 0 }}>
             {windowWidth > 768 && (
               <div
                 title={rtStatus.mode === 'server-sse' ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif)' : 'Sinkronisasi lokal antar-tab aktif (mode offline/lokal)'}
@@ -1710,11 +1728,14 @@ export default function InternalLayout() {
                   aria-label="Pusat Notifikasi In-App, Revisi PRP, dan Aktivitas"
                   data-lenis-prevent
                   style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 8px)',
-                    right: 0,
-                    width: 'min(420px, 92vw)',
-                    maxHeight: '78dvh',
+                    position: windowWidth <= 640 ? 'fixed' : 'absolute',
+                    top: windowWidth <= 640 ? 'calc(64px + env(safe-area-inset-top, 0px))' : 'calc(100% + 8px)',
+                    left: windowWidth <= 640 ? 'max(0.65rem, env(safe-area-inset-left, 0px))' : 'auto',
+                    right: windowWidth <= 640 ? 'max(0.65rem, env(safe-area-inset-right, 0px))' : 0,
+                    width: windowWidth <= 640 ? 'auto' : 'min(420px, calc(100vw - 1.5rem))',
+                    maxHeight: windowWidth <= 640
+                      ? 'calc(100dvh - 82px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))'
+                      : '78dvh',
                     overflowY: 'auto',
                     background: '#ffffff',
                     border: '1px solid #094E68',
@@ -1729,6 +1750,7 @@ export default function InternalLayout() {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
+                      flexWrap: 'wrap',
                       gap: '0.5rem',
                       paddingBottom: '0.6rem',
                       marginBottom: '0.65rem',
@@ -1746,7 +1768,7 @@ export default function InternalLayout() {
                     >
                       NOTIFIKASI IN-APP &amp; EMAIL ({unreadNotifCount} BARU)
                     </strong>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                       {unreadNotifCount > 0 && (
                         <button
                           type="button"
@@ -1756,7 +1778,8 @@ export default function InternalLayout() {
                             background: '#F7FAFB',
                             color: '#094E68',
                             borderRadius: '5px',
-                            padding: '2px 7px',
+                            minHeight: isMobile ? '36px' : '28px',
+                            padding: '4px 8px',
                             fontSize: '0.64rem',
                             fontWeight: 700,
                             cursor: 'pointer',
@@ -1768,6 +1791,24 @@ export default function InternalLayout() {
                       {isSuperadminPrp && (
                         <span className="ent-badge ent-badge-info">{telemetry.totalPending} ANTREAN</span>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setNotifOpen(false)}
+                        aria-label="Tutup panel notifikasi"
+                        style={{
+                          width: isMobile ? '36px' : '28px',
+                          height: isMobile ? '36px' : '28px',
+                          borderRadius: '6px',
+                          border: '1px solid #D8E4EA',
+                          background: '#FFFFFF',
+                          color: '#072534',
+                          display: 'inline-grid',
+                          placeItems: 'center',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   </div>
 
@@ -2030,16 +2071,147 @@ export default function InternalLayout() {
             minWidth: 0,
             width: '100%',
             maxWidth: '100%',
-            height: 'calc(100dvh - 60px)',
+            height: 'auto',
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: 'clamp(0.85rem, 2.2vw, 2.25rem)',
+            paddingTop: 'clamp(0.8rem, 2vw, 2.25rem)',
+            paddingLeft: 'max(clamp(0.75rem, 2vw, 2.25rem), env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(clamp(0.75rem, 2vw, 2.25rem), env(safe-area-inset-right, 0px))',
+            paddingBottom: 'calc(clamp(1.2rem, 2.5vw, 2.25rem) + env(safe-area-inset-bottom, 0px))',
             overscrollBehavior: 'contain',
             background: '#ffffff',
           }}
           ref={scrollWrapperRef}
         >
           <div ref={scrollContentRef} style={{ maxWidth: '1640px', margin: '0 auto', width: '100%', minWidth: 0 }}>
+            {pwaState.updateAvailable && (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  marginBottom: '0.85rem',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  background: '#094E68',
+                  border: '1px solid #072534',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>
+                    Pembaruan Aplikasi Web Tersedia Secara Realtime
+                  </strong>
+                  <span style={{ fontSize: '0.73rem', color: '#E2E8F0', lineHeight: 1.45 }}>
+                    Versi terbaru PERFORMA ITPLN telah dirilis. Muat ulang aplikasi agar tampilan &amp; fitur mutakhir langsung aktif di HP Anda.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={applyPwaUpdateNow}
+                  style={{
+                    minHeight: '44px',
+                    padding: '0.48rem 0.95rem',
+                    borderRadius: '6px',
+                    background: '#FFFFFF',
+                    border: '1px solid #FFFFFF',
+                    color: '#072534',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  <span>Perbarui Instan</span>
+                </button>
+              </div>
+            )}
+
+            {currentUser && pwaState.notificationPermission !== 'unsupported' && (pwaState.notificationPermission !== 'granted' || !pwaState.osNotifEnabled) && (
+              <div
+                role="region"
+                aria-label="Status wajib notifikasi sistem HP"
+                style={{
+                  marginBottom: '0.85rem',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  background: pwaState.notificationPermission === 'denied' ? '#FEF2F2' : '#EDF3F6',
+                  border: pwaState.notificationPermission === 'denied' ? '1px solid #FCA5A5' : '1px solid #0E7480',
+                  color: '#072534',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ minWidth: 0, flex: '1 1 240px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif', color: pwaState.notificationPermission === 'denied' ? '#7F1D1D' : '#094E68' }}>
+                    {pwaState.platform === 'ios' && !pwaState.standalone
+                      ? 'Aktifkan Mode Aplikasi iPhone agar Notifikasi Layar HP Menyala'
+                      : pwaState.notificationPermission === 'denied'
+                        ? 'Izin Notifikasi HP Sedang Diblokir Browser'
+                        : 'Wajib Aktifkan Notifikasi Layar Kunci & Bilah Status HP'}
+                  </strong>
+                  <span style={{ fontSize: '0.73rem', color: '#334155', lineHeight: 1.45, display: 'block', marginTop: '0.15rem' }}>
+                    {pwaState.platform === 'ios' && !pwaState.standalone
+                      ? 'Di Safari iPhone: ketuk ikon Bagikan (Share) lalu pilih "Tambah ke Layar Utama" (Add to Home Screen), buka dari ikon app, lalu aktifkan notifikasi.'
+                      : pwaState.notificationPermission === 'denied'
+                        ? 'Buka Ikon Gembok / Pengaturan Situs pada browser HP Anda lalu ubah Notifikasi ke "Izinkan" agar instruksi PRP & revisi otomatis masuk ke layar HP.'
+                        : 'Tekan tombol di kanan satu kali agar setiap revisi, jadwal periode, dan broadcast Admin PRP langsung berbunyi di layar HP Anda.'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  {!(pwaState.platform === 'ios' && !pwaState.standalone) && pwaState.notificationPermission !== 'denied' && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const perm = await requestOsNotificationPermission();
+                        if (perm === 'granted') {
+                          setOsNotificationEnabledByUser(true);
+                          await dispatchOsNotification({
+                            id: `auto-notif-on-${Date.now()}`,
+                            title: 'Notifikasi HP PERFORMA ITPLN Aktif',
+                            body: 'Perangkat Anda kini menerima pembaruan KPI, revisi PRP, dan broadcast secara realtime.',
+                            priority: 'IMPORTANT',
+                            url: '/internal',
+                            force: true,
+                          });
+                        } else {
+                          setPwaNotice('Izin notifikasi belum diberikan oleh peramban perangkat Anda.');
+                          setPwaModalOpen(true);
+                        }
+                      }}
+                      className="ent-btn ent-btn-primary"
+                      style={{ minHeight: '44px' }}
+                    >
+                      <Bell size={14} />
+                      <span>Aktifkan Notif HP</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPwaNotice('');
+                      setPwaModalOpen(true);
+                    }}
+                    className="ent-btn"
+                    style={{ minHeight: '44px' }}
+                  >
+                    <Smartphone size={14} />
+                    <span>Panduan HP</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <ActiveBroadcastBanner onOpenManager={() => setBroadcastModalOpen(true)} />
             <Outlet />
           </div>
@@ -2059,7 +2231,7 @@ export default function InternalLayout() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '1rem',
+            padding: 'max(0.75rem, env(safe-area-inset-top, 0px)) max(0.75rem, env(safe-area-inset-right, 0px)) max(0.75rem, env(safe-area-inset-bottom, 0px)) max(0.75rem, env(safe-area-inset-left, 0px))',
           }}
         >
           <div
@@ -2071,7 +2243,7 @@ export default function InternalLayout() {
             style={{
               width: '100%',
               maxWidth: '520px',
-              maxHeight: '90dvh',
+              maxHeight: 'calc(100dvh - 1.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
               overflowY: 'auto',
               background: '#FFFFFF',
               border: '1px solid #094E68',
@@ -2097,7 +2269,7 @@ export default function InternalLayout() {
                 type="button"
                 onClick={() => setPwaModalOpen(false)}
                 aria-label="Tutup dialog aplikasi"
-                style={{ width: '36px', height: '36px', borderRadius: '6px', border: '1px solid #D8E4EA', background: '#FFFFFF', color: '#072534', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
+                style={{ width: isMobile ? '44px' : '36px', height: isMobile ? '44px' : '36px', borderRadius: '6px', border: '1px solid #D8E4EA', background: '#FFFFFF', color: '#072534', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
               >
                 <X size={16} />
               </button>
@@ -2299,7 +2471,10 @@ export default function InternalLayout() {
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'center',
-            padding: '10dvh 1rem 2rem',
+            paddingTop: 'max(10dvh, env(safe-area-inset-top, 0px))',
+            paddingRight: 'max(1rem, env(safe-area-inset-right, 0px))',
+            paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 0px))',
+            paddingLeft: 'max(1rem, env(safe-area-inset-left, 0px))',
           }}
         >
           <div
@@ -2465,7 +2640,10 @@ export default function InternalLayout() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '1.25rem',
+            paddingTop: 'max(1.25rem, env(safe-area-inset-top, 0px))',
+            paddingRight: 'max(1.25rem, env(safe-area-inset-right, 0px))',
+            paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 0px))',
+            paddingLeft: 'max(1.25rem, env(safe-area-inset-left, 0px))',
           }}
         >
           <div

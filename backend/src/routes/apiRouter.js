@@ -36,6 +36,7 @@ import {
   listBroadcastsForUser,
   acknowledgeBroadcast,
   deleteBroadcast,
+  getRealtimeDigest,
 } from '../services/database.js';
 import {
   registerSseClient,
@@ -348,6 +349,52 @@ export async function handleApiRequest(req, res) {
         broadcasts,
         audit,
         serverTime: new Date().toISOString(),
+      });
+      return true;
+    }
+
+    // 5b. GET /api/v1/realtime/digest (Ringan: cek perubahan versi state/broadcast di PWA & serverless)
+    if (pathname === '/api/v1/realtime/digest' && req.method === 'GET') {
+      const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk memeriksa digest realtime.' });
+        return true;
+      }
+      const digest = getRealtimeDigest(caller);
+      sendJson(
+        res,
+        200,
+        {
+          ok: true,
+          authenticatedAs: { email: caller.email, role: caller.role, picCodes: caller.picCodes },
+          ...digest,
+        },
+        { 'Cache-Control': 'no-store, max-age=0' },
+      );
+      return true;
+    }
+
+    // 5c. POST /api/v1/notifications/email (Catat audit pengiriman pemberitahuan email resmi)
+    if (pathname === '/api/v1/notifications/email' && req.method === 'POST') {
+      const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk mencatat pengiriman email.' });
+        return true;
+      }
+      const body = sanitizePayload((await readJsonBody(req)) || {});
+      const recipients = Array.isArray(body.toEmails) ? body.toEmails.filter(Boolean).slice(0, 30) : [];
+      const subject = String(body.subject || '[PERFORMA ITPLN] Pemberitahuan Sistem Kinerja').slice(0, 200);
+      appendAuditLog(
+        'EMAIL_AUDIT_DISPATCH',
+        `Email "${subject}" dicatat untuk ${recipients.join(', ') || body.recipientLabel || 'unit terkait'}`,
+        caller.email,
+        ip,
+      );
+      sendJson(res, 200, {
+        ok: true,
+        id: String(body.id || `mail_${Date.now()}`),
+        recipients,
+        recordedAt: new Date().toISOString(),
       });
       return true;
     }

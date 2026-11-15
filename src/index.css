@@ -49,11 +49,18 @@
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 html {
   scroll-behavior: smooth;
   font-size: 16px;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 * {
@@ -69,7 +76,9 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  max-width: 100%;
+  overflow-x: clip;
+  -webkit-tap-highlight-color: rgba(14, 116, 128, 0.12);
 }
 
 h1,
@@ -1304,8 +1313,8 @@ img {
     padding: 0.5rem 0.7rem;
   }
   .htv-pan-btn {
-    min-height: 40px;
-    padding: 0.35rem 0.75rem;
+    min-height: 44px;
+    padding: 0.4rem 0.75rem;
   }
 }
 

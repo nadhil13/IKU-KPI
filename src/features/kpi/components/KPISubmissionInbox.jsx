@@ -954,7 +954,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               display: 'flex',
               justifyContent: 'center',
               alignItems: 'flex-start',
-              padding: 'clamp(0.65rem, 2.5vw, 1.75rem)',
+              paddingTop: 'max(0.65rem, env(safe-area-inset-top, 0px))',
+              paddingRight: 'max(0.65rem, env(safe-area-inset-right, 0px))',
+              paddingBottom: 'max(0.65rem, env(safe-area-inset-bottom, 0px))',
+              paddingLeft: 'max(0.65rem, env(safe-area-inset-left, 0px))',
               overflowY: 'auto',
               overflowX: 'hidden',
               boxSizing: 'border-box',
@@ -974,7 +977,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             >
               <div
                 style={{
-                  position: 'sticky',
+                  position: typeof window !== 'undefined' && window.innerWidth <= 768 ? 'relative' : 'sticky',
                   top: 0,
                   zIndex: 20,
                   padding: 'clamp(0.9rem, 2vw, 1.25rem) clamp(1rem, 2.5vw, 1.5rem)',
@@ -1693,7 +1696,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '1rem',
+              paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+              paddingRight: 'max(1rem, env(safe-area-inset-right, 0px))',
+              paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))',
+              paddingLeft: 'max(1rem, env(safe-area-inset-left, 0px))',
             }}
           >
             <div

@@ -179,11 +179,13 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
           aria-live="assertive"
           style={{
             position: 'fixed',
-            bottom: '1.25rem',
-            right: '1.25rem',
+            bottom: 'max(1rem, calc(0.75rem + env(safe-area-inset-bottom, 0px)))',
+            left: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+            right: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+            marginLeft: 'auto',
             zIndex: 1400,
             maxWidth: '420px',
-            width: 'calc(100vw - 2.5rem)',
+            width: 'auto',
             background: '#072534',
             color: '#FFFFFF',
             borderRadius: '8px',
@@ -497,8 +499,8 @@ export function BroadcastComposerModal({ open, onClose }) {
         targetValue,
         actionUrl,
         actionLabel,
-        senderName: currentUser?.name || 'Admin PRP',
-        senderEmail: currentUser?.email || 'superadmin@itpln.ac.id',
+        actorName: currentUser?.name || 'Admin PRP',
+        actorEmail: currentUser?.email || 'admin@itpln.ac.id',
         sendEmail,
         emailSubject: `[SIARAN PRP ITPLN] ${title}`,
       });
@@ -530,14 +532,14 @@ export function BroadcastComposerModal({ open, onClose }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 'clamp(0.75rem, 2.5vw, 2rem)',
+        padding: 'max(0.75rem, env(safe-area-inset-top, 0px)) max(0.75rem, env(safe-area-inset-right, 0px)) max(0.75rem, env(safe-area-inset-bottom, 0px)) max(0.75rem, env(safe-area-inset-left, 0px))',
       }}
     >
       <div
         data-lenis-prevent
         style={{
           width: 'min(860px, 100%)',
-          maxHeight: '90dvh',
+          maxHeight: 'calc(100dvh - 1.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
           overflowY: 'auto',
           background: '#FFFFFF',
           borderRadius: '10px',
@@ -555,7 +557,8 @@ export function BroadcastComposerModal({ open, onClose }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '1rem',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -665,7 +668,7 @@ export function BroadcastComposerModal({ open, onClose }) {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',
                 gap: '0.85rem',
               }}
             >

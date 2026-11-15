@@ -5,12 +5,16 @@
  */
 
 const PWA_STATE_EVENT = 'performa-pwa-state-updated';
+const APP_UPDATE_EVENT = 'performa-app-update-available';
 const NOTIF_PREF_KEY = 'performa_os_notif_enabled';
 const SEEN_NOTIF_IDS_KEY = 'performa_seen_notif_ids_v1';
+const CURRENT_BUILD_ID = typeof __PERFORMA_BUILD_ID__ !== 'undefined' ? __PERFORMA_BUILD_ID__ : 'dev';
 
 let deferredInstallPrompt = null;
 let swRegistration = null;
 let initialized = false;
+let updateAvailableInfo = null;
+let pendingPermissionRequest = null;
 
 function emitPwaState() {
   if (typeof window === 'undefined') return;
@@ -68,6 +72,8 @@ export function getPwaAndNotificationState() {
     swReady: Boolean(swRegistration),
     notificationPermission: getNotificationPermissionState(),
     osNotifEnabled: isOsNotificationEnabledByUser(),
+    updateAvailable: Boolean(updateAvailableInfo),
+    latestBuildId: updateAvailableInfo?.buildId || CURRENT_BUILD_ID,
   };
 }
 
@@ -106,8 +112,20 @@ export async function initPwaAndNotifications(onNavigateFromNotification) {
 
   if ('serviceWorker' in navigator && !swRegistration) {
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
       swRegistration = reg;
+      reg.update().catch(() => undefined);
+      reg.addEventListener?.('updatefound', () => {
+        const nextWorker = reg.installing;
+        if (!nextWorker) return;
+        nextWorker.addEventListener('statechange', () => {
+          if (nextWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            updateAvailableInfo = { buildId: `sw-${Date.now().toString(36)}`, at: new Date().toISOString() };
+            emitPwaState();
+            window.dispatchEvent(new CustomEvent(APP_UPDATE_EVENT, { detail: updateAvailableInfo }));
+          }
+        });
+      });
       emitPwaState();
     } catch {
       // Service worker dapat gagal pada lingkungan file://
@@ -115,6 +133,73 @@ export async function initPwaAndNotifications(onNavigateFromNotification) {
   }
 
   return swRegistration;
+}
+
+export async function checkForAppUpdate() {
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
+  try {
+    await swRegistration?.update?.().catch(() => undefined);
+  } catch {
+    // Abaikan error update SW
+  }
+  try {
+    const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return false;
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return false;
+    const data = await res.json();
+    if (
+      data?.buildId
+      && CURRENT_BUILD_ID !== 'dev'
+      && String(data.buildId) !== String(CURRENT_BUILD_ID)
+    ) {
+      updateAvailableInfo = { buildId: String(data.buildId), builtAt: data.builtAt || new Date().toISOString() };
+      emitPwaState();
+      window.dispatchEvent(new CustomEvent(APP_UPDATE_EVENT, { detail: updateAvailableInfo }));
+      return true;
+    }
+  } catch {
+    // Abaikan saat offline
+  }
+  return false;
+}
+
+export function applyPwaUpdateNow() {
+  if (typeof window === 'undefined') return;
+  try {
+    if (swRegistration?.waiting) {
+      swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+  } catch {
+    // Abaikan
+  }
+  window.location.reload();
+}
+
+export function bindAutomaticNotificationActivation() {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined') return () => {};
+  const triggerOnce = () => {
+    try {
+      const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
+      if (!activeUser?.email) return;
+      if (Notification.permission === 'default') {
+        requestOsNotificationPermission();
+      }
+    } catch {
+      // Abaikan
+    } finally {
+      window.removeEventListener('pointerdown', triggerOnce, true);
+      window.removeEventListener('keydown', triggerOnce, true);
+    }
+  };
+  if (Notification.permission === 'default') {
+    window.addEventListener('pointerdown', triggerOnce, { capture: true, passive: true });
+    window.addEventListener('keydown', triggerOnce, { capture: true, passive: true });
+  }
+  return () => {
+    window.removeEventListener('pointerdown', triggerOnce, true);
+    window.removeEventListener('keydown', triggerOnce, true);
+  };
 }
 
 export async function triggerPwaInstallPrompt() {
@@ -138,8 +223,19 @@ export async function requestOsNotificationPermission() {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') {
     return 'unsupported';
   }
+  if (Notification.permission !== 'default') {
+    if (Notification.permission === 'granted') {
+      setOsNotificationEnabledByUser(true);
+    }
+    emitPwaState();
+    return Notification.permission;
+  }
+  if (pendingPermissionRequest) {
+    return pendingPermissionRequest;
+  }
   try {
-    const result = await Notification.requestPermission();
+    pendingPermissionRequest = Promise.resolve(Notification.requestPermission());
+    const result = await pendingPermissionRequest;
     if (result === 'granted') {
       setOsNotificationEnabledByUser(true);
     }
@@ -147,6 +243,8 @@ export async function requestOsNotificationPermission() {
     return result;
   } catch {
     return Notification.permission || 'default';
+  } finally {
+    pendingPermissionRequest = null;
   }
 }
 
@@ -182,22 +280,37 @@ export function playNotificationChime(priority = 'IMPORTANT') {
   }
 }
 
+function readSeenNotificationIds() {
+  const combined = [];
+  const collect = (storage) => {
+    try {
+      const parsed = JSON.parse(storage?.getItem?.(SEEN_NOTIF_IDS_KEY) || '[]');
+      if (Array.isArray(parsed)) parsed.forEach((id) => combined.push(id));
+    } catch {
+      // Abaikan
+    }
+  };
+  if (typeof localStorage !== 'undefined') collect(localStorage);
+  if (typeof sessionStorage !== 'undefined') collect(sessionStorage);
+  return [...new Set(combined)];
+}
+
 function hasSeenNotificationId(dedupeId) {
   if (!dedupeId) return false;
-  try {
-    const raw = JSON.parse(sessionStorage.getItem(SEEN_NOTIF_IDS_KEY) || '[]');
-    return Array.isArray(raw) && raw.includes(dedupeId);
-  } catch {
-    return false;
-  }
+  return readSeenNotificationIds().includes(dedupeId);
 }
 
 function markSeenNotificationId(dedupeId) {
   if (!dedupeId) return;
+  const next = [dedupeId, ...readSeenNotificationIds().filter((id) => id !== dedupeId)].slice(0, 250);
+  const serialized = JSON.stringify(next);
   try {
-    const raw = JSON.parse(sessionStorage.getItem(SEEN_NOTIF_IDS_KEY) || '[]');
-    const next = [dedupeId, ...(Array.isArray(raw) ? raw.filter((id) => id !== dedupeId) : [])].slice(0, 120);
-    sessionStorage.setItem(SEEN_NOTIF_IDS_KEY, JSON.stringify(next));
+    localStorage?.setItem?.(SEEN_NOTIF_IDS_KEY, serialized);
+  } catch {
+    // Abaikan jika kuota penuh
+  }
+  try {
+    sessionStorage?.setItem?.(SEEN_NOTIF_IDS_KEY, serialized);
   } catch {
     // Abaikan
   }

@@ -448,6 +448,27 @@
   .kpi-designer-page .designer-hero .designer-actions > button {
     flex: 1 1 140px;
   }
+  .kpi-designer-page .sheet-scroll {
+    min-height: 280px;
+    max-height: calc(100dvh - 170px);
+  }
+  .kpi-designer-page .sheet-menu .menu {
+    min-width: 195px;
+    max-width: min(260px, calc(100vw - 2rem));
+  }
+  .kpi-designer-page .pic-popover {
+    width: min(290px, calc(100vw - 2.25rem));
+  }
+  .kpi-designer-page .pic-option {
+    min-height: 40px;
+    padding: .3rem .65rem;
+  }
+  .kpi-designer-page .designer-panel {
+    padding: .75rem;
+  }
+  .kpi-designer-page .section-bar .title {
+    flex: 1 1 180px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

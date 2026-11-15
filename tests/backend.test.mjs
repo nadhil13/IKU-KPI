@@ -19,6 +19,10 @@ import {
   doesBroadcastMatchUser,
 } from '../backend/src/services/database.js';
 import { handleApiRequest } from '../backend/src/routes/apiRouter.js';
+import {
+  doesSyncNotificationMatchUser,
+  notifyMatchingRemoteNotifications,
+} from '../src/lib/realtimeSync.js';
 
 function invokeApi(method, url, { body = null, token = '', ip = '127.0.0.1' } = {}) {
   return new Promise((resolve, reject) => {
@@ -668,4 +672,113 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   assert.equal(notifSync.status, 200);
   assert.equal(notifSync.json.stores.prp_notifications_v1.length, 1);
   assert.equal(notifSync.json.stores.prp_email_outbox_v1.length, 1);
+});
+
+test('Digest realtime stateless & endpoint audit email merespons instan serta memicu notifikasi target unit', async () => {
+  // 1. Digest wajib autentikasi
+  const unauthDigest = await invokeApi('GET', '/api/v1/realtime/digest');
+  assert.equal(unauthDigest.status, 401);
+
+  const adminLogin = await invokeApi('POST', '/api/v1/auth/login', {
+    body: { email: 'admin@itpln.ac.id', password: 'password' },
+  });
+  assert.equal(adminLogin.status, 200);
+  const adminToken = adminLogin.json.accessToken;
+
+  const bpkaLogin = await invokeApi('POST', '/api/v1/auth/login', {
+    body: { email: 'bpka@itpln.ac.id', password: 'password' },
+  });
+  assert.equal(bpkaLogin.status, 200);
+  const bpkaToken = bpkaLogin.json.accessToken;
+
+  // 2. Digest awal berhasil & mengembalikan hash + header anti-cache
+  const digestBefore = await invokeApi('GET', '/api/v1/realtime/digest', { token: bpkaToken });
+  assert.equal(digestBefore.status, 200);
+  assert.equal(digestBefore.json.ok, true);
+  assert.ok(digestBefore.json.digestHash);
+  assert.match(digestBefore.headers['cache-control'] || '', /no-store/);
+
+  // 3. Push notifikasi revisi untuk BPKA -> digestHash langsung berubah
+  const revPush = await invokeApi('POST', '/api/v1/sync/push', {
+    token: adminToken,
+    body: {
+      stores: {
+        prp_notifications_v1: [
+          {
+            id: 'notif-digest-bpka-1',
+            kind: 'REVISION',
+            title: 'Revisi Bukti BPKA',
+            message: 'Unggah ulang bukti Tracer Study',
+            targetType: 'PIC',
+            targetValue: 'BPKA',
+            actionUrl: '/internal',
+            readBy: [],
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(revPush.status, 200);
+
+  const digestAfter = await invokeApi('GET', '/api/v1/realtime/digest', { token: bpkaToken });
+  assert.equal(digestAfter.status, 200);
+  assert.notEqual(digestAfter.json.digestHash, digestBefore.json.digestHash);
+  assert.ok(digestAfter.json.kvVersions.prp_notifications_v1);
+
+  // 4. Endpoint audit pengiriman email resmi (/api/v1/notifications/email) berjalan tanpa 404
+  const emailRes = await invokeApi('POST', '/api/v1/notifications/email', {
+    token: adminToken,
+    body: {
+      id: 'mail-bpka-1',
+      toEmails: ['bpka@itpln.ac.id'],
+      subject: '[PERFORMA ITPLN] Revisi BPKA',
+    },
+  });
+  assert.equal(emailRes.status, 200);
+  assert.equal(emailRes.json.ok, true);
+  assert.deepEqual(emailRes.json.recipients, ['bpka@itpln.ac.id']);
+  assert.equal(verifyAuditChain().valid, true);
+
+  // 5. Pencocokan notifikasi jarak jauh & pemicu OS notification tanpa duplikasi maupun bocor lintas unit
+  const bpkaUser = { email: 'bpka@itpln.ac.id', role: 'kpi_only', picCodes: ['BPKA'] };
+  const ppaUser = { email: 'ppa@itpln.ac.id', role: 'kpi_only', picCodes: ['PPA'] };
+  const incomingList = [
+    {
+      id: 'n-bpka-new',
+      kind: 'REVISION',
+      title: 'Revisi Bukti Tracer',
+      message: 'Silakan perbaiki lampiran PDF.',
+      targetType: 'PIC',
+      targetValue: 'BPKA',
+      readBy: [],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'n-bpka-already-read',
+      kind: 'INFO',
+      title: 'Sudah Dibaca',
+      message: 'Tidak perlu popup ulang',
+      targetType: 'USER',
+      targetValue: 'bpka@itpln.ac.id',
+      readBy: ['bpka@itpln.ac.id'],
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'n-old-seen',
+      kind: 'INFO',
+      title: 'Lama',
+      message: 'Sudah ada sebelumnya',
+      targetType: 'ALL',
+      readBy: [],
+      createdAt: new Date().toISOString(),
+    },
+  ];
+  const prior = JSON.stringify([{ id: 'n-old-seen', title: 'Lama' }]);
+  assert.equal(doesSyncNotificationMatchUser(incomingList[0], bpkaUser), true);
+  assert.equal(doesSyncNotificationMatchUser(incomingList[0], ppaUser), false);
+  const bpkaDispatched = notifyMatchingRemoteNotifications(incomingList, prior, bpkaUser);
+  assert.deepEqual(bpkaDispatched, ['n-bpka-new']);
+  const ppaDispatched = notifyMatchingRemoteNotifications(incomingList, prior, ppaUser);
+  assert.deepEqual(ppaDispatched, []);
 });

@@ -113,15 +113,17 @@ export function recordEmailAuditDispatch({
 
   // Kirim juga ke endpoint backend apabila tersedia
   if (typeof fetch === 'function') {
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('performa_access_token_v1') : '';
-    fetch('/api/v1/notifications/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(entry),
-    }).catch(() => {});
+    const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('performa_access_token') || '') : '';
+    if (token) {
+      fetch('/api/v1/notifications/email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(entry),
+      }).catch(() => {});
+    }
   }
 
   if (typeof window !== 'undefined') {
@@ -133,20 +135,26 @@ export function recordEmailAuditDispatch({
 
 export function pushRealtimeNotification({
   kind = 'INFO',
+  priority = '',
   title = '',
   message = '',
   targetType = 'ALL',
   targetValue = '',
   actionUrl = '/internal',
   actionLabel = 'Buka Halaman Terkait',
-  actorEmail = 'Superadmin PRP',
-  actorName = 'Direktorat PRP',
+  actorEmail = '',
+  actorName = '',
+  senderEmail = '',
+  senderName = '',
   indicatorCode = '',
   period = '',
   sendEmail = false,
   includeSuperadmin = false,
 } = {}) {
   if (!title.trim()) return null;
+  const resolvedActorEmail = actorEmail || senderEmail || 'admin@itpln.ac.id';
+  const resolvedActorName = actorName || senderName || 'Direktorat PRP';
+  const resolvedPriority = String(priority || (kind === 'REVISION' ? 'URGENT' : 'IMPORTANT')).toUpperCase();
   const now = new Date().toISOString();
   const toEmails = resolveRecipientEmails(targetType, targetValue);
 
@@ -157,9 +165,9 @@ export function pushRealtimeNotification({
       toEmails,
       recipientLabel: `${targetType}: ${targetValue || 'Semua Unit'}`,
       subject: `[PERFORMA ITPLN - ${kind}] ${title.trim()}`,
-      body: `${message.trim()}\n\nTautan Tindak Lanjut: ${actionUrl}\nWaktu: ${new Date(now).toLocaleString('id-ID')}\nPengirim: ${actorName} (${actorEmail})`,
+      body: `${message.trim()}\n\nTautan Tindak Lanjut: ${actionUrl}\nWaktu: ${new Date(now).toLocaleString('id-ID')}\nPengirim: ${resolvedActorName} (${resolvedActorEmail})`,
       actionUrl,
-      actorEmail,
+      actorEmail: resolvedActorEmail,
       indicatorCode,
       period,
     });
@@ -168,14 +176,15 @@ export function pushRealtimeNotification({
   const notif = {
     id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     kind,
+    priority: resolvedPriority,
     title: title.trim(),
     message: message.trim(),
     targetType: String(targetType || 'ALL').toUpperCase(),
     targetValue: String(targetValue || '').trim(),
     actionUrl: actionUrl || '/internal',
     actionLabel: actionLabel || 'Buka Halaman Terkait',
-    actorEmail,
-    actorName,
+    actorEmail: resolvedActorEmail,
+    actorName: resolvedActorName,
     indicatorCode,
     period,
     includeSuperadmin: Boolean(includeSuperadmin),
@@ -196,11 +205,12 @@ export function pushRealtimeNotification({
       const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
       if (activeUser && doesNotificationMatchUser(notif, activeUser)) {
         dispatchOsNotification({
+          id: notif.id,
           title: `[${notif.kind}] ${notif.title}`,
           body: notif.message,
-          tag: notif.id,
           url: notif.actionUrl,
-          priority: notif.kind === 'REVISION' ? 'URGENT' : 'IMPORTANT',
+          actionLabel: notif.actionLabel,
+          priority: resolvedPriority,
         });
       }
     } catch {

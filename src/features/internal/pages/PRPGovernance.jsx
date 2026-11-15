@@ -343,8 +343,8 @@ export default function PRPGovernance() {
         targetType: 'ALL',
         actionUrl: '/internal/kpi',
         actionLabel: 'Lihat Status Periode',
-        senderName: actor,
-        senderEmail: currentUser?.email || 'superadmin@itpln.ac.id',
+        actorName: actor,
+        actorEmail: currentUser?.email || 'admin@itpln.ac.id',
       });
       setPeriods(next);
       window.dispatchEvent(new CustomEvent('prp-admin-updated'));
@@ -804,6 +804,18 @@ export default function PRPGovernance() {
         @media (max-width: 600px) {
           .gov-period-row {
             grid-template-columns: 1fr;
+            padding: 0.85rem 0.9rem;
+          }
+          .gov-table-head {
+            padding: 0.9rem;
+          }
+          .gov-table-head > div {
+            min-width: 0;
+            max-width: 100%;
+          }
+          .gov-button {
+            white-space: normal;
+            text-align: center;
           }
         }
       `}</style>

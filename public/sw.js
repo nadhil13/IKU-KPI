@@ -3,7 +3,7 @@
  * Menggunakan strategi Network-First dengan fallback cache agar pembaruan kode selalu mutakhir,
  * sekaligus menangani pengiriman notifikasi sistem di luar aplikasi (layar HP / status bar).
  */
-const CACHE_NAME = 'performa-itpln-pwa-v2';
+const CACHE_NAME = 'performa-itpln-pwa-v3';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -28,6 +28,14 @@ self.addEventListener('activate', (event) => {
         // Abaikan kegagalan pembersihan cache lama
       }
       await self.clients.claim();
+      try {
+        const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        allClients.forEach((client) => {
+          client.postMessage({ type: 'SW_ACTIVATED', cacheName: CACHE_NAME });
+        });
+      } catch {
+        // Abaikan jika gagal memberi tahu client
+      }
     })(),
   );
 });
@@ -37,13 +45,18 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
 
-  // Jangan intercept endpoint API atau stream SSE
-  if (url.pathname.startsWith('/api/')) return;
+  // Jangan intercept endpoint API, stream SSE, atau version stamp deploy
+  if (url.pathname.startsWith('/api/') || url.pathname === '/version.json') return;
   if (url.origin !== self.location.origin) return;
 
-  // Network-first agar rilis terbaru selalu dimuat, fallback ke cache bila offline
+  const isDocumentOrManifest = request.mode === 'navigate'
+    || url.pathname === '/'
+    || url.pathname === '/index.html'
+    || url.pathname === '/manifest.json';
+
+  // Network-first (bypass HTTP cache untuk HTML/manifest agar rilis web terbaru instan ke PWA)
   event.respondWith(
-    fetch(request)
+    fetch(isDocumentOrManifest ? new Request(request, { cache: 'no-store' }) : request)
       .then((response) => {
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
@@ -103,6 +116,8 @@ self.addEventListener('message', (event) => {
     event.waitUntil(displaySystemNotification(data.payload || {}));
   } else if (data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  } else if (data.type === 'CHECK_UPDATE' && self.registration?.update) {
+    event.waitUntil(self.registration.update().catch(() => undefined));
   }
 });
 

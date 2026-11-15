@@ -954,3 +954,46 @@ export function deleteBroadcast(broadcastId, actorEmail = 'admin@itpln.ac.id') {
   appendAuditLog('BROADCAST_DIARSIPKAN', `Siaran "${existing.title}" dihentikan oleh PRP`, actorEmail);
   return true;
 }
+
+const SERVER_BOOT_ID = `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+export function getRealtimeDigest(user = null) {
+  const db = getDatabase();
+  const kvRows = db
+    .prepare('SELECT store_key, version, checksum, updated_at FROM kv_store')
+    .all();
+
+  const kvVersions = {};
+  let latestKvAt = '';
+  for (const row of kvRows) {
+    kvVersions[row.store_key] = {
+      version: row.version,
+      checksum: row.checksum,
+      updatedAt: row.updated_at,
+    };
+    if (row.updated_at && String(row.updated_at) > latestKvAt) {
+      latestKvAt = String(row.updated_at);
+    }
+  }
+
+  const broadcasts = listBroadcastsForUser(user);
+  const latestBc = broadcasts[0] || null;
+  const signatureParts = Object.entries(kvVersions)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}:${v.version}:${String(v.checksum || '').slice(0, 10)}`);
+
+  const digestHash = computeSha256(
+    `${signatureParts.join('|')}|bc:${latestBc?.id || ''}:${broadcasts.length}`,
+  );
+
+  return {
+    digestHash,
+    serverBootId: SERVER_BOOT_ID,
+    kvVersions,
+    latestKvAt: latestKvAt || null,
+    activeBroadcastCount: broadcasts.length,
+    latestBroadcastId: latestBc?.id || null,
+    latestBroadcastAt: latestBc?.createdAt || null,
+    serverTime: new Date().toISOString(),
+  };
+}

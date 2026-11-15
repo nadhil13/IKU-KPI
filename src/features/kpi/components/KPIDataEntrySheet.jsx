@@ -355,13 +355,16 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 'clamp(0.75rem, 3vw, 2rem)',
+        paddingTop: 'max(0.65rem, env(safe-area-inset-top, 0px))',
+        paddingRight: 'max(0.65rem, env(safe-area-inset-right, 0px))',
+        paddingBottom: 'max(0.65rem, env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(0.65rem, env(safe-area-inset-left, 0px))',
       }}
     >
       <div
         style={{
           width: 'min(960px, 100%)',
-          maxHeight: '90dvh',
+          maxHeight: 'calc(100dvh - 1.3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
           background: '#FFFFFF',
           border: '1px solid #B8CAD4',
           borderRadius: '8px',

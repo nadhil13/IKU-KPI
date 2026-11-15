@@ -25,9 +25,11 @@
 .navbar-mobile-drawer {
   pointer-events: auto;
   position: absolute;
-  top: 74px;
-  left: 1rem;
-  right: 1rem;
+  top: calc(74px + env(safe-area-inset-top, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  max-height: calc(100dvh - 88px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
   background: #ffffff;
   border: 1px solid #BFD2DC;
   border-radius: 8px;

@@ -4,7 +4,10 @@
  * Server-Sent Events (SSE /api/v1/realtime/stream), BroadcastChannel lintas tab,
  * serta Notifikasi Sistem Layar Kunci (OS Push Notification).
  */
-import { dispatchOsNotification } from './pwaNotifications';
+import {
+  dispatchOsNotification,
+  checkForAppUpdate,
+} from './pwaNotifications.js';
 
 const TOKEN_STORAGE_KEY = 'performa_access_token';
 const BROADCAST_STORAGE_KEY = 'prp_broadcasts_v1';
@@ -122,10 +125,100 @@ function mergeRemoteUsersPreservingLocalSecrets(incomingUsers = []) {
   });
 }
 
+const RECENT_REMOTE_NOTIF_WINDOW_MS = 15 * 60 * 1000;
+
+export function doesSyncNotificationMatchUser(notif, user) {
+  if (!notif || !user || !user.email) return false;
+  const email = String(user.email || '').toLowerCase();
+  if (user.role === 'superadmin_prp' && notif.includeSuperadmin) return true;
+
+  const targetType = String(notif.targetType || 'ALL').toUpperCase();
+  const targetValue = String(notif.targetValue || '').trim();
+
+  if (targetType === 'ALL') return true;
+  if (targetType === 'ROLE') {
+    if (targetValue === 'kpi_only') return user.role === 'kpi_only' || user.role === 'dual';
+    if (targetValue === 'iku_only') return user.role === 'iku_only' || user.role === 'dual';
+    return user.role === targetValue;
+  }
+  if (targetType === 'PIC') {
+    const targetPics = new Set(
+      targetValue
+        .split(/[,;\s]+/)
+        .map((c) => c.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    const userPics = Array.isArray(user.picCodes)
+      ? user.picCodes.map((c) => String(c || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    return userPics.some((code) => targetPics.has(code));
+  }
+  if (targetType === 'USER') {
+    const allowedEmails = targetValue
+      .split(/[,;\s]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    return allowedEmails.includes(email);
+  }
+  return false;
+}
+
+export function notifyMatchingRemoteNotifications(incomingList = [], priorSerialized = null, userOverride = null) {
+  if (!Array.isArray(incomingList) || incomingList.length === 0) return [];
+  const user = userOverride || getCurrentUserFromStorage();
+  if (!user?.email) return [];
+  const email = String(user.email || '').toLowerCase();
+
+  let prevIds = null;
+  if (typeof priorSerialized === 'string' && priorSerialized.trim()) {
+    try {
+      const parsed = JSON.parse(priorSerialized);
+      if (Array.isArray(parsed)) {
+        prevIds = new Set(parsed.map((n) => n?.id).filter(Boolean));
+      }
+    } catch {
+      prevIds = null;
+    }
+  }
+
+  const dispatched = [];
+  const nowMs = Date.now();
+  for (const notif of incomingList) {
+    if (!notif?.id || !notif?.title) continue;
+    if (prevIds && prevIds.has(notif.id)) continue;
+    const isAlreadyRead = Array.isArray(notif.readBy)
+      && notif.readBy.some((r) => String(r || '').toLowerCase() === email);
+    if (isAlreadyRead) continue;
+    if (!doesSyncNotificationMatchUser(notif, user)) continue;
+
+    // Pada sinkronisasi pertama tanpa riwayat lokal, hanya tampilkan notifikasi yang masih baru (< 15 menit)
+    if (!prevIds && notif.createdAt) {
+      const ageMs = nowMs - Date.parse(notif.createdAt);
+      if (Number.isFinite(ageMs) && ageMs > RECENT_REMOTE_NOTIF_WINDOW_MS) continue;
+    }
+
+    const kindLabel = notif.kind ? `[${notif.kind}] ` : '';
+    const priority = String(
+      notif.priority || (notif.kind === 'REVISION' ? 'URGENT' : 'IMPORTANT'),
+    ).toUpperCase();
+    dispatched.push(notif.id);
+    dispatchOsNotification({
+      id: notif.id,
+      title: `${kindLabel}${notif.title}`,
+      body: notif.message || notif.title,
+      priority,
+      url: notif.actionUrl || '/internal',
+      actionLabel: notif.actionLabel || 'Buka Portal Kinerja',
+    });
+  }
+  return dispatched;
+}
+
 function applyRemoteStoresToLocal(storesMap = {}, remoteUsers = null, remoteAudit = null) {
   if (typeof localStorage === 'undefined') return;
   isApplyingRemote = true;
   const changedKeys = [];
+  const priorNotifRaw = localStorage.getItem('prp_notifications_v1');
   try {
     for (const [key, val] of Object.entries(storesMap || {})) {
       if (val === undefined || val === null) continue;
@@ -136,6 +229,9 @@ function applyRemoteStoresToLocal(storesMap = {}, remoteUsers = null, remoteAudi
       if (localStorage.getItem(key) !== serialized) {
         localStorage.setItem(key, serialized);
         changedKeys.push(key);
+        if (key === 'prp_notifications_v1' && Array.isArray(nextVal)) {
+          notifyMatchingRemoteNotifications(nextVal, priorNotifRaw);
+        }
       }
     }
     if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
@@ -301,11 +397,27 @@ export async function bootstrapFromBackend() {
     }
 
     if (Array.isArray(data.broadcasts)) {
+      const prevIds = new Set(readLocalBroadcastsCache().map((b) => b?.id).filter(Boolean));
       saveLocalBroadcastsCache(data.broadcasts, false);
+      const user = getCurrentUserFromStorage();
+      const newestUnseen = data.broadcasts.find(
+        (b) => b?.id && !prevIds.has(b.id) && user && doesBroadcastTargetUserClient(b, user),
+      );
+      if (newestUnseen) {
+        window.dispatchEvent(new CustomEvent('prp-broadcast-incoming-toast', { detail: newestUnseen }));
+        dispatchOsNotification({
+          id: newestUnseen.id,
+          title: `Siaran PRP: ${newestUnseen.title}`,
+          body: newestUnseen.message,
+          priority: newestUnseen.priority || 'IMPORTANT',
+          url: newestUnseen.actionUrl || '/internal',
+          actionLabel: newestUnseen.actionLabel || 'Buka Lembar Kerja',
+        });
+      }
     }
     notifyRealtimeStatus({
       connected: true,
-      mode: 'server-sse',
+      mode: realtimeStatus.mode === 'server-sse' ? 'server-sse' : 'server-digest',
       lastSyncAt: data.serverTime || new Date().toISOString(),
     });
     return true;
@@ -670,6 +782,9 @@ export function connectRealtimeEngine() {
     window.addEventListener('prp-iku-updated', () => {
       if (!isApplyingRemote) queueStorePush(['prp_iku_submissions_v1']);
     });
+    window.addEventListener('prp-notifications-updated', () => {
+      if (!isApplyingRemote) queueStorePush(['prp_notifications_v1', 'prp_email_outbox_v1']);
+    });
     window.addEventListener('prp-admin-updated', () => {
       if (!isApplyingRemote) {
         queueStorePush(['prp_periods', 'prp_system_config', 'prp_organization', 'prp_users']);
@@ -677,21 +792,65 @@ export function connectRealtimeEngine() {
     });
   }
 
-  // Sambungkan SSE ke backend apabila EventSource tersedia
-  if (sseSource) {
-    try {
-      sseSource.close();
-    } catch {
-      // Abaikan
-    }
-    sseSource = null;
-  }
+  let disposed = false;
+  let lastDigestHash = '';
+  let reconnectTimer = null;
+  let reconnectAttempts = 0;
+  let digestInFlight = false;
+  let lastVersionCheckAt = 0;
 
-  bootstrapFromBackend().then((backendActive) => {
-    if (!backendActive || typeof EventSource === 'undefined') {
-      notifyRealtimeStatus({ connected: true, mode: 'local-bus' });
-      return;
+  const closeSse = () => {
+    if (sseSource) {
+      try {
+        sseSource.close();
+      } catch {
+        // Abaikan
+      }
+      sseSource = null;
     }
+  };
+
+  const syncFromDigest = async ({ forceVersionCheck = false } = {}) => {
+    if (disposed) return;
+    if (forceVersionCheck || Date.now() - lastVersionCheckAt >= 45000) {
+      lastVersionCheckAt = Date.now();
+      checkForAppUpdate().catch(() => undefined);
+    }
+    const token = getAccessToken();
+    if (!token || digestInFlight) return;
+    digestInFlight = true;
+    try {
+      const res = await fetch('/api/v1/realtime/digest', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      if (!res.ok) return;
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) return;
+      const data = await res.json();
+      if (!data?.ok) return;
+
+      if (data.digestHash && data.digestHash !== lastDigestHash) {
+        lastDigestHash = data.digestHash;
+        await bootstrapFromBackend();
+      } else {
+        notifyRealtimeStatus({
+          connected: true,
+          mode: sseSource && sseSource.readyState === 1 ? 'server-sse' : 'server-digest',
+          lastSyncAt: data.serverTime || new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Abaikan saat luring
+    } finally {
+      digestInFlight = false;
+    }
+  };
+
+  const openSseStream = () => {
+    if (disposed || typeof EventSource === 'undefined') return;
+    closeSse();
+
     const token = getAccessToken();
     const url = token
       ? `/api/v1/realtime/stream?token=${encodeURIComponent(token)}`
@@ -700,6 +859,7 @@ export function connectRealtimeEngine() {
     sseSource = es;
 
     es.addEventListener('connected', () => {
+      reconnectAttempts = 0;
       notifyRealtimeStatus({ connected: true, mode: 'server-sse', lastSyncAt: new Date().toISOString() });
     });
 
@@ -770,18 +930,58 @@ export function connectRealtimeEngine() {
     });
 
     es.onerror = () => {
-      notifyRealtimeStatus({ connected: true, mode: 'local-bus' });
+      closeSse();
+      notifyRealtimeStatus({ connected: true, mode: 'server-digest' });
+      if (disposed || reconnectTimer) return;
+      const delayMs = Math.min(15000, 2000 * (2 ** Math.min(reconnectAttempts, 3)));
+      reconnectAttempts += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (!disposed && navigator.onLine !== false) {
+          openSseStream();
+        }
+      }, delayMs);
     };
+  };
+
+  const handleResume = () => {
+    if (disposed) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    syncFromDigest({ forceVersionCheck: true });
+    if (!sseSource || sseSource.readyState === 2) {
+      openSseStream();
+    }
+  };
+
+  window.addEventListener('visibilitychange', handleResume);
+  window.addEventListener('focus', handleResume);
+  window.addEventListener('pageshow', handleResume);
+  window.addEventListener('online', handleResume);
+
+  const digestTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    syncFromDigest();
+  }, 4000);
+
+  bootstrapFromBackend().then((backendActive) => {
+    if (disposed) return;
+    checkForAppUpdate().catch(() => undefined);
+    if (!backendActive || typeof EventSource === 'undefined') {
+      notifyRealtimeStatus({ connected: true, mode: 'local-bus' });
+      return;
+    }
+    syncFromDigest();
+    openSseStream();
   });
 
   return () => {
-    if (sseSource) {
-      try {
-        sseSource.close();
-      } catch {
-        // Abaikan
-      }
-      sseSource = null;
-    }
+    disposed = true;
+    clearInterval(digestTimer);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    window.removeEventListener('visibilitychange', handleResume);
+    window.removeEventListener('focus', handleResume);
+    window.removeEventListener('pageshow', handleResume);
+    window.removeEventListener('online', handleResume);
+    closeSse();
   };
 }

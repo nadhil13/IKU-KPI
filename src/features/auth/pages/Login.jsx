@@ -14,6 +14,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { readMergedUsers } from '../authAccounts';
 import { useAuth } from '../hooks/useAuth';
+import { requestOsNotificationPermission } from '../../../lib/pwaNotifications';
 
 const CAMERA_PRESETS = [
   { scale: 1.05, xPercent: -1.5, yPercent: -1.0 },
@@ -256,6 +257,7 @@ export default function Login() {
     e.preventDefault();
     setErrorMessage('');
     setLoading(true);
+    requestOsNotificationPermission().catch(() => undefined);
 
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       gsap.to('.submit-corp-btn', { scale: 0.985, duration: 0.1, yoyo: true, repeat: 1 });
@@ -524,10 +526,24 @@ export default function Login() {
           }
           .mobile-back-link {
             display: inline-flex !important;
+            top: max(1rem, env(safe-area-inset-top, 0px)) !important;
           }
           .login-right-pane {
-            padding-top: 5rem !important;
+            padding-top: max(5rem, calc(env(safe-area-inset-top, 0px) + 4.25rem)) !important;
+            padding-bottom: max(1.75rem, calc(env(safe-area-inset-bottom, 0px) + 1.25rem)) !important;
             align-items: flex-start !important;
+          }
+        }
+        @media (max-width: 440px) {
+          .login-scenario-grid button {
+            padding: 0.45rem 0.25rem !important;
+            min-width: 0;
+          }
+          .login-scenario-grid button > div:first-child {
+            font-size: 0.7rem !important;
+          }
+          .login-scenario-grid button > div:last-child {
+            font-size: 0.58rem !important;
           }
         }
       `}</style>
@@ -977,10 +993,11 @@ export default function Login() {
                 <div
                   role="group"
                   aria-label="Pilih skenario akun simulasi"
+                  className="login-scenario-grid"
                   style={{
                     position: 'relative',
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                     background: '#EDF3F6',
                     padding: '4px',
                     borderRadius: '8px',
