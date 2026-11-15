@@ -232,6 +232,8 @@ export default function AdminPRPDashboard() {
       <style>{`
         .prp-arch-page {
           max-width: 1400px;
+          width: 100%;
+          min-width: 0;
           margin: 0 auto;
           padding: 0 0 4rem;
           color: #072534;
@@ -340,9 +342,11 @@ export default function AdminPRPDashboard() {
         .prp-lower-grid {
           margin-top: 2.5rem;
           display: grid;
-          grid-template-columns: 1.35fr 0.65fr;
+          grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
           gap: 2.25rem;
           align-items: start;
+          width: 100%;
+          min-width: 0;
         }
         .prp-block-head {
           display: flex;
@@ -424,7 +428,7 @@ export default function AdminPRPDashboard() {
         }
         @media (max-width: 1240px) {
           .prp-ledger-grid {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .prp-ledger-cell:nth-child(2) {
             border-right: none;

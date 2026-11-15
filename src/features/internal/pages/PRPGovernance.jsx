@@ -780,6 +780,19 @@ export default function PRPGovernance() {
           }
         }
         @media (max-width: 768px) {
+          .gov-tabs-list {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            max-width: 100%;
+            width: 100%;
+            scrollbar-width: thin;
+            scrollbar-color: #94B8C7 transparent;
+          }
+          .gov-tab {
+            white-space: nowrap;
+            flex-shrink: 0;
+          }
           .gov-button,
           .gov-field,
           .gov-period-row input:not([type="checkbox"]),

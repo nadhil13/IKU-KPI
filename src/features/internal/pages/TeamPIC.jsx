@@ -5,6 +5,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { MOCK_ACCOUNTS } from '../../auth/authAccounts';
 import { useAuth } from '../../auth/hooks/useAuth';
+import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import { MASTER_KPI_PICS, extractPicCodeFromOrgEntry } from '../../kpi/kpiSchema';
 import { readOrganization, saveOrganization } from '../adminStore';
 import './TeamPIC.css';
@@ -449,7 +450,7 @@ export default function TeamPIC() {
           <span className="tp-toolbar-count">{visible.length} dari {rows.length} entitas</span>
         </div>
 
-        <div className="tp-table-scroll">
+        <HorizontalTableViewport className="tp-table-scroll" panLabel="Geser tabel organisasi & unit PIC">
           <table>
             <thead>
               <tr>
@@ -527,7 +528,7 @@ export default function TeamPIC() {
               })}
             </tbody>
           </table>
-        </div>
+        </HorizontalTableViewport>
 
         {!visible.length && (
           <div className="tp-empty">

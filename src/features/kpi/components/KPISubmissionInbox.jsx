@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
+import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import KPIDataEntrySheet, { EvidencePreviewModal } from './KPIDataEntrySheet';
 import {
   KPI_TRANSITIONS,
@@ -304,7 +305,41 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
           </div>
         )}
 
-        {[...state.forms].reverse().map((f) => (
+        {[...state.forms].reverse().map((f) => {
+          const unitEntries = f.units
+            .filter((u) => `${u.name} ${u.email} ${(u.picCodes || []).join(' ')} ${f.period}`.toLowerCase().includes(search.toLowerCase()))
+            .map((u) => {
+              const r = readUnitSubmission(f.id, u.email, state);
+              const d = readUnitDraft(f.id, u.email, state);
+              const evList = readUnitEvidence(f.id, u.email, state);
+              const effectiveStatus = r?.status || (d || evList.length > 0 ? 'DRAFT' : 'EMPTY');
+              if (filter && effectiveStatus !== filter) return null;
+
+              const assignedCount = getEditableItemsForUser(f, {
+                role: 'kpi_only',
+                status: 'Aktif',
+                email: u.email,
+                picCodes: u.picCodes,
+                unit: u.name,
+              }).length;
+              const verifiedCount = evList.filter((e) => e.status === 'VERIFIED').length;
+              const fileCount = evList.filter((e) => e.kind === 'file').length;
+              const linkCount = evList.length - fileCount;
+
+              return {
+                u,
+                r,
+                evList,
+                effectiveStatus,
+                assignedCount,
+                verifiedCount,
+                fileCount,
+                linkCount,
+              };
+            })
+            .filter(Boolean);
+
+          return (
           <section key={f.id} style={{ borderBottom: '1px solid #D8E4EA' }}>
             <div style={{ padding: '0.8rem 1.3rem', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
               <h3 style={{ margin: 0, fontSize: '0.84rem', fontWeight: 700, color: '#072534', fontFamily: 'Outfit, sans-serif' }}>
@@ -312,120 +347,168 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </h3>
               <span className="ent-badge">{f.units.length} akun unit/PIC terdaftar</span>
             </div>
-            <div
-              style={{
-                overflowX: 'auto',
-                overflowY: 'visible',
-                width: '100%',
-                maxWidth: '100%',
-                minWidth: 0,
-                WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#94B8C7 #F7FAFB',
-              }}
-            >
-              <table style={{ width: '100%', minWidth: '760px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
-                <thead>
-                  <tr style={{ color: '#475569', background: '#FFFFFF', borderBottom: '1px solid #D8E4EA' }}>
-                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Unit Kerja / Akun</th>
-                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Otoritas PIC</th>
-                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Status</th>
-                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Bukti Capaian</th>
-                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Skor Kontribusi</th>
-                    <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Tindakan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {f.units
-                    .filter((u) => `${u.name} ${u.email} ${(u.picCodes || []).join(' ')} ${f.period}`.toLowerCase().includes(search.toLowerCase()))
-                    .map((u) => {
-                      const r = readUnitSubmission(f.id, u.email, state);
-                      const d = readUnitDraft(f.id, u.email, state);
-                      const evList = readUnitEvidence(f.id, u.email, state);
-                      const effectiveStatus = r?.status || (d || evList.length > 0 ? 'DRAFT' : 'EMPTY');
-                      if (filter && effectiveStatus !== filter) return null;
 
-                      const assignedCount = getEditableItemsForUser(f, {
-                        role: 'kpi_only',
-                        status: 'Aktif',
-                        email: u.email,
-                        picCodes: u.picCodes,
-                        unit: u.name,
-                      }).length;
-                      const verifiedCount = evList.filter((e) => e.status === 'VERIFIED').length;
-                      const fileCount = evList.filter((e) => e.kind === 'file').length;
-                      const linkCount = evList.length - fileCount;
-
-                      return (
-                        <tr key={u.email} style={{ borderTop: '1px solid #D8E4EA' }}>
-                          <td style={{ padding: '0.78rem 1.15rem' }}>
-                            <strong style={{ color: '#072534', display: 'block' }}>{u.name}</strong>
-                            <small style={{ color: '#475569' }}>{u.email}</small>
-                          </td>
-                          <td style={{ padding: '0.78rem 1.15rem' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
-                              {(u.picCodes || []).length > 0 ? (u.picCodes || []).map((code) => (
-                                <span
-                                  key={code}
-                                  style={{
-                                    fontSize: '0.65rem',
-                                    fontWeight: 700,
-                                    fontFamily: 'JetBrains Mono, monospace',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                    background: '#EDF3F6',
-                                    border: '1px solid #B8CAD4',
-                                    color: '#072534',
-                                  }}
-                                >
-                                  {code}
-                                </span>
-                              )) : <span style={{ color: '#475569' }}>-</span>}
-                              <span style={{ fontSize: '0.69rem', color: '#475569', marginLeft: '0.2rem' }}>
-                                ({assignedCount} baris)
-                              </span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '0.78rem 1.15rem' }}>
-                            <span className={badgeFor(effectiveStatus)}>
-                              <span className="ent-badge-dot" />
-                              {labels[effectiveStatus] || 'Belum submit'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.78rem 1.15rem', color: '#334155', fontSize: '0.73rem' }}>
-                            {evList.length > 0 ? (
-                              <div>
-                                <strong style={{ color: '#072534' }}>{verifiedCount}/{evList.length}</strong> terverifikasi
-                                <div style={{ fontSize: '0.67rem', color: '#475569' }}>
-                                  {fileCount > 0 ? `${fileCount} berkas` : ''}{fileCount > 0 && linkCount > 0 ? ' · ' : ''}{linkCount > 0 ? `${linkCount} tautan` : ''}
-                                </div>
-                              </div>
-                            ) : (
-                              <span style={{ color: '#475569' }}>Belum ada</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.78rem 1.15rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#072534' }}>
-                            {r ? `${formatIndonesianNumber(r.totalScore, 2)} Poin` : '-'}
-                          </td>
-                          <td style={{ padding: '0.78rem 1.15rem' }}>
-                            {r && (
-                              <button
-                                type="button"
-                                className="gov-button"
-                                onClick={() => updateSelected({ formId: f.id, email: u.email })}
+            <div className="resp-desktop-table">
+              <HorizontalTableViewport panLabel="Geser kolom manajemen unit KPI">
+                <table style={{ width: '100%', minWidth: '760px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                  <thead>
+                    <tr style={{ color: '#475569', background: '#FFFFFF', borderBottom: '1px solid #D8E4EA' }}>
+                      <th style={{ padding: '0.68rem 0.85rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Unit Kerja / Akun</th>
+                      <th style={{ padding: '0.68rem 0.85rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Otoritas PIC</th>
+                      <th style={{ padding: '0.68rem 0.85rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Status</th>
+                      <th style={{ padding: '0.68rem 0.85rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Bukti Capaian</th>
+                      <th style={{ padding: '0.68rem 0.85rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Skor Kontribusi</th>
+                      <th style={{ padding: '0.68rem 0.85rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: 'right' }}>Tindakan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unitEntries.map(({ u, r, evList, effectiveStatus, assignedCount, verifiedCount, fileCount, linkCount }) => (
+                      <tr key={u.email} style={{ borderTop: '1px solid #D8E4EA' }}>
+                        <td style={{ padding: '0.75rem 0.85rem' }}>
+                          <strong style={{ color: '#072534', display: 'block' }}>{u.name}</strong>
+                          <small style={{ color: '#475569' }}>{u.email}</small>
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
+                            {(u.picCodes || []).length > 0 ? (u.picCodes || []).map((code) => (
+                              <span
+                                key={code}
+                                style={{
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  fontFamily: 'JetBrains Mono, monospace',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: '#EDF3F6',
+                                  border: '1px solid #B8CAD4',
+                                  color: '#072534',
+                                }}
                               >
-                                Tinjau &amp; Verifikasi
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+                                {code}
+                              </span>
+                            )) : <span style={{ color: '#475569' }}>-</span>}
+                            <span style={{ fontSize: '0.69rem', color: '#475569', marginLeft: '0.2rem' }}>
+                              ({assignedCount} baris)
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem' }}>
+                          <span className={badgeFor(effectiveStatus)}>
+                            <span className="ent-badge-dot" />
+                            {labels[effectiveStatus] || 'Belum submit'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem', color: '#334155', fontSize: '0.73rem' }}>
+                          {evList.length > 0 ? (
+                            <div>
+                              <strong style={{ color: '#072534' }}>{verifiedCount}/{evList.length}</strong> terverifikasi
+                              <div style={{ fontSize: '0.67rem', color: '#475569' }}>
+                                {fileCount > 0 ? `${fileCount} berkas` : ''}{fileCount > 0 && linkCount > 0 ? ' · ' : ''}{linkCount > 0 ? `${linkCount} tautan` : ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#475569' }}>Belum ada</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#072534' }}>
+                          {r ? `${formatIndonesianNumber(r.totalScore, 2)} Poin` : '-'}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right' }}>
+                          {r ? (
+                            <button
+                              type="button"
+                              className="gov-button"
+                              onClick={() => updateSelected({ formId: f.id, email: u.email })}
+                            >
+                              Tinjau &amp; Verifikasi
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.71rem', color: '#475569' }}>
+                              {effectiveStatus === 'DRAFT' ? 'Draft unit' : 'Belum kirim'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {unitEntries.length === 0 && (
+                  <div className="gov-placeholder">Tidak ada unit KPI yang cocok dengan filter pencarian.</div>
+                )}
+              </HorizontalTableViewport>
+            </div>
+
+            <div className="resp-mobile-cards">
+              {unitEntries.length === 0 ? (
+                <div className="gov-placeholder">Tidak ada unit KPI yang cocok dengan filter pencarian.</div>
+              ) : (
+                unitEntries.map(({ u, r, evList, effectiveStatus, assignedCount, verifiedCount }) => (
+                  <article
+                    key={`mob-${f.id}-${u.email}`}
+                    style={{
+                      padding: '0.9rem 1rem',
+                      borderTop: '1px solid #D8E4EA',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.55rem',
+                      background: '#FFFFFF',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <div>
+                        <strong style={{ color: '#072534', fontSize: '0.84rem', display: 'block' }}>{u.name}</strong>
+                        <small style={{ color: '#475569', fontSize: '0.72rem' }}>{u.email}</small>
+                      </div>
+                      <span className={badgeFor(effectiveStatus)}>
+                        <span className="ent-badge-dot" />
+                        {labels[effectiveStatus] || 'Belum submit'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem', alignItems: 'center' }}>
+                      {(u.picCodes || []).map((code) => (
+                        <span
+                          key={code}
+                          style={{
+                            fontSize: '0.64rem',
+                            fontWeight: 700,
+                            fontFamily: 'JetBrains Mono, monospace',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: '#EDF3F6',
+                            border: '1px solid #B8CAD4',
+                            color: '#072534',
+                          }}
+                        >
+                          {code}
+                        </span>
+                      ))}
+                      <span style={{ fontSize: '0.7rem', color: '#475569' }}>({assignedCount} indikator PIC)</span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', paddingTop: '0.2rem' }}>
+                      <div style={{ fontSize: '0.73rem', color: '#334155' }}>
+                        <strong>{r ? `${formatIndonesianNumber(r.totalScore, 2)} Poin` : 'Belum ada skor'}</strong>
+                        {' · '}Bukti {verifiedCount}/{evList.length}
+                      </div>
+                      {r && (
+                        <button
+                          type="button"
+                          className="gov-button"
+                          style={{ minHeight: '44px' }}
+                          onClick={() => updateSelected({ formId: f.id, email: u.email })}
+                        >
+                          Tinjau &amp; Verifikasi
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))
+              )}
             </div>
           </section>
-        ))}
+          );
+        })}
       </div>
 
       <section className="gov-table" aria-label="Rekap Audit Trail KPI Terpusat">
@@ -442,18 +525,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
         {kpiAuditEntries.length === 0 ? (
           <div className="gov-placeholder">Belum ada rekaman aktivitas workflow KPI pada sesi ini.</div>
         ) : (
-          <div
-            style={{
-              overflowX: 'auto',
-              overflowY: 'visible',
-              width: '100%',
-              maxWidth: '100%',
-              minWidth: 0,
-              WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#94B8C7 #F7FAFB',
-            }}
-          >
+          <HorizontalTableViewport panLabel="Geser kolom log audit KPI">
             <table style={{ width: '100%', minWidth: '640px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
               <thead>
                 <tr style={{ color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
@@ -495,7 +567,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                 ))}
               </tbody>
             </table>
-          </div>
+          </HorizontalTableViewport>
         )}
       </section>
 

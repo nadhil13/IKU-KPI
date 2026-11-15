@@ -8,6 +8,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { MOCK_ACCOUNTS, readMergedUsers } from '../../auth/authAccounts';
 import { useAuth } from '../../auth/hooks/useAuth';
+import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import { normalizePicCodes, readMasterPicCatalog } from '../../kpi/kpiSchema';
 import { syncActiveKpiFormUnits } from '../../kpi/kpiWorkflowStore';
 import { deleteUserViaBackend } from '../../../lib/realtimeSync';
@@ -428,7 +429,7 @@ export default function Users() {
           <span className="users-result-count">{filteredUsers.length.toString().padStart(2, '0')} AKUN</span>
         </div>
 
-        <div className="users-table-wrap">
+        <HorizontalTableViewport className="users-table-wrap" panLabel="Geser tabel akun pengguna">
           <table className="users-table">
             <thead>
               <tr>
@@ -524,7 +525,7 @@ export default function Users() {
           {filteredUsers.length === 0 && (
             <div className="users-empty">Tidak ada pengguna yang sesuai dengan kata kunci pencarian atau filter peran.</div>
           )}
-        </div>
+        </HorizontalTableViewport>
 
         <footer className="users-footer">
           <span>ACCESS GOVERNANCE · INTERNAL ITPLN</span>

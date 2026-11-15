@@ -9,6 +9,7 @@ import {
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
+import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import { useAuth } from '../../auth/hooks/useAuth';
 import {
   getUnitKpiForm,
@@ -2437,7 +2438,7 @@ ${sectionSummaryHtml}
   }, [activeSectionTab, calculated.sections, isUnitMode, rowScopeFilter]);
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem', position: 'relative' }}>
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: '1.35rem', position: 'relative', minWidth: 0, width: '100%', maxWidth: '100%' }}>
       {structureToast && (
         <div className="kpi-structure-toast" role="alert" aria-live="polite">
           <RefreshCcw size={14} />
@@ -2469,6 +2470,9 @@ ${sectionSummaryHtml}
           to { opacity: 1; transform: translateY(0); }
         }
         .clean-ledger-card {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
           background: #FFFFFF;
           border: 1px solid #D8E4EA;
           border-radius: 8px;
@@ -3259,7 +3263,7 @@ ${sectionSummaryHtml}
             </div>
           )}
 
-          <div style={{ overflowX: 'auto', overflowY: 'visible', WebkitOverflowScrolling: 'touch' }}>
+          <HorizontalTableViewport panLabel={`Geser tabel Bagian ${sec.code}`}>
             <table className="clean-editorial-table" style={{ minWidth: '1440px' }}>
               <colgroup>
                 <col style={{ width: '50px' }} />
@@ -3694,7 +3698,7 @@ ${sectionSummaryHtml}
                 );
               })}
             </table>
-          </div>
+          </HorizontalTableViewport>
         </div>
         );
       })}

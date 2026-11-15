@@ -1538,7 +1538,7 @@ export default function InternalLayout() {
               >
                 {breadcrumb.code}
               </span>
-              {windowWidth > 640 && (
+              {(windowWidth > 1240 || (!isMobile && !desktopSidebarOpen && windowWidth > 860)) && (
                 <>
                   <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {breadcrumb.group}
@@ -1621,7 +1621,7 @@ export default function InternalLayout() {
               }}
             >
               <Smartphone size={14} />
-              {windowWidth > 680 && (
+              {windowWidth > 900 && (
                 <span>
                   {pwaState.standalone
                     ? (pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? 'Notif HP Aktif' : 'Notif HP')
@@ -1637,7 +1637,7 @@ export default function InternalLayout() {
                 aria-label="Kirim Siaran Instruksi Realtime"
                 style={{
                   height: isMobile ? '44px' : '38px',
-                  padding: isMobile && windowWidth <= 600 ? '0 0.65rem' : '0 0.85rem',
+                  padding: windowWidth <= 680 ? '0 0.65rem' : '0 0.85rem',
                   borderRadius: '8px',
                   background: '#094E68',
                   border: '1px solid #094E68',
@@ -1651,7 +1651,7 @@ export default function InternalLayout() {
                 }}
               >
                 <Radio size={14} />
-                {windowWidth > 540 && <span>Siaran Realtime</span>}
+                {windowWidth > 640 && <span>Siaran Realtime</span>}
               </button>
             )}
 

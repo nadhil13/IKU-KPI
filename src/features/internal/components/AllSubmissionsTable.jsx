@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
+import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import { readKpiWorkflow, readUnitDraft, readUnitEvidence, readUnitSubmission, subscribeKpiWorkflow } from '../../kpi/kpiWorkflowStore';
 import { getIkuPeriods, listIkuSubmissions, subscribeIku } from '../../iku/ikuWorkflowStore';
 import { readSystemConfig } from '../adminStore';
@@ -150,56 +151,148 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
         </select>
       </div>
 
-      <div
-        style={{
-          overflowX: 'auto',
-          overflowY: 'visible',
-          width: '100%',
-          maxWidth: '100%',
-          minWidth: 0,
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#94B8C7 #F7FAFB',
-        }}
-      >
-        <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-          <thead>
-            <tr style={{ textAlign: 'left', color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
-              {['Modul', 'Unit Kerja / Pengusul', 'Periode', 'Status', 'Kelengkapan', 'Bukti Pendukung', 'Diperbarui', 'Aksi'].map((h, idx) => (
-                <th
-                  key={h}
-                  style={{
-                    padding: '0.7rem 0.72rem',
-                    fontSize: '0.65rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    whiteSpace: 'nowrap',
-                    ...(idx === 7
-                      ? {
-                          position: 'sticky',
-                          right: 0,
-                          background: '#F7FAFB',
-                          borderLeft: '1px solid #E2EDF2',
-                          textAlign: 'right',
-                        }
-                      : null),
-                  }}
+      <div className="resp-desktop-table">
+        <HorizontalTableViewport panLabel="Geser kolom daftar submission">
+          <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
+                {['Modul', 'Unit Kerja / Pengusul', 'Periode', 'Status', 'Kelengkapan', 'Bukti Pendukung', 'Diperbarui', 'Aksi'].map((h, idx) => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: '0.7rem 0.72rem',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      whiteSpace: 'nowrap',
+                      ...(idx === 7
+                        ? {
+                            position: 'sticky',
+                            right: 0,
+                            background: '#F7FAFB',
+                            borderLeft: '1px solid #E2EDF2',
+                            textAlign: 'right',
+                          }
+                        : null),
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((row) => (
+                <tr
+                  key={row.key}
+                  style={{ borderTop: '1px solid #D8E4EA', background: '#ffffff', transition: 'background-color 0.18s ease' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#F7FAFB'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
                 >
-                  {h}
-                </th>
+                  <td style={{ padding: '0.72rem 0.72rem', verticalAlign: 'middle' }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '2px 7px',
+                        borderRadius: '4px',
+                        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                        fontSize: '0.64rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.06em',
+                        background: row.module === 'IKU' ? '#094E68' : '#EDF3F6',
+                        color: row.module === 'IKU' ? '#FFFFFF' : '#072534',
+                        border: row.module === 'IKU' ? '1px solid #094E68' : '1px solid #B8CAD4',
+                      }}
+                    >
+                      {row.module}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.72rem 0.72rem', minWidth: '180px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <strong style={{ color: '#072534', fontSize: '0.77rem' }}>{row.unit}</strong>
+                      {row.picBadge && (
+                        <span
+                          style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 700,
+                            fontFamily: 'JetBrains Mono, monospace',
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: '#EDF3F6',
+                            border: '1px solid #B8CAD4',
+                            color: '#094E68',
+                          }}
+                        >
+                          PIC: {row.picBadge}
+                        </span>
+                      )}
+                    </div>
+                    <small style={{ color: '#475569', fontSize: '0.68rem' }}>{row.email}</small>
+                  </td>
+                  <td style={{ padding: '0.72rem 0.72rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
+                  <td style={{ padding: '0.72rem 0.72rem', whiteSpace: 'nowrap' }}>
+                    <span className={BADGE_CLASS[row.status] || 'ent-badge'}>
+                      <span className="ent-badge-dot" />
+                      {STATUS[row.status] || row.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.72rem 0.72rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{row.filled}</td>
+                  <td style={{ padding: '0.72rem 0.72rem', color: '#475569', whiteSpace: 'nowrap' }}>{row.evidence}</td>
+                  <td style={{ padding: '0.72rem 0.72rem', color: '#475569', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                    {row.updatedAt ? new Date(row.updatedAt).toLocaleString('id-ID') : '-'}
+                  </td>
+                  <td
+                    style={{
+                      padding: '0.72rem 0.72rem',
+                      whiteSpace: 'nowrap',
+                      textAlign: 'right',
+                      position: 'sticky',
+                      right: 0,
+                      background: 'inherit',
+                      borderLeft: '1px solid #E2EDF2',
+                    }}
+                  >
+                    {row.module === 'IKU' ? (
+                      <Link className="gov-button" to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
+                        Tinjau Detail
+                      </Link>
+                    ) : row.canReviewKpi ? (
+                      <button type="button" className="gov-button" onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
+                        Tinjau Detail
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '0.71rem', color: '#475569', fontWeight: 500 }}>
+                        {row.status === 'DRAFT' ? 'Draft unit' : 'Belum kirim'}
+                      </span>
+                    )}
+                  </td>
+                </tr>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((row) => (
-              <tr
-                key={row.key}
-                style={{ borderTop: '1px solid #D8E4EA', background: '#ffffff', transition: 'background-color 0.18s ease' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#F7FAFB'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
-              >
-                <td style={{ padding: '0.72rem 0.72rem', verticalAlign: 'middle' }}>
+            </tbody>
+          </table>
+          {!visible.length && <div className="gov-placeholder">Tidak ada submission unit yang sesuai dengan filter.</div>}
+        </HorizontalTableViewport>
+      </div>
+
+      <div className="resp-mobile-cards">
+        {!visible.length ? (
+          <div className="gov-placeholder">Tidak ada submission unit yang sesuai dengan filter.</div>
+        ) : (
+          visible.map((row) => (
+            <article
+              key={`mob-${row.key}`}
+              style={{
+                padding: '0.95rem 1rem',
+                borderTop: '1px solid #D8E4EA',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+                background: '#FFFFFF',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                   <span
                     style={{
                       display: 'inline-block',
@@ -208,7 +301,6 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                       fontFamily: 'JetBrains Mono, ui-monospace, monospace',
                       fontSize: '0.64rem',
                       fontWeight: 700,
-                      letterSpacing: '0.06em',
                       background: row.module === 'IKU' ? '#094E68' : '#EDF3F6',
                       color: row.module === 'IKU' ? '#FFFFFF' : '#072534',
                       border: row.module === 'IKU' ? '1px solid #094E68' : '1px solid #B8CAD4',
@@ -216,69 +308,53 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                   >
                     {row.module}
                   </span>
-                </td>
-                <td style={{ padding: '0.72rem 0.72rem', minWidth: '180px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <strong style={{ color: '#072534', fontSize: '0.77rem' }}>{row.unit}</strong>
-                    {row.picBadge && (
-                      <span
-                        style={{
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          fontFamily: 'JetBrains Mono, monospace',
-                          padding: '1px 5px',
-                          borderRadius: '4px',
-                          background: '#EDF3F6',
-                          border: '1px solid #B8CAD4',
-                          color: '#094E68',
-                        }}
-                      >
-                        PIC: {row.picBadge}
-                      </span>
-                    )}
-                  </div>
-                  <small style={{ color: '#475569', fontSize: '0.68rem' }}>{row.email}</small>
-                </td>
-                <td style={{ padding: '0.72rem 0.72rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
-                <td style={{ padding: '0.72rem 0.72rem', whiteSpace: 'nowrap' }}>
-                  <span className={BADGE_CLASS[row.status] || 'ent-badge'}>
-                    <span className="ent-badge-dot" />
-                    {STATUS[row.status] || row.status}
+                  <span style={{ fontSize: '0.74rem', color: '#334155', fontWeight: 600 }}>{row.period}</span>
+                </div>
+                <span className={BADGE_CLASS[row.status] || 'ent-badge'}>
+                  <span className="ent-badge-dot" />
+                  {STATUS[row.status] || row.status}
+                </span>
+              </div>
+
+              <div>
+                <strong style={{ color: '#072534', fontSize: '0.84rem', display: 'block' }}>{row.unit}</strong>
+                <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '0.15rem', overflowWrap: 'anywhere' }}>
+                  {row.email}{row.picBadge ? ` · PIC: ${row.picBadge}` : ''}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.73rem', color: '#334155', background: '#F7FAFB', padding: '0.55rem 0.7rem', borderRadius: '6px', border: '1px solid #E2EDF2' }}>
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.63rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700 }}>Kelengkapan</span>
+                  <strong>{row.filled}</strong>
+                </div>
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.63rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700 }}>Bukti</span>
+                  <span>{row.evidence}</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <small style={{ fontSize: '0.69rem', color: '#475569' }}>
+                  Diperbarui: {row.updatedAt ? new Date(row.updatedAt).toLocaleString('id-ID') : '-'}
+                </small>
+                {row.module === 'IKU' ? (
+                  <Link className="gov-button" style={{ minHeight: '44px' }} to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
+                    Tinjau Detail
+                  </Link>
+                ) : row.canReviewKpi ? (
+                  <button type="button" className="gov-button" style={{ minHeight: '44px' }} onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
+                    Tinjau Detail
+                  </button>
+                ) : (
+                  <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
+                    {row.status === 'DRAFT' ? 'Draft unit (belum submit)' : 'Belum ada pengajuan'}
                   </span>
-                </td>
-                <td style={{ padding: '0.72rem 0.72rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{row.filled}</td>
-                <td style={{ padding: '0.72rem 0.72rem', color: '#475569', whiteSpace: 'nowrap' }}>{row.evidence}</td>
-                <td style={{ padding: '0.72rem 0.72rem', color: '#475569', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                  {row.updatedAt ? new Date(row.updatedAt).toLocaleString('id-ID') : '-'}
-                </td>
-                <td
-                  style={{
-                    padding: '0.72rem 0.72rem',
-                    whiteSpace: 'nowrap',
-                    textAlign: 'right',
-                    position: 'sticky',
-                    right: 0,
-                    background: 'inherit',
-                    borderLeft: '1px solid #E2EDF2',
-                  }}
-                >
-                  {row.module === 'IKU' ? (
-                    <Link className="gov-button" to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
-                      Tinjau Detail
-                    </Link>
-                  ) : (
-                    row.canReviewKpi && (
-                      <button type="button" className="gov-button" onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
-                        Tinjau Detail
-                      </button>
-                    )
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!visible.length && <div className="gov-placeholder">Tidak ada submission unit yang sesuai dengan filter.</div>}
+                )}
+              </div>
+            </article>
+          ))
+        )}
       </div>
     </div>
   );

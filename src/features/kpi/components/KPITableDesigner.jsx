@@ -13,6 +13,7 @@ import {
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useAuth } from '../../auth/hooks/useAuth';
+import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
 import KPIDataEntrySheet from './KPIDataEntrySheet';
 import {
@@ -1044,7 +1045,16 @@ export default function KPITableDesigner() {
               )}
             </div>
 
-            <div ref={sheetScrollRef} className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`} role="region" aria-label="Lembar Desainer KPI" tabIndex={0} data-lenis-prevent>
+            <HorizontalTableViewport
+              scrollRef={sheetScrollRef}
+              dragDisabled={Boolean(pickMode && formulaEditable)}
+              dataLenisPrevent
+              panLabel="Geser kolom desainer KPI"
+              className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`}
+              role="region"
+              aria-label="Lembar Desainer KPI"
+              tabIndex={0}
+            >
               <table className="sheet">
                 <colgroup>
                   <col className="c-gutter" />
@@ -1478,7 +1488,7 @@ export default function KPITableDesigner() {
                   </tr>
                 </tfoot>
               </table>
-            </div>
+            </HorizontalTableViewport>
             <button type="button" className="designer-add" onClick={addSection}><Plus size={15} /> Tambah bagian KPI</button>
           </div>
 
