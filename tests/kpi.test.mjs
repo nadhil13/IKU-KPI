@@ -482,3 +482,107 @@ test('Admin PRP dapat mengedit unit sebelum & sesudah kirim, revisi per kolom/un
   assert.equal(store.readUnitSubmission(form.id, 'bakt@itpln.ac.id')?.status, 'NEEDS_REVISION');
   assert.equal(store.readUnitSubmission(form.id, 'ppa@itpln.ac.id')?.status, 'APPROVED');
 });
+
+test('Admin PRP dapat meminta revisi gambar/bukti (NEEDS_REVISION + notif + email) dan mengedit bukti unit', () => {
+  memory.clear();
+  const prpAdmin = { email: 'admin@itpln.ac.id', name: 'Superadmin PRP', role: 'superadmin_prp', status: 'Aktif' };
+  const baktUser = { email: 'bakt@itpln.ac.id', name: 'Operator BAKT', unit: 'BAKT', role: 'kpi_only', picCodes: ['BAKT'], status: 'Aktif' };
+
+  const imgSections = [{
+    code: 'A',
+    title: 'PERSPEKTIF KEUANGAN',
+    totalWeight: 100,
+    items: [{
+      id: 'A_bakt_img',
+      no: '1',
+      indikator: 'Bukti Realisasi BAKT',
+      calcType: 'single_target',
+      targetNum: 100,
+      bobot: 100,
+      pics: ['BAKT'],
+      subrows: [{ key: 'a_bakt_real', label: 'Realisasi BAKT' }],
+    }],
+  }];
+
+  const form = store.distributeKpiForm(imgSections, { period: '2026' });
+  const pngBytesV1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const pngBytesV2 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mNk+M9QzwAEjDAGNzYAAIoaB/5tU3uLAAAAAElFTkSuQmCC';
+
+  // Unit mengunggah bukti gambar lalu mengirim submission KPI
+  store.addUnitEvidence(form.id, baktUser, {
+    indicatorId: 'A_bakt_img',
+    kind: 'file',
+    label: 'Foto Kwitansi Awal',
+    fileName: 'kwitansi-v1.png',
+    mimeType: 'image/png',
+    fileSize: 120,
+    dataUrl: pngBytesV1,
+    description: 'Foto awal dari unit',
+  });
+  store.submitUnitKpi(form.id, baktUser, { a_bakt_real: '90' }, { notes: { A_bakt_img: 'Siap dicek' } });
+  const initialEvidence = store.readUnitEvidence(form.id, 'bakt@itpln.ac.id');
+  assert.equal(initialEvidence.length, 1);
+  const evId = initialEvidence[0].id;
+  assert.equal(initialEvidence[0].status, 'PENDING');
+
+  // 1. Wajib menyertakan catatan saat meminta revisi gambar/bukti
+  assert.throws(() => {
+    store.reviewUnitEvidence(form.id, 'bakt@itpln.ac.id', evId, 'NEEDS_REVISION', '   ', prpAdmin);
+  }, /Catatan .*wajib diisi/i);
+
+  // 2. Admin PRP meminta revisi bukti gambar -> status bukti & submission jadi NEEDS_REVISION + marker indikator + notif + email
+  const revEv = store.reviewUnitEvidence(
+    form.id,
+    'bakt@itpln.ac.id',
+    evId,
+    'NEEDS_REVISION',
+    'Foto kwitansi buram dan belum ada stempel resmi.',
+    prpAdmin,
+  );
+  assert.equal(revEv.status, 'NEEDS_REVISION');
+  assert.equal(revEv.note, 'Foto kwitansi buram dan belum ada stempel resmi.');
+  assert.equal(store.readUnitSubmission(form.id, 'bakt@itpln.ac.id')?.status, 'NEEDS_REVISION');
+
+  const revisionsAfterEvRev = store.readKpiRevisions(form.id);
+  assert.equal(revisionsAfterEvRev.items.A_bakt_img?.targetColumn, 'Bukti / Gambar Capaian');
+  assert.ok(revisionsAfterEvRev.items.A_bakt_img?.comment?.includes('Foto kwitansi buram'));
+
+  const notifs = JSON.parse(memory.get('prp_notifications_v1') || '[]');
+  const emails = JSON.parse(memory.get('prp_email_outbox_v1') || '[]');
+  assert.ok(notifs.some((n) => n.kind === 'REVISION' && n.meta?.evidenceId === evId && n.meta?.status === 'NEEDS_REVISION'));
+  assert.ok(emails.some((e) => e.kind === 'REVISION' && e.toEmails.includes('bakt@itpln.ac.id') && e.body.includes('Foto kwitansi buram')));
+
+  // 3. Admin PRP mengedit langsung label, keterangan, dan mengganti file gambar bukti
+  const editedFileEv = store.updateUnitEvidenceByAdmin(form.id, 'bakt@itpln.ac.id', prpAdmin, evId, {
+    label: 'Foto Kwitansi Stempel Basah',
+    description: 'Diganti Admin PRP dengan scan resolusi tinggi',
+    kind: 'file',
+    fileName: 'kwitansi-v2-resmi.png',
+    mimeType: 'image/png',
+    fileSize: 240,
+    dataUrl: pngBytesV2,
+  });
+  assert.equal(editedFileEv.label, 'Foto Kwitansi Stempel Basah');
+  assert.equal(editedFileEv.fileName, 'kwitansi-v2-resmi.png');
+  assert.equal(editedFileEv.dataUrl, pngBytesV2);
+
+  // Admin juga bisa mengubah bukti menjadi tautan HTTPS lalu mengembalikannya ke file gambar
+  const editedLinkEv = store.updateUnitEvidenceByAdmin(form.id, 'bakt@itpln.ac.id', prpAdmin, evId, {
+    label: 'Tautan Arsip Drive BAKT',
+    kind: 'link',
+    url: 'https://drive.google.com/file/d/kwitansi-resmi/view',
+  });
+  assert.equal(editedLinkEv.kind, 'link');
+  assert.equal(editedLinkEv.url, 'https://drive.google.com/file/d/kwitansi-resmi/view');
+  assert.equal(editedLinkEv.dataUrl, '');
+
+  const subHistory = store.readUnitSubmission(form.id, 'bakt@itpln.ac.id')?.history || [];
+  assert.ok(subHistory.some((h) => /diperbarui oleh Admin PRP/i.test(h.note || '')));
+  const notifsAfterEdit = JSON.parse(memory.get('prp_notifications_v1') || '[]');
+  assert.ok(notifsAfterEdit.some((n) => n.kind === 'WORKFLOW' && n.meta?.evidenceId === evId));
+
+  // 4. Setelah Admin memverifikasi bukti tersebut, penanda revisi bukti pada indikator bersih otomatis
+  const verifiedEv = store.reviewUnitEvidence(form.id, 'bakt@itpln.ac.id', evId, 'VERIFIED', 'Arsip resmi sudah valid', prpAdmin);
+  assert.equal(verifiedEv.status, 'VERIFIED');
+  assert.equal(store.readKpiRevisions(form.id).items.A_bakt_img, undefined);
+});

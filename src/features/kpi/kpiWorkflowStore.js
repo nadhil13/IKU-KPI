@@ -358,6 +358,136 @@ export function addUnitEvidenceByAdmin(formId, targetEmail, actor, metadata) {
   return entry;
 }
 
+export function updateUnitEvidenceByAdmin(formId, targetEmail, actor, evidenceId, metadata = {}) {
+  maintenance();
+  reviewer(actor);
+  const state = readKpiWorkflow();
+  const form = state.forms.find((f) => f.id === formId) || state.forms[state.forms.length - 1];
+  if (!form) throw new Error('Formulir KPI tidak ditemukan.');
+  const normalizedEmail = String(targetEmail || '').trim().toLowerCase();
+  if (!normalizedEmail) throw new Error('Akun unit tujuan tidak valid.');
+  const key = submissionKey(form.id, normalizedEmail);
+  const existing = readUnitEvidence(form.id, normalizedEmail, state);
+  const targetEv = existing.find((e) => e.id === evidenceId);
+  if (!targetEv) throw new Error('Bukti capaian tidak ditemukan.');
+
+  const nextIndicatorId = metadata.indicatorId !== undefined ? String(metadata.indicatorId).trim() : targetEv.indicatorId;
+  const targetItem = (form.sections || []).flatMap((s) => s.items || []).find((i) => i.id === nextIndicatorId);
+  if (!targetItem) throw new Error('Indikator tujuan tidak ditemukan pada formulir.');
+
+  const nextLabel = metadata.label !== undefined ? String(metadata.label).trim() : targetEv.label;
+  if (!nextLabel) throw new Error('Judul dokumen bukti wajib diisi.');
+
+  const nextKind = metadata.kind || targetEv.kind || 'link';
+  let fileFields = {
+    kind: nextKind,
+    url: targetEv.url || '',
+    fileName: targetEv.fileName || '',
+    mimeType: targetEv.mimeType || '',
+    fileSize: targetEv.fileSize || 0,
+    dataUrl: targetEv.dataUrl || '',
+  };
+
+  if (nextKind === 'file') {
+    if (metadata.dataUrl) {
+      const validated = buildValidatedEvidenceEntry(form, {
+        role: 'kpi_only',
+        status: 'Aktif',
+        email: normalizedEmail,
+      }, {
+        indicatorId: targetItem.id,
+        kind: 'file',
+        label: nextLabel,
+        fileName: metadata.fileName,
+        mimeType: metadata.mimeType,
+        fileSize: metadata.fileSize,
+        dataUrl: metadata.dataUrl,
+      }, { bypassPicCheck: true });
+      fileFields = {
+        kind: 'file',
+        url: '',
+        fileName: validated.fileName,
+        mimeType: validated.mimeType,
+        fileSize: validated.fileSize,
+        dataUrl: validated.dataUrl,
+      };
+    } else if (!targetEv.dataUrl) {
+      throw new Error('Pilih berkas PDF atau gambar terlebih dahulu untuk mengubah ke tipe berkas.');
+    }
+  } else {
+    const nextUrlRaw = metadata.url !== undefined ? String(metadata.url).trim() : targetEv.url;
+    const validatedLink = buildValidatedEvidenceEntry(form, {
+      role: 'kpi_only',
+      status: 'Aktif',
+      email: normalizedEmail,
+    }, {
+      indicatorId: targetItem.id,
+      kind: 'link',
+      label: nextLabel,
+      url: nextUrlRaw,
+    }, { bypassPicCheck: true });
+    fileFields = {
+      kind: 'link',
+      url: validatedLink.url,
+      fileName: '',
+      mimeType: '',
+      fileSize: 0,
+      dataUrl: '',
+    };
+  }
+
+  const now = new Date().toISOString();
+  const updatedEntry = {
+    ...targetEv,
+    ...fileFields,
+    indicatorId: targetItem.id,
+    label: nextLabel,
+    description: metadata.description !== undefined ? String(metadata.description).trim() : (targetEv.description || ''),
+    status: metadata.status && ['PENDING', 'VERIFIED', 'NEEDS_REVISION', 'REJECTED'].includes(metadata.status)
+      ? metadata.status
+      : targetEv.status,
+    note: metadata.note !== undefined ? String(metadata.note).trim() : (targetEv.note || ''),
+    updatedAt: now,
+    updatedByAdmin: actor?.email || 'prp@itpln.ac.id',
+  };
+
+  const nextList = existing.map((e) => (e.id === evidenceId ? updatedEntry : e));
+  const record = state.submissions?.[key] || null;
+  const nextSubmissions = { ...(state.submissions || {}) };
+  if (record) {
+    nextSubmissions[key] = {
+      ...record,
+      history: history(record, record.status, `Bukti "${updatedEntry.label}" diperbarui oleh Admin PRP.`, actor, nextList),
+    };
+  }
+
+  write({
+    ...state,
+    evidence: {
+      ...state.evidence,
+      [key]: nextList,
+    },
+    submissions: nextSubmissions,
+  });
+
+  if (normalizedEmail) {
+    dispatchWorkflowNotification({
+      kind: 'WORKFLOW',
+      title: `Bukti Capaian Diedit Admin PRP (${updatedEntry.label})`,
+      message: `Admin PRP memperbarui rincian bukti capaian "${updatedEntry.label}".`,
+      targetType: 'USER',
+      targetEmails: [normalizedEmail],
+      actionUrl: `/internal/kpi?period=${encodeURIComponent(form.period || '2026')}&focusItem=${encodeURIComponent(updatedEntry.indicatorId)}`,
+      actionLabel: 'Lihat Bukti Indikator',
+      meta: { formId: form.id, evidenceId, indicatorId: updatedEntry.indicatorId },
+      actor,
+      sendEmail: false,
+    });
+  }
+
+  return updatedEntry;
+}
+
 export function removeUnitEvidenceByAdmin(formId, targetEmail, actor, evidenceId) {
   maintenance();
   reviewer(actor);
@@ -405,53 +535,124 @@ export function reviewUnitEvidence(formId, email, evidenceId, status, note = '',
   reviewer(actor);
   const state = readKpiWorkflow();
   const key = submissionKey(formId, email);
-  if (state.submissions[key]?.status !== 'SUBMITTED' || !['VERIFIED', 'REJECTED'].includes(status)) {
+  if (!['VERIFIED', 'NEEDS_REVISION', 'REJECTED'].includes(status)) {
     throw new Error('Bukti tidak dapat ditinjau.');
   }
-  if (status === 'REJECTED' && !note.trim()) {
-    throw new Error('Alasan penolakan bukti wajib diisi.');
-  }
   const entries = readUnitEvidence(formId, email, state);
-  if (!entries.some((e) => e.id === evidenceId)) {
+  const reviewedEv = entries.find((e) => e.id === evidenceId);
+  if (!reviewedEv) {
     throw new Error('Bukti tidak ditemukan.');
   }
+  const trimmedNote = String(note || '').trim();
+  if ((status === 'REJECTED' || status === 'NEEDS_REVISION') && !trimmedNote) {
+    throw new Error(status === 'NEEDS_REVISION' ? 'Catatan revisi bukti wajib diisi.' : 'Alasan penolakan bukti wajib diisi.');
+  }
+  const now = new Date().toISOString();
   const next = entries.map((e) => (e.id === evidenceId
-    ? { ...e, status, note: note.trim(), reviewedAt: new Date().toISOString(), reviewedBy: actor?.email || null }
+    ? { ...e, status, note: trimmedNote, reviewedAt: now, reviewedBy: actor?.email || null }
     : e));
   const record = state.submissions[key];
   const form = state.forms.find((f) => f.id === formId);
-  const reviewedEv = entries.find((e) => e.id === evidenceId);
+
+  const nextSubmissions = { ...(state.submissions || {}) };
+  const nextDrafts = { ...(state.drafts || {}) };
+  if (record) {
+    const nextRecordStatus = status === 'NEEDS_REVISION' ? 'NEEDS_REVISION' : record.status;
+    nextSubmissions[key] = {
+      ...record,
+      status: nextRecordStatus,
+      revisionNote: status === 'NEEDS_REVISION'
+        ? `[Revisi Bukti: ${reviewedEv.label}] ${trimmedNote}`
+        : record.revisionNote,
+      reviewedAt: status === 'NEEDS_REVISION' ? now : record.reviewedAt,
+      history: history(
+        record,
+        nextRecordStatus,
+        `Bukti ${reviewedEv.label} (${evidenceId}): ${status}. ${trimmedNote}`.trim(),
+        actor,
+        next,
+      ),
+    };
+    if (nextRecordStatus === 'NEEDS_REVISION') {
+      nextDrafts[key] = {
+        ...(nextDrafts[key] || {}),
+        formId: form?.id || formId,
+        email: String(email || '').trim().toLowerCase(),
+        unit: record.unit,
+        picCodes: record.picCodes || [],
+        values: record.values || {},
+        notes: record.notes || {},
+        updatedAt: now,
+      };
+    }
+  }
+
+  const nextRevisions = { ...(state.revisions || {}) };
+  if (form) {
+    const prevFormRev = nextRevisions[form.id] || { items: {}, sections: {} };
+    const nextItemsRev = { ...(prevFormRev.items || {}) };
+    if (status === 'NEEDS_REVISION' || status === 'REJECTED') {
+      nextItemsRev[reviewedEv.indicatorId] = {
+        scope: 'ITEM',
+        targetId: reviewedEv.indicatorId,
+        targetColumn: 'Bukti / Gambar Capaian',
+        targetEmail: String(email || '').trim().toLowerCase(),
+        comment: `${status === 'REJECTED' ? 'Bukti ditolak' : 'Revisi bukti'} (${reviewedEv.label}): ${trimmedNote}`,
+        status: 'NEEDS_REVISION',
+        updatedAt: now,
+        authorEmail: actor?.email || 'prp@itpln.ac.id',
+        authorName: actor?.name || 'Admin PRP',
+      };
+    } else if (status === 'VERIFIED' && nextItemsRev[reviewedEv.indicatorId]?.targetColumn === 'Bukti / Gambar Capaian') {
+      const stillHasFlagged = next.some((ev) => ev.indicatorId === reviewedEv.indicatorId && ev.status !== 'VERIFIED');
+      if (!stillHasFlagged) {
+        delete nextItemsRev[reviewedEv.indicatorId];
+      }
+    }
+    nextRevisions[form.id] = {
+      ...prevFormRev,
+      items: nextItemsRev,
+    };
+  }
+
   write({
     ...state,
     evidence: { ...state.evidence, [key]: next },
-    submissions: {
-      ...state.submissions,
-      [key]: {
-        ...record,
-        history: history(record, record.status, `Bukti ${evidenceId}: ${status}. ${note.trim()}`.trim(), actor, next),
-      },
-    },
+    submissions: nextSubmissions,
+    drafts: nextDrafts,
+    revisions: nextRevisions,
   });
+
   if (email) {
+    const needsUnitAction = status === 'REJECTED' || status === 'NEEDS_REVISION';
     dispatchWorkflowNotification({
-      kind: status === 'REJECTED' ? 'REVISION' : 'SYSTEM',
-      title: status === 'REJECTED'
-        ? `Bukti Capaian Ditolak (${reviewedEv?.label || evidenceId})`
-        : `Bukti Capaian Terverifikasi (${reviewedEv?.label || evidenceId})`,
-      message: status === 'REJECTED'
-        ? `Admin PRP menolak bukti "${reviewedEv?.label || evidenceId}" dengan catatan: ${note.trim()}`
-        : `Bukti "${reviewedEv?.label || evidenceId}" telah diverifikasi oleh Admin PRP.`,
+      kind: needsUnitAction ? 'REVISION' : 'SYSTEM',
+      title: status === 'NEEDS_REVISION'
+        ? `Revisi Bukti / Gambar Capaian (${reviewedEv.label})`
+        : status === 'REJECTED'
+          ? `Bukti Capaian Ditolak (${reviewedEv.label})`
+          : `Bukti Capaian Terverifikasi (${reviewedEv.label})`,
+      message: status === 'NEEDS_REVISION'
+        ? `Admin PRP meminta revisi pada bukti/gambar "${reviewedEv.label}": ${trimmedNote}`
+        : status === 'REJECTED'
+          ? `Admin PRP menolak bukti "${reviewedEv.label}" dengan catatan: ${trimmedNote}`
+          : `Bukti "${reviewedEv.label}" telah diverifikasi oleh Admin PRP.`,
       targetType: 'USER',
       targetEmails: [email],
-      actionUrl: `/internal/kpi?period=${encodeURIComponent(form?.period || '2026')}&focusItem=${encodeURIComponent(reviewedEv?.indicatorId || '')}`,
-      actionLabel: 'Buka Baris Indikator',
-      meta: { formId, evidenceId, indicatorId: reviewedEv?.indicatorId || null, status },
+      actionUrl: `/internal/kpi?period=${encodeURIComponent(form?.period || '2026')}&focusItem=${encodeURIComponent(reviewedEv.indicatorId || '')}`,
+      actionLabel: 'Perbaiki Bukti Indikator',
+      meta: { formId, evidenceId, indicatorId: reviewedEv.indicatorId || null, status },
       actor,
-      sendEmail: status === 'REJECTED',
+      sendEmail: needsUnitAction,
       emailRecipients: [email],
-      emailSubject: `[PORTAL KPI ITPLN] ${status === 'REJECTED' ? 'Penolakan Bukti Capaian KPI' : 'Verifikasi Bukti Capaian KPI'}`,
+      emailSubject: `[PORTAL KPI ITPLN] ${status === 'NEEDS_REVISION' ? 'Permintaan Revisi Bukti / Gambar KPI' : status === 'REJECTED' ? 'Penolakan Bukti Capaian KPI' : 'Verifikasi Bukti Capaian KPI'}`,
+      emailBody: needsUnitAction
+        ? `Yth. Unit Kerja,\n\nTim Admin PRP ITPLN meminta tindak lanjut atas bukti capaian "${reviewedEv.label}":\nCatatan PRP: "${trimmedNote}"\n\nSilakan masuk ke Portal Kinerja ITPLN untuk mengganti atau merevisi gambar/dokumen bukti tersebut.`
+        : undefined,
     });
   }
+
+  return next.find((e) => e.id === evidenceId) || reviewedEv;
 }
 
 const write = (state, options = {}) => {

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Check, ExternalLink, Eye, Download, FileText, Image as ImageIcon,
   Link2, Search, ShieldCheck, X, Layers, History, CheckCircle2,
-  Save, FolderDown, PenLine, Send,
+  Save, FolderDown, PenLine, Send, MessageSquareWarning, Trash2, Plus,
 } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
@@ -18,12 +18,17 @@ import {
   readUnitEvidence,
   reviewUnitKpi,
   reviewUnitEvidence,
+  addUnitEvidenceByAdmin,
+  updateUnitEvidenceByAdmin,
+  removeUnitEvidenceByAdmin,
   saveUnitKpiByAdmin,
   resetUnitKpiByAdmin,
   subscribeKpiWorkflow,
   readIntegratedKpiBoard,
   ensureDefaultKpiDistribution,
   getEditableItemsForUser,
+  MAX_EVIDENCE_FILE_BYTES,
+  ALLOWED_EVIDENCE_MIME_TYPES,
 } from '../kpiWorkflowStore';
 import { formatIndonesianNumber } from '../kpiSchema';
 import { readAudit } from '../../internal/adminStore';
@@ -77,6 +82,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
   const [vaultStatusFilter, setVaultStatusFilter] = useState('');
   const [adminUnitEdits, setAdminUnitEdits] = useState(null);
   const [savedNotice, setSavedNotice] = useState('');
+  const [evActionPanel, setEvActionPanel] = useState(null);
+  const [newUnitEv, setNewUnitEv] = useState(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [note, setNote] = useState('');
@@ -93,6 +100,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     setError('');
     setAdminUnitEdits(null);
     setSavedNotice('');
+    setEvActionPanel(null);
+    setNewUnitEv(null);
   }, [onSelect]);
 
   useEffect(() => {
@@ -395,6 +404,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                 <select className="gov-field" aria-label="Filter status verifikasi berkas" value={vaultStatusFilter} onChange={(e) => setVaultStatusFilter(e.target.value)}>
                   <option value="">Semua status verifikasi</option>
                   <option value="VERIFIED">Terverifikasi (VERIFIED)</option>
+                  <option value="NEEDS_REVISION">Perlu Revisi (NEEDS_REVISION)</option>
                   <option value="PENDING">Menunggu Verifikasi (PENDING)</option>
                   <option value="REJECTED">Ditolak (REJECTED)</option>
                 </select>
@@ -440,14 +450,21 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               {ev.indicatorLabel}{ev.fileName ? ` · ${ev.fileName} (${formatBytes(ev.fileSize)})` : ''}
                             </div>
                           </div>
-                          <span className="ent-badge">{ev.status}</span>
+                          <span className={ev.status === 'NEEDS_REVISION' ? 'ent-badge ent-badge-revision' : ev.status === 'VERIFIED' ? 'ent-badge ent-badge-approved' : ev.status === 'REJECTED' ? 'ent-badge ent-badge-rejected' : 'ent-badge'}>
+                            {ev.status === 'NEEDS_REVISION' ? 'PERLU REVISI' : ev.status}
+                          </span>
                         </div>
+                        {ev.note && (
+                          <div style={{ fontSize: '0.68rem', color: ev.status === 'NEEDS_REVISION' ? '#92400E' : '#475569', fontWeight: 600, overflowWrap: 'anywhere' }}>
+                            Catatan PRP: {ev.note}
+                          </div>
+                        )}
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginTop: 'auto' }}>
                           {isFile ? (
                             <>
-                              <button type="button" className="gov-button" style={{ minHeight: '38px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc(ev)}>
-                                <Eye size={12} /> Pratinjau
+                              <button type="button" className="gov-button" style={{ minHeight: '38px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc({ ...ev, _formId: latestForm.id, _email: ev.unitEmail })}>
+                                <Eye size={12} /> Pratinjau, Revisi &amp; Edit
                               </button>
                               {ev.dataUrl && (
                                 <a
@@ -461,15 +478,20 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               )}
                             </>
                           ) : (
-                            <a
-                              href={ev.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="gov-button"
-                              style={{ minHeight: '38px', fontSize: '0.7rem', textDecoration: 'none' }}
-                            >
-                              <ExternalLink size={12} /> Buka Tautan Drive
-                            </a>
+                            <>
+                              <button type="button" className="gov-button" style={{ minHeight: '38px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc({ ...ev, _formId: latestForm.id, _email: ev.unitEmail })}>
+                                <PenLine size={12} /> Revisi / Edit
+                              </button>
+                              <a
+                                href={ev.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="gov-button"
+                                style={{ minHeight: '38px', fontSize: '0.7rem', textDecoration: 'none' }}
+                              >
+                                <ExternalLink size={12} /> Buka Tautan Drive
+                              </a>
+                            </>
                           )}
                         </div>
                       </article>
@@ -1122,38 +1144,183 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                       <h4 style={{ margin: 0, fontSize: '0.88rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
                         Daftar Dokumen &amp; Tautan Bukti Capaian ({unitEvidenceList.length})
                       </h4>
-                      {unitEvidenceList.some((e) => e.status !== 'VERIFIED') && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                         <button
                           type="button"
-                          className="ent-btn ent-btn-teal"
+                          className="ent-btn"
                           style={{ minHeight: '40px', padding: '0.38rem 0.75rem', fontSize: '0.71rem' }}
-                          onClick={() => mutate(() => {
-                            const pendingList = readUnitEvidence(form.id, targetEmail, readKpiWorkflow()).filter((ev) => ev.status !== 'VERIFIED');
-                            pendingList.forEach((ev) => {
-                              reviewUnitEvidence(
-                                form.id,
-                                targetEmail,
-                                ev.id,
-                                'VERIFIED',
-                                note.trim() || 'Bukti capaian sesuai dan terverifikasi oleh PRP',
-                                currentUser,
-                              );
+                          onClick={() => {
+                            const unitItems = getEditableItemsForUser(form, {
+                              role: 'kpi_only',
+                              status: 'Aktif',
+                              email: targetEmail,
+                              picCodes: unitPicCodes,
+                              unit: unitDisplayName,
                             });
-                          })}
+                            const firstId = unitItems[0]?.item?.id || form.sections?.[0]?.items?.[0]?.id || '';
+                            setNewUnitEv((prev) => (prev ? null : {
+                              indicatorId: firstId,
+                              kind: 'file',
+                              label: '',
+                              url: '',
+                              description: '',
+                              file: null,
+                            }));
+                          }}
                         >
-                          <CheckCircle2 size={13} />
-                          <span>Verifikasi Semua Bukti</span>
+                          <Plus size={13} />
+                          <span>{newUnitEv ? 'Tutup Form' : 'Tambah Bukti'}</span>
                         </button>
-                      )}
+                        {unitEvidenceList.some((e) => e.status !== 'VERIFIED') && (
+                          <button
+                            type="button"
+                            className="ent-btn ent-btn-teal"
+                            style={{ minHeight: '40px', padding: '0.38rem 0.75rem', fontSize: '0.71rem' }}
+                            onClick={() => mutate(() => {
+                              const pendingList = readUnitEvidence(form.id, targetEmail, readKpiWorkflow()).filter((ev) => ev.status !== 'VERIFIED');
+                              pendingList.forEach((ev) => {
+                                reviewUnitEvidence(
+                                  form.id,
+                                  targetEmail,
+                                  ev.id,
+                                  'VERIFIED',
+                                  note.trim() || 'Bukti capaian sesuai dan terverifikasi oleh PRP',
+                                  currentUser,
+                                );
+                              });
+                            })}
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>Verifikasi Semua Bukti</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
+
+                    {newUnitEv && (() => {
+                      const selectableUnitItems = getEditableItemsForUser(form, {
+                        role: 'kpi_only',
+                        status: 'Aktif',
+                        email: targetEmail,
+                        picCodes: unitPicCodes,
+                        unit: unitDisplayName,
+                      });
+                      const allItemsFallback = selectableUnitItems.length > 0
+                        ? selectableUnitItems
+                        : (form.sections || []).flatMap((section) => (section.items || []).map((item) => ({ section, item })));
+
+                      return (
+                        <div style={{ marginBottom: '0.85rem', padding: '0.8rem', borderRadius: '8px', background: '#EDF3F6', border: '1px solid #94B8C7', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <strong style={{ fontSize: '0.75rem', color: '#072534' }}>Tambah Bukti Baru untuk {unitDisplayName}</strong>
+                          <select
+                            className="gov-field"
+                            aria-label="Indikator target bukti"
+                            value={newUnitEv.indicatorId}
+                            onChange={(e) => setNewUnitEv((prev) => ({ ...prev, indicatorId: e.target.value }))}
+                          >
+                            {allItemsFallback.map(({ section, item }) => (
+                              <option key={item.id} value={item.id}>{section.code}.{item.no} {item.indikator}</option>
+                            ))}
+                          </select>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: '0.45rem' }}>
+                            <input
+                              type="text"
+                              className="gov-field"
+                              placeholder="Judul dokumen/gambar bukti..."
+                              value={newUnitEv.label}
+                              onChange={(e) => setNewUnitEv((prev) => ({ ...prev, label: e.target.value }))}
+                            />
+                            <select
+                              className="gov-field"
+                              value={newUnitEv.kind}
+                              onChange={(e) => setNewUnitEv((prev) => ({ ...prev, kind: e.target.value }))}
+                            >
+                              <option value="file">Unggah Gambar / PDF</option>
+                              <option value="link">Tautan HTTPS / Drive</option>
+                            </select>
+                          </div>
+                          {newUnitEv.kind === 'link' ? (
+                            <input
+                              type="url"
+                              className="gov-field"
+                              placeholder="https://drive.google.com/..."
+                              value={newUnitEv.url}
+                              onChange={(e) => setNewUnitEv((prev) => ({ ...prev, url: e.target.value }))}
+                            />
+                          ) : (
+                            <div>
+                              <input
+                                type="file"
+                                accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
+                                onChange={(event) => {
+                                  const f = event.target.files?.[0];
+                                  if (!f) return;
+                                  const mime = String(f.type || '').toLowerCase();
+                                  if (!ALLOWED_EVIDENCE_MIME_TYPES.includes(mime) || f.size > MAX_EVIDENCE_FILE_BYTES) {
+                                    setError('Format berkas wajib PDF/PNG/JPG/WEBP maksimal 2,5 MB.');
+                                    event.target.value = '';
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = () => {
+                                    setNewUnitEv((prev) => ({
+                                      ...prev,
+                                      label: prev.label.trim() ? prev.label : f.name.replace(/\.[^.]+$/, ''),
+                                      file: {
+                                        fileName: f.name,
+                                        mimeType: mime,
+                                        fileSize: f.size,
+                                        dataUrl: String(reader.result || ''),
+                                      },
+                                    }));
+                                  };
+                                  reader.readAsDataURL(f);
+                                }}
+                                style={{ fontSize: '0.73rem', color: '#334155', width: '100%' }}
+                              />
+                              {newUnitEv.file && (
+                                <div style={{ fontSize: '0.68rem', color: '#14532D', fontWeight: 600, marginTop: '0.2rem' }}>
+                                  Siap disimpan: {newUnitEv.file.fileName} ({formatBytes(newUnitEv.file.fileSize)})
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="ent-btn ent-btn-primary"
+                              style={{ minHeight: '38px', fontSize: '0.72rem' }}
+                              onClick={() => mutate(() => {
+                                addUnitEvidenceByAdmin(form.id, targetEmail, currentUser, {
+                                  indicatorId: newUnitEv.indicatorId,
+                                  kind: newUnitEv.kind,
+                                  label: newUnitEv.label,
+                                  url: newUnitEv.url,
+                                  description: newUnitEv.description,
+                                  ...(newUnitEv.kind === 'file' ? (newUnitEv.file || {}) : {}),
+                                });
+                                setNewUnitEv(null);
+                                setSavedNotice(`Bukti baru berhasil ditambahkan pada akun ${unitDisplayName}.`);
+                              })}
+                            >
+                              <Save size={13} />
+                              <span>Simpan Bukti Unit</span>
+                            </button>
+                            <button type="button" className="ent-btn" style={{ minHeight: '38px', fontSize: '0.72rem' }} onClick={() => setNewUnitEv(null)}>
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {!unitEvidenceList.length && (
                       <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>
-                        Belum ada bukti capaian yang dilampirkan unit ini. Admin PRP juga dapat mengunggah bukti langsung pada baris tabel unit di bawah.
+                        Belum ada bukti capaian yang dilampirkan unit ini. Admin PRP dapat menekan Tambah Bukti atau unggah langsung pada baris tabel di bawah.
                       </p>
                     )}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '340px', overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '380px', overflowY: 'auto' }}>
                       {unitEvidenceList.map((e) => {
                         const isFile = e.kind === 'file' || Boolean(e.dataUrl);
                         const isImg = /^image\//i.test(e.mimeType || '');
@@ -1183,7 +1350,9 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   {e.fileName ? ` · ${e.fileName} (${formatBytes(e.fileSize)})` : ''}
                                 </div>
                               </div>
-                              <span className="ent-badge">{e.status}</span>
+                              <span className={e.status === 'NEEDS_REVISION' ? 'ent-badge ent-badge-revision' : e.status === 'VERIFIED' ? 'ent-badge ent-badge-approved' : e.status === 'REJECTED' ? 'ent-badge ent-badge-rejected' : 'ent-badge'}>
+                                {e.status === 'NEEDS_REVISION' ? 'PERLU REVISI' : e.status}
+                              </span>
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -1193,9 +1362,9 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                     type="button"
                                     className="gov-button"
                                     style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
-                                    onClick={() => setPreviewDoc(e)}
+                                    onClick={() => setPreviewDoc({ ...e, _formId: form.id, _email: targetEmail })}
                                   >
-                                    <Eye size={12} /> Pratinjau Dokumen
+                                    <Eye size={12} /> Pratinjau
                                   </button>
                                   {e.dataUrl && (
                                     <a
@@ -1219,6 +1388,36 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   <ExternalLink size={12} /> Buka Tautan
                                 </a>
                               )}
+
+                              <button
+                                type="button"
+                                className="ent-btn"
+                                style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', borderColor: '#F59E0B', background: '#FFFBEB', color: '#92400E' }}
+                                onClick={() => setEvActionPanel((prev) => (prev?.id === e.id && prev.mode === 'revise'
+                                  ? null
+                                  : { id: e.id, mode: 'revise', note: e.note || note || '' }))}
+                              >
+                                <MessageSquareWarning size={12} /> Revisi Bukti
+                              </button>
+
+                              <button
+                                type="button"
+                                className="ent-btn"
+                                style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
+                                onClick={() => setEvActionPanel((prev) => (prev?.id === e.id && prev.mode === 'edit'
+                                  ? null
+                                  : {
+                                    id: e.id,
+                                    mode: 'edit',
+                                    label: e.label || '',
+                                    kind: e.kind || 'link',
+                                    url: e.url || '',
+                                    description: e.description || '',
+                                    file: null,
+                                  }))}
+                              >
+                                <PenLine size={12} /> Edit Bukti
+                              </button>
 
                               {e.status !== 'VERIFIED' && (
                                 <button
@@ -1249,9 +1448,146 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   Tolak Bukti
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                className="ent-btn"
+                                style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#991B1B', borderColor: '#FCA5A5', background: '#FEF2F2' }}
+                                aria-label={`Hapus bukti ${e.label}`}
+                                onClick={() => mutate(() => {
+                                  removeUnitEvidenceByAdmin(form.id, targetEmail, currentUser, e.id);
+                                  setSavedNotice(`Bukti "${e.label}" dihapus oleh Admin PRP.`);
+                                })}
+                              >
+                                <Trash2 size={12} /> Hapus
+                              </button>
                             </div>
 
-                            {e.note && <div style={{ color: '#475569', fontSize: '0.7rem', overflowWrap: 'anywhere' }}>Catatan verifikasi: {e.note}</div>}
+                            {evActionPanel?.id === e.id && evActionPanel.mode === 'revise' && (
+                              <div style={{ marginTop: '0.3rem', padding: '0.6rem', borderRadius: '6px', background: '#FFFBEB', border: '1px solid #F59E0B', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                <strong style={{ fontSize: '0.71rem', color: '#78350F' }}>
+                                  Catatan Revisi Gambar / Dokumen ({e.label})
+                                </strong>
+                                <textarea
+                                  rows={2}
+                                  className="ent-textarea"
+                                  placeholder="Jelaskan revisi pada gambar/PDF/tautan bukti ini (misal: lampiran buram atau belum bertanda tangan)..."
+                                  value={evActionPanel.note || ''}
+                                  onChange={(ev) => setEvActionPanel((prev) => ({ ...prev, note: ev.target.value }))}
+                                />
+                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <button
+                                    type="button"
+                                    className="ent-btn ent-btn-primary"
+                                    style={{ minHeight: '38px', fontSize: '0.71rem', background: '#92400E', borderColor: '#92400E' }}
+                                    onClick={() => mutate(() => {
+                                      reviewUnitEvidence(form.id, targetEmail, e.id, 'NEEDS_REVISION', evActionPanel.note || '', currentUser);
+                                      setEvActionPanel(null);
+                                      setSavedNotice(`Permintaan revisi bukti "${e.label}" terkirim via Notifikasi Web + Email ke unit.`);
+                                    })}
+                                  >
+                                    <Send size={12} /> Kirim Revisi Bukti + Email
+                                  </button>
+                                  <button type="button" className="ent-btn" style={{ minHeight: '38px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
+                                    Batal
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {evActionPanel?.id === e.id && evActionPanel.mode === 'edit' && (
+                              <div style={{ marginTop: '0.3rem', padding: '0.6rem', borderRadius: '6px', background: '#FFFFFF', border: '1px solid #94B8C7', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                <strong style={{ fontSize: '0.71rem', color: '#072534' }}>
+                                  Edit / Ganti Berkas Bukti ({e.label})
+                                </strong>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: '0.4rem' }}>
+                                  <input
+                                    type="text"
+                                    className="gov-field"
+                                    placeholder="Judul dokumen bukti..."
+                                    value={evActionPanel.label || ''}
+                                    onChange={(ev) => setEvActionPanel((prev) => ({ ...prev, label: ev.target.value }))}
+                                  />
+                                  <select
+                                    className="gov-field"
+                                    value={evActionPanel.kind || 'link'}
+                                    onChange={(ev) => setEvActionPanel((prev) => ({ ...prev, kind: ev.target.value }))}
+                                  >
+                                    <option value="file">Berkas Gambar / PDF</option>
+                                    <option value="link">Tautan HTTPS / Drive</option>
+                                  </select>
+                                </div>
+                                {evActionPanel.kind === 'link' ? (
+                                  <input
+                                    type="url"
+                                    className="gov-field"
+                                    placeholder="https://drive.google.com/..."
+                                    value={evActionPanel.url || ''}
+                                    onChange={(ev) => setEvActionPanel((prev) => ({ ...prev, url: ev.target.value }))}
+                                  />
+                                ) : (
+                                  <div>
+                                    <input
+                                      type="file"
+                                      accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
+                                      onChange={(event) => {
+                                        const f = event.target.files?.[0];
+                                        if (!f) return;
+                                        const mime = String(f.type || '').toLowerCase();
+                                        if (!ALLOWED_EVIDENCE_MIME_TYPES.includes(mime) || f.size > MAX_EVIDENCE_FILE_BYTES) {
+                                          setError('Format wajib PDF/PNG/JPG/WEBP maksimal 2,5 MB.');
+                                          event.target.value = '';
+                                          return;
+                                        }
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                          setEvActionPanel((prev) => ({
+                                            ...prev,
+                                            file: {
+                                              fileName: f.name,
+                                              mimeType: mime,
+                                              fileSize: f.size,
+                                              dataUrl: String(reader.result || ''),
+                                            },
+                                          }));
+                                        };
+                                        reader.readAsDataURL(f);
+                                      }}
+                                      style={{ fontSize: '0.72rem', color: '#334155', width: '100%' }}
+                                    />
+                                    <div style={{ fontSize: '0.67rem', color: '#475569', marginTop: '0.2rem' }}>
+                                      {evActionPanel.file
+                                        ? `Berkas pengganti siap: ${evActionPanel.file.fileName} (${formatBytes(evActionPanel.file.fileSize)})`
+                                        : (e.fileName ? `Saat ini: ${e.fileName}. Biarkan kosong jika tidak mengganti berkas.` : 'Pilih file PDF/PNG/JPG/WEBP maks. 2,5 MB.')}
+                                    </div>
+                                  </div>
+                                )}
+                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  <button
+                                    type="button"
+                                    className="ent-btn ent-btn-primary"
+                                    style={{ minHeight: '38px', fontSize: '0.71rem' }}
+                                    onClick={() => mutate(() => {
+                                      const updated = updateUnitEvidenceByAdmin(form.id, targetEmail, currentUser, e.id, {
+                                        label: evActionPanel.label,
+                                        kind: evActionPanel.kind,
+                                        url: evActionPanel.url,
+                                        description: evActionPanel.description,
+                                        ...(evActionPanel.kind === 'file' && evActionPanel.file ? evActionPanel.file : {}),
+                                      });
+                                      setEvActionPanel(null);
+                                      setSavedNotice(`Bukti "${updated.label}" berhasil diedit Admin PRP.`);
+                                    })}
+                                  >
+                                    <Save size={12} /> Simpan Perubahan Bukti
+                                  </button>
+                                  <button type="button" className="ent-btn" style={{ minHeight: '38px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
+                                    Batal
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {e.note && <div style={{ color: e.status === 'NEEDS_REVISION' ? '#92400E' : '#475569', fontSize: '0.7rem', fontWeight: e.status === 'NEEDS_REVISION' ? 700 : 400, overflowWrap: 'anywhere' }}>Catatan verifikasi/revisi: {e.note}</div>}
                           </div>
                         );
                       })}
@@ -1321,6 +1657,23 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
       <EvidencePreviewModal
         evidence={previewDoc}
         onClose={() => setPreviewDoc(null)}
+        adminActions={previewDoc && (previewDoc._formId || form?.id) && (previewDoc._email || selected?.email) ? {
+          onReview: (ev, status, reviewNote) => {
+            const fId = previewDoc._formId || form?.id;
+            const em = previewDoc._email || selected?.email;
+            reviewUnitEvidence(fId, em, ev.id, status, reviewNote, currentUser);
+            const refreshed = readUnitEvidence(fId, em, readKpiWorkflow()).find((item) => item.id === ev.id);
+            if (refreshed) setPreviewDoc({ ...refreshed, _formId: fId, _email: em });
+            setSavedNotice(`Status bukti "${ev.label}" diperbarui menjadi ${status === 'NEEDS_REVISION' ? 'Perlu Revisi' : status}.`);
+          },
+          onUpdate: (ev, metadata) => {
+            const fId = previewDoc._formId || form?.id;
+            const em = previewDoc._email || selected?.email;
+            const updated = updateUnitEvidenceByAdmin(fId, em, currentUser, ev.id, metadata);
+            setPreviewDoc({ ...updated, _formId: fId, _email: em });
+            setSavedNotice(`Bukti "${updated.label}" berhasil diperbarui Admin PRP.`);
+          },
+        } : null}
       />
 
       {pendingUnlock && (() => {

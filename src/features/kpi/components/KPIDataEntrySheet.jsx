@@ -4,7 +4,7 @@ import {
   RotateCcw, FileSpreadsheet, Printer, SlidersHorizontal, Send, LockKeyhole,
   CheckCircle2, AlertTriangle, Clock3, History, RefreshCcw, ShieldCheck,
   Upload, Link2, Eye, Trash2, X, ExternalLink, FileText, Image as ImageIcon, Download,
-  MessageSquareWarning, MailCheck, Save
+  MessageSquareWarning, MailCheck, Save, PenLine, XCircle
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -25,6 +25,8 @@ import {
   readUnitEvidence,
   addUnitEvidence,
   addUnitEvidenceByAdmin,
+  updateUnitEvidenceByAdmin,
+  reviewUnitEvidence,
   removeUnitEvidence,
   removeUnitEvidenceByAdmin,
   ensureDefaultKpiDistribution,
@@ -109,8 +111,9 @@ const WORKFLOW_LABELS = {
 
 const EVIDENCE_STATUS_META = {
   VERIFIED: { label: 'Terverifikasi', bg: '#F0FDF4', border: '#86EFAC', color: '#14532D' },
+  NEEDS_REVISION: { label: 'Perlu Revisi', bg: '#FFFBEB', border: '#F59E0B', color: '#92400E' },
   REJECTED: { label: 'Ditolak', bg: '#FEF2F2', border: '#FCA5A5', color: '#7F1D1D' },
-  PENDING: { label: 'Menunggu Verifikasi', bg: '#FFFBEB', border: '#FCD34D', color: '#78350F' },
+  PENDING: { label: 'Menunggu Verifikasi', bg: '#EDF3F6', border: '#94B8C7', color: '#094E68' },
 };
 
 function formatFileSize(bytes) {
@@ -247,7 +250,27 @@ export default function KPIDataEntrySheet(props) {
   );
 }
 
-export function EvidencePreviewModal({ evidence, onClose }) {
+export function EvidencePreviewModal({ evidence, onClose, adminActions = null }) {
+  const [noteText, setNoteText] = useState(evidence?.note || '');
+  const [actionError, setActionError] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLabel, setEditLabel] = useState(evidence?.label || '');
+  const [editKind, setEditKind] = useState(evidence?.kind || 'link');
+  const [editUrl, setEditUrl] = useState(evidence?.url || '');
+  const [editDesc, setEditDesc] = useState(evidence?.description || '');
+  const [replacementFile, setReplacementFile] = useState(null);
+
+  useEffect(() => {
+    setNoteText(evidence?.note || '');
+    setActionError('');
+    setEditOpen(false);
+    setEditLabel(evidence?.label || '');
+    setEditKind(evidence?.kind || 'link');
+    setEditUrl(evidence?.url || '');
+    setEditDesc(evidence?.description || '');
+    setReplacementFile(null);
+  }, [evidence]);
+
   useEffect(() => {
     if (!evidence) return undefined;
     const handleKey = (event) => {
@@ -260,6 +283,60 @@ export function EvidencePreviewModal({ evidence, onClose }) {
   if (!evidence) return null;
   const isPdf = evidence.mimeType === 'application/pdf' || /^data:application\/pdf/i.test(evidence.dataUrl || '');
   const isImage = /^image\//i.test(evidence.mimeType || '') || /^data:image\//i.test(evidence.dataUrl || '');
+  const statusInfo = EVIDENCE_STATUS_META[evidence.status] || EVIDENCE_STATUS_META.PENDING;
+
+  const handlePickReplacementFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setActionError('');
+    const mime = String(file.type || '').toLowerCase();
+    if (!ALLOWED_EVIDENCE_MIME_TYPES.includes(mime)) {
+      setActionError('Format wajib PDF, PNG, JPG, atau WEBP.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_EVIDENCE_FILE_BYTES) {
+      setActionError('Ukuran berkas melebihi 2,5 MB.');
+      event.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setReplacementFile({
+        fileName: file.name,
+        mimeType: mime,
+        fileSize: file.size,
+        dataUrl: String(reader.result || ''),
+      });
+    };
+    reader.onerror = () => setActionError('Gagal membaca berkas pengganti.');
+    reader.readAsDataURL(file);
+  };
+
+  const runAdminDecision = (status) => {
+    setActionError('');
+    try {
+      adminActions?.onReview?.(evidence, status, noteText);
+    } catch (err) {
+      setActionError(err.message || 'Gagal memproses tinjauan bukti.');
+    }
+  };
+
+  const handleSaveEdit = () => {
+    setActionError('');
+    try {
+      adminActions?.onUpdate?.(evidence, {
+        label: editLabel.trim(),
+        kind: editKind,
+        url: editKind === 'link' ? editUrl.trim() : '',
+        description: editDesc.trim(),
+        ...(editKind === 'file' && replacementFile ? replacementFile : {}),
+      });
+      setEditOpen(false);
+    } catch (err) {
+      setActionError(err.message || 'Gagal menyimpan perubahan bukti.');
+    }
+  };
 
   const dialogNode = (
     <div
@@ -319,6 +396,19 @@ export function EvidencePreviewModal({ evidence, onClose }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '4px 9px',
+                borderRadius: '6px',
+                background: statusInfo.bg,
+                border: `1px solid ${statusInfo.border}`,
+                color: statusInfo.color,
+              }}
+            >
+              {statusInfo.label}
+            </span>
             {evidence.kind === 'file' && evidence.dataUrl && (
               <a
                 href={evidence.dataUrl}
@@ -376,6 +466,141 @@ export function EvidencePreviewModal({ evidence, onClose }) {
             </div>
           )}
         </div>
+
+        {adminActions && (
+          <div style={{ padding: '0.95rem 1.25rem', background: '#FFFFFF', borderTop: '1px solid #D8E4EA', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {actionError && (
+              <div role="alert" style={{ padding: '0.55rem 0.8rem', borderRadius: '6px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#7F1D1D', fontSize: '0.75rem', fontWeight: 600 }}>
+                {actionError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <strong style={{ fontSize: '0.78rem', color: '#072534', fontFamily: 'Outfit, sans-serif' }}>
+                Tinjauan, Revisi &amp; Edit Gambar/Dokumen oleh Admin PRP
+              </strong>
+              {adminActions.onUpdate && (
+                <button
+                  type="button"
+                  className="clean-btn"
+                  style={{ minHeight: '38px', fontSize: '0.72rem' }}
+                  onClick={() => setEditOpen((prev) => !prev)}
+                >
+                  <PenLine size={13} />
+                  <span>{editOpen ? 'Tutup Form Edit Bukti' : 'Edit / Ganti Berkas Bukti'}</span>
+                </button>
+              )}
+            </div>
+
+            {editOpen ? (
+              <div style={{ padding: '0.75rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #B8CAD4', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '0.5rem' }}>
+                  <input
+                    type="text"
+                    className="clean-row-text-input"
+                    aria-label="Judul dokumen bukti"
+                    placeholder="Judul dokumen bukti..."
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                  />
+                  <select
+                    className="clean-row-text-input"
+                    aria-label="Jenis dokumen bukti"
+                    value={editKind}
+                    onChange={(e) => setEditKind(e.target.value)}
+                  >
+                    <option value="file">Berkas Gambar / PDF</option>
+                    <option value="link">Tautan HTTPS / Drive</option>
+                  </select>
+                </div>
+                {editKind === 'link' ? (
+                  <input
+                    type="url"
+                    className="clean-row-text-input"
+                    aria-label="URL bukti baru"
+                    placeholder="https://drive.google.com/..."
+                    value={editUrl}
+                    onChange={(e) => setEditUrl(e.target.value)}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
+                      aria-label="Ganti file gambar atau PDF bukti"
+                      onChange={handlePickReplacementFile}
+                      style={{ fontSize: '0.72rem', color: '#334155' }}
+                    />
+                    <span style={{ fontSize: '0.68rem', color: '#475569' }}>
+                      {replacementFile
+                        ? `Berkas pengganti siap: ${replacementFile.fileName} (${formatFileSize(replacementFile.fileSize)})`
+                        : (evidence.fileName ? `Berkas saat ini: ${evidence.fileName}. Biarkan kosong jika tidak mengganti berkas.` : 'Pilih file PDF/PNG/JPG/WEBP maksimal 2,5 MB.')}
+                    </span>
+                  </div>
+                )}
+                <input
+                  type="text"
+                  className="clean-row-text-input"
+                  aria-label="Keterangan bukti"
+                  placeholder="Keterangan singkat dokumen (opsional)..."
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                />
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <button type="button" className="clean-btn clean-btn-primary" style={{ minHeight: '38px' }} onClick={handleSaveEdit}>
+                    <Save size={13} />
+                    <span>Simpan Perubahan Bukti</span>
+                  </button>
+                  <button type="button" className="clean-btn" style={{ minHeight: '38px' }} onClick={() => setEditOpen(false)}>
+                    Batal
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <textarea
+                  rows={2}
+                  className="clean-row-textarea"
+                  aria-label="Catatan revisi atau verifikasi gambar bukti"
+                  placeholder="Tulis catatan perbaikan gambar/dokumen bukti (wajib diisi saat Minta Revisi atau Tolak Bukti)..."
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                />
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="clean-btn clean-btn-primary"
+                    style={{ minHeight: '40px', background: '#14532D', borderColor: '#14532D' }}
+                    onClick={() => runAdminDecision('VERIFIED')}
+                  >
+                    <CheckCircle2 size={14} />
+                    <span>Verifikasi Bukti</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="clean-btn"
+                    style={{ minHeight: '40px', background: '#FFFBEB', borderColor: '#F59E0B', color: '#92400E' }}
+                    disabled={!noteText.trim()}
+                    onClick={() => runAdminDecision('NEEDS_REVISION')}
+                  >
+                    <MessageSquareWarning size={14} />
+                    <span>Minta Revisi Gambar/Bukti + Email</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="clean-btn"
+                    style={{ minHeight: '40px', background: '#FEF2F2', borderColor: '#FCA5A5', color: '#7F1D1D' }}
+                    disabled={!noteText.trim()}
+                    onClick={() => runAdminDecision('REJECTED')}
+                  >
+                    <XCircle size={14} />
+                    <span>Tolak Bukti</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -406,6 +631,8 @@ function RowEvidenceAndNotesCell({
   itemRevision = null,
   onNoteChange,
   onAddEvidence,
+  onUpdateEvidence,
+  onReviewEvidence,
   onRemoveEvidence,
   onPreviewEvidence,
   onSaveItemRevision,
@@ -418,7 +645,9 @@ function RowEvidenceAndNotesCell({
   const [revComposerOpen, setRevComposerOpen] = useState(false);
   const [revText, setRevText] = useState(itemRevision?.comment || '');
   const [revColumn, setRevColumn] = useState(itemRevision?.targetColumn || 'Semua Kolom Baris');
+  const [activeEvPanel, setActiveEvPanel] = useState(null);
   const fileInputRef = useRef(null);
+  const editEvFileRef = useRef(null);
 
   const visibleEvidence = useMemo(() => {
     const byId = new Map();
@@ -624,6 +853,65 @@ function RowEvidenceAndNotesCell({
                       <span>Buka Tautan</span>
                     </a>
                   )}
+                  {canEditRow && !isLocked && isAdminUnitReview && onReviewEvidence && (
+                    <>
+                      <button
+                        type="button"
+                        className="clean-mini-btn"
+                        style={{ borderColor: '#F59E0B', background: '#FFFBEB', color: '#92400E' }}
+                        onClick={() => {
+                          setRowError('');
+                          setActiveEvPanel((prev) => (prev?.id === ev.id && prev.mode === 'revise'
+                            ? null
+                            : { id: ev.id, mode: 'revise', note: ev.note || '' }));
+                        }}
+                      >
+                        <MessageSquareWarning size={12} />
+                        <span>Revisi Bukti</span>
+                      </button>
+                      {ev.status !== 'VERIFIED' && (
+                        <button
+                          type="button"
+                          className="clean-mini-btn"
+                          style={{ borderColor: '#86EFAC', background: '#F0FDF4', color: '#14532D' }}
+                          onClick={() => {
+                            try {
+                              setRowError('');
+                              onReviewEvidence(ev.id, 'VERIFIED', ev.note || 'Bukti terverifikasi oleh Admin PRP');
+                            } catch (err) {
+                              setRowError(err.message);
+                            }
+                          }}
+                        >
+                          <CheckCircle2 size={12} />
+                          <span>Verifikasi</span>
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {canEditRow && !isLocked && isAdminUnitReview && onUpdateEvidence && (
+                    <button
+                      type="button"
+                      className="clean-mini-btn"
+                      onClick={() => {
+                        setRowError('');
+                        setActiveEvPanel((prev) => (prev?.id === ev.id && prev.mode === 'edit'
+                          ? null
+                          : {
+                            id: ev.id,
+                            mode: 'edit',
+                            label: ev.label || '',
+                            kind: ev.kind || 'link',
+                            url: ev.url || '',
+                            description: ev.description || '',
+                            file: null,
+                          }));
+                      }}
+                    >
+                      <PenLine size={12} />
+                      <span>Edit Bukti</span>
+                    </button>
+                  )}
                   {canEditRow && !isLocked && (ev.isOwn || isAdminUnitReview) && (
                     <button
                       type="button"
@@ -643,6 +931,133 @@ function RowEvidenceAndNotesCell({
                     </button>
                   )}
                 </div>
+
+                {activeEvPanel?.id === ev.id && activeEvPanel.mode === 'revise' && (
+                  <div style={{ marginTop: '0.35rem', padding: '0.48rem', borderRadius: '6px', background: '#FFFBEB', border: '1px solid #F59E0B', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#78350F' }}>
+                      Catatan Revisi Gambar/Bukti ({ev.label})
+                    </div>
+                    <textarea
+                      rows={2}
+                      className="clean-row-textarea"
+                      placeholder="Misal: Gambar buram / SK belum ditandatangani, mohon unggah ulang..."
+                      value={activeEvPanel.note || ''}
+                      onChange={(e) => setActiveEvPanel((prev) => ({ ...prev, note: e.target.value }))}
+                    />
+                    <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="clean-mini-btn"
+                        style={{ background: '#92400E', borderColor: '#92400E', color: '#FFFFFF' }}
+                        onClick={() => {
+                          try {
+                            setRowError('');
+                            onReviewEvidence(ev.id, 'NEEDS_REVISION', activeEvPanel.note || '');
+                            setActiveEvPanel(null);
+                          } catch (err) {
+                            setRowError(err.message);
+                          }
+                        }}
+                      >
+                        <Send size={11} />
+                        <span>Kirim Revisi Bukti + Email</span>
+                      </button>
+                      <button type="button" className="clean-mini-btn" onClick={() => setActiveEvPanel(null)}>
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activeEvPanel?.id === ev.id && activeEvPanel.mode === 'edit' && (
+                  <div style={{ marginTop: '0.35rem', padding: '0.48rem', borderRadius: '6px', background: '#FFFFFF', border: '1px solid #94B8C7', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#072534' }}>
+                      Edit / Ganti Bukti ({ev.label})
+                    </div>
+                    <input
+                      type="text"
+                      className="clean-row-text-input"
+                      placeholder="Judul bukti..."
+                      value={activeEvPanel.label || ''}
+                      onChange={(e) => setActiveEvPanel((prev) => ({ ...prev, label: e.target.value }))}
+                    />
+                    <select
+                      className="clean-row-text-input"
+                      value={activeEvPanel.kind || 'link'}
+                      onChange={(e) => setActiveEvPanel((prev) => ({ ...prev, kind: e.target.value }))}
+                    >
+                      <option value="file">Berkas Gambar / PDF</option>
+                      <option value="link">Tautan HTTPS / Drive</option>
+                    </select>
+                    {activeEvPanel.kind === 'link' ? (
+                      <input
+                        type="url"
+                        className="clean-row-text-input"
+                        placeholder="https://drive.google.com/..."
+                        value={activeEvPanel.url || ''}
+                        onChange={(e) => setActiveEvPanel((prev) => ({ ...prev, url: e.target.value }))}
+                      />
+                    ) : (
+                      <input
+                        ref={editEvFileRef}
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
+                        onChange={(event) => {
+                          const f = event.target.files?.[0];
+                          if (!f) return;
+                          const mime = String(f.type || '').toLowerCase();
+                          if (!ALLOWED_EVIDENCE_MIME_TYPES.includes(mime) || f.size > MAX_EVIDENCE_FILE_BYTES) {
+                            setRowError('Format wajib PDF/PNG/JPG/WEBP maksimal 2,5 MB.');
+                            event.target.value = '';
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setActiveEvPanel((prev) => ({
+                              ...prev,
+                              file: {
+                                fileName: f.name,
+                                mimeType: mime,
+                                fileSize: f.size,
+                                dataUrl: String(reader.result || ''),
+                              },
+                            }));
+                          };
+                          reader.readAsDataURL(f);
+                        }}
+                        style={{ fontSize: '0.68rem', color: '#334155' }}
+                      />
+                    )}
+                    <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="clean-mini-btn"
+                        style={{ background: '#094E68', borderColor: '#094E68', color: '#FFFFFF' }}
+                        onClick={() => {
+                          try {
+                            setRowError('');
+                            onUpdateEvidence(ev.id, {
+                              label: activeEvPanel.label,
+                              kind: activeEvPanel.kind,
+                              url: activeEvPanel.url,
+                              description: activeEvPanel.description,
+                              ...(activeEvPanel.kind === 'file' && activeEvPanel.file ? activeEvPanel.file : {}),
+                            });
+                            setActiveEvPanel(null);
+                          } catch (err) {
+                            setRowError(err.message);
+                          }
+                        }}
+                      >
+                        <Save size={11} />
+                        <span>Simpan Bukti</span>
+                      </button>
+                      <button type="button" className="clean-mini-btn" onClick={() => setActiveEvPanel(null)}>
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })
@@ -1699,6 +2114,31 @@ function KPIEntryContent({
       return;
     }
     setLocalEvidenceList((prev) => prev.filter((ev) => ev.id !== evidenceId));
+  };
+
+  const handleUpdateRowEvidence = (evidenceId, metadata) => {
+    if (!isAdminUnitReview || !adminUnitContext?.formId || !adminUnitContext?.email) return;
+    const updated = updateUnitEvidenceByAdmin(adminUnitContext.formId, adminUnitContext.email, unitUser, evidenceId, metadata);
+    if (previewEvidence?.id === evidenceId) {
+      setPreviewEvidence(updated);
+    }
+    showToast(`Bukti "${updated.label}" berhasil diperbarui oleh Admin PRP.`);
+  };
+
+  const handleReviewRowEvidence = (evidenceId, status, reviewNote) => {
+    if (!isAdminUnitReview || !adminUnitContext?.formId || !adminUnitContext?.email) return;
+    reviewUnitEvidence(adminUnitContext.formId, adminUnitContext.email, evidenceId, status, reviewNote, unitUser);
+    if (previewEvidence?.id === evidenceId) {
+      const latestEv = readUnitEvidence(adminUnitContext.formId, adminUnitContext.email).find((ev) => ev.id === evidenceId);
+      if (latestEv) setPreviewEvidence(latestEv);
+    }
+    if (status === 'NEEDS_REVISION') {
+      showToast('Catatan revisi bukti/gambar dikirim via Notifikasi Web + Email Audit ke unit.');
+    } else if (status === 'VERIFIED') {
+      showToast('Bukti capaian ditandai Terverifikasi oleh Admin PRP.');
+    } else {
+      showToast('Status bukti diperbarui oleh Admin PRP.');
+    }
   };
 
   const navigableKeys = useMemo(
@@ -3836,6 +4276,8 @@ ${sectionSummaryHtml}
                                   contributor={contributor}
                                   onNoteChange={handleNoteChange}
                                   onAddEvidence={handleAddRowEvidence}
+                                  onUpdateEvidence={isAdminUnitReview ? handleUpdateRowEvidence : null}
+                                  onReviewEvidence={isAdminUnitReview ? handleReviewRowEvidence : null}
                                   onRemoveEvidence={handleRemoveRowEvidence}
                                   onPreviewEvidence={setPreviewEvidence}
                                 />
@@ -3923,6 +4365,10 @@ ${sectionSummaryHtml}
       <EvidencePreviewModal
         evidence={previewEvidence}
         onClose={() => setPreviewEvidence(null)}
+        adminActions={isAdminUnitReview ? {
+          onReview: (ev, status, reviewNote) => handleReviewRowEvidence(ev.id, status, reviewNote),
+          onUpdate: (ev, metadata) => handleUpdateRowEvidence(ev.id, metadata),
+        } : null}
       />
     </div>
   );
