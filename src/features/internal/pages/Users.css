@@ -1,6 +1,8 @@
 .users-page {
   color: #072534;
   max-width: 1400px;
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
   padding: 0 0 4rem;
 }
@@ -138,6 +140,9 @@
 }
 
 .users-table-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   background: #FFFFFF;
   border: 1px solid #D8E4EA;
   border-radius: 8px;
@@ -214,8 +219,13 @@
 }
 
 .users-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #94B8C7 #F7FAFB;
 }
 
 .users-table {

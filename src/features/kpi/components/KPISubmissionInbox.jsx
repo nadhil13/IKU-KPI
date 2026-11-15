@@ -162,7 +162,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
   }, [form]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0, width: '100%', maxWidth: '100%' }}>
       {latestForm && integratedBoard && boardMetrics && (
         <section className="gov-table" aria-label="Papan Integrasi Sistem Pusat KPI">
           <div className="gov-table-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.85rem' }}>
@@ -312,8 +312,19 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </h3>
               <span className="ent-badge">{f.units.length} akun unit/PIC terdaftar</span>
             </div>
-            <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
-              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+            <div
+              style={{
+                overflowX: 'auto',
+                overflowY: 'visible',
+                width: '100%',
+                maxWidth: '100%',
+                minWidth: 0,
+                WebkitOverflowScrolling: 'touch',
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#94B8C7 #F7FAFB',
+              }}
+            >
+              <table style={{ width: '100%', minWidth: '760px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
                 <thead>
                   <tr style={{ color: '#475569', background: '#FFFFFF', borderBottom: '1px solid #D8E4EA' }}>
                     <th style={{ padding: '0.68rem 1.15rem', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Unit Kerja / Akun</th>
@@ -431,8 +442,19 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
         {kpiAuditEntries.length === 0 ? (
           <div className="gov-placeholder">Belum ada rekaman aktivitas workflow KPI pada sesi ini.</div>
         ) : (
-          <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
-            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+          <div
+            style={{
+              overflowX: 'auto',
+              overflowY: 'visible',
+              width: '100%',
+              maxWidth: '100%',
+              minWidth: 0,
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#94B8C7 #F7FAFB',
+            }}
+          >
+            <table style={{ width: '100%', minWidth: '640px', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
               <thead>
                 <tr style={{ color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
                   <th style={{ padding: '0.65rem 1.15rem', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Waktu</th>

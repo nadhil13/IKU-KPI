@@ -437,6 +437,8 @@ export default function PRPGovernance() {
       <style>{`
         .governance-page {
           max-width: 1680px;
+          width: 100%;
+          min-width: 0;
           margin: 0 auto;
           padding: 0 0 4rem;
           color: #072534;
@@ -494,6 +496,8 @@ export default function PRPGovernance() {
           display: flex;
           flex-direction: column;
           gap: 1.35rem;
+          width: 100%;
+          min-width: 0;
         }
         .gov-tabs {
           position: relative;
@@ -606,6 +610,9 @@ export default function PRPGovernance() {
           border: 0;
         }
         .gov-table {
+          width: 100%;
+          min-width: 0;
+          max-width: 100%;
           border: 1px solid #D8E4EA;
           border-radius: 8px;
           background: #ffffff;
@@ -844,7 +851,7 @@ export default function PRPGovernance() {
           </div>
         </div>
 
-        <div ref={tabStageRef} role="tabpanel" aria-labelledby={`gov-tab-${activeTab}`} style={{ minWidth: 0 }}>
+        <div ref={tabStageRef} role="tabpanel" aria-labelledby={`gov-tab-${activeTab}`} style={{ minWidth: 0, width: '100%', maxWidth: '100%' }}>
           {feedback && (
             <div role="status" aria-live="polite" className="gov-feedback-banner">
               {feedback}
@@ -854,7 +861,7 @@ export default function PRPGovernance() {
           {activeTab === 'kpi-builder' && <KPITableDesigner />}
 
           {activeTab === 'submissions' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem', minWidth: 0, width: '100%', maxWidth: '100%' }}>
               <div
                 className="ent-card"
                 style={{

@@ -150,12 +150,42 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
         </select>
       </div>
 
-      <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+      <div
+        style={{
+          overflowX: 'auto',
+          overflowY: 'visible',
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#94B8C7 #F7FAFB',
+        }}
+      >
+        <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
           <thead>
             <tr style={{ textAlign: 'left', color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
-              {['Modul', 'Unit Kerja / Pengusul', 'Periode', 'Status', 'Kelengkapan', 'Bukti Pendukung', 'Diperbarui', 'Aksi'].map((h) => (
-                <th key={h} style={{ padding: '0.75rem 1.15rem', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>
+              {['Modul', 'Unit Kerja / Pengusul', 'Periode', 'Status', 'Kelengkapan', 'Bukti Pendukung', 'Diperbarui', 'Aksi'].map((h, idx) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '0.7rem 0.72rem',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    whiteSpace: 'nowrap',
+                    ...(idx === 7
+                      ? {
+                          position: 'sticky',
+                          right: 0,
+                          background: '#F7FAFB',
+                          borderLeft: '1px solid #E2EDF2',
+                          textAlign: 'right',
+                        }
+                      : null),
+                  }}
+                >
                   {h}
                 </th>
               ))}
@@ -165,11 +195,11 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
             {visible.map((row) => (
               <tr
                 key={row.key}
-                style={{ borderTop: '1px solid #D8E4EA', transition: 'background-color 0.18s ease' }}
+                style={{ borderTop: '1px solid #D8E4EA', background: '#ffffff', transition: 'background-color 0.18s ease' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#F7FAFB'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
               >
-                <td style={{ padding: '0.8rem 1.15rem' }}>
+                <td style={{ padding: '0.72rem 0.72rem', verticalAlign: 'middle' }}>
                   <span
                     style={{
                       display: 'inline-block',
@@ -187,13 +217,13 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                     {row.module}
                   </span>
                 </td>
-                <td style={{ padding: '0.8rem 1.15rem' }}>
+                <td style={{ padding: '0.72rem 0.72rem', minWidth: '180px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <strong style={{ color: '#072534', fontSize: '0.78rem' }}>{row.unit}</strong>
+                    <strong style={{ color: '#072534', fontSize: '0.77rem' }}>{row.unit}</strong>
                     {row.picBadge && (
                       <span
                         style={{
-                          fontSize: '0.63rem',
+                          fontSize: '0.62rem',
                           fontWeight: 700,
                           fontFamily: 'JetBrains Mono, monospace',
                           padding: '1px 5px',
@@ -207,21 +237,31 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                       </span>
                     )}
                   </div>
-                  <small style={{ color: '#475569', fontSize: '0.69rem' }}>{row.email}</small>
+                  <small style={{ color: '#475569', fontSize: '0.68rem' }}>{row.email}</small>
                 </td>
-                <td style={{ padding: '0.8rem 1.15rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
-                <td style={{ padding: '0.8rem 1.15rem' }}>
+                <td style={{ padding: '0.72rem 0.72rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
+                <td style={{ padding: '0.72rem 0.72rem', whiteSpace: 'nowrap' }}>
                   <span className={BADGE_CLASS[row.status] || 'ent-badge'}>
                     <span className="ent-badge-dot" />
                     {STATUS[row.status] || row.status}
                   </span>
                 </td>
-                <td style={{ padding: '0.8rem 1.15rem', fontWeight: 600, color: '#334155' }}>{row.filled}</td>
-                <td style={{ padding: '0.8rem 1.15rem', color: '#475569' }}>{row.evidence}</td>
-                <td style={{ padding: '0.8rem 1.15rem', color: '#475569', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                <td style={{ padding: '0.72rem 0.72rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{row.filled}</td>
+                <td style={{ padding: '0.72rem 0.72rem', color: '#475569', whiteSpace: 'nowrap' }}>{row.evidence}</td>
+                <td style={{ padding: '0.72rem 0.72rem', color: '#475569', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                   {row.updatedAt ? new Date(row.updatedAt).toLocaleString('id-ID') : '-'}
                 </td>
-                <td style={{ padding: '0.8rem 1.15rem', whiteSpace: 'nowrap' }}>
+                <td
+                  style={{
+                    padding: '0.72rem 0.72rem',
+                    whiteSpace: 'nowrap',
+                    textAlign: 'right',
+                    position: 'sticky',
+                    right: 0,
+                    background: 'inherit',
+                    borderLeft: '1px solid #E2EDF2',
+                  }}
+                >
                   {row.module === 'IKU' ? (
                     <Link className="gov-button" to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
                       Tinjau Detail

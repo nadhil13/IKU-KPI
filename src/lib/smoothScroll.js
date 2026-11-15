@@ -13,11 +13,45 @@ export const getLenis = () => activeLenis;
 /** Instance Lenis aktif pada window publik (null jika belum dipasang / reduced motion). */
 export const getWindowLenis = () => activeWindowLenis;
 
+function canScrollVerticallyInDirection(el, deltaY) {
+  if (!el || el === document.body || el === document.documentElement) return false;
+  const style = window.getComputedStyle(el);
+  const canScrollY =
+    (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay') &&
+    el.scrollHeight > el.clientHeight + 2;
+  if (!canScrollY) return false;
+  if (Math.abs(deltaY) <= 0.5) return true;
+  if (deltaY > 0) return el.scrollTop + el.clientHeight < el.scrollHeight - 1.5;
+  return el.scrollTop > 1.5;
+}
+
+function findNestedScrollBlocker(node, deltaY) {
+  let el = node instanceof Element ? node : null;
+  while (el && el !== document.body && el !== document.documentElement) {
+    if (el.classList?.contains('internal-main-scroll')) return null;
+    if (el.getAttribute?.('role') === 'dialog' || el.getAttribute?.('aria-modal') === 'true') {
+      return el;
+    }
+    if (canScrollVerticallyInDirection(el, deltaY)) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function shouldHandleWithLenis({ deltaX, deltaY, event }) {
+  // Never hijack horizontal wheel, Shift+Wheel, or trackpad panning over wide tables.
+  if (event?.shiftKey || Math.abs(deltaX) > Math.abs(deltaY)) {
+    return false;
+  }
+  return !findNestedScrollBlocker(event?.target, deltaY);
+}
+
 /**
  * Menentukan apakah event wheel harus dikecualikan dari Lenis.
- * Hanya mengecualikan dialog/modal atau kontainer dengan data-lenis-prevent yang benar-benar
- * memiliki overflow vertikal aktif, sehingga tabel/form lebar (overflow-x: auto) tetap bisa
- * di-scroll vertikal dengan mulus saat kursor berada di atas form/input.
+ * Hanya mengecualikan dialog/modal sehingga kontainer scroll internal (seperti desainer tabel)
+ * tetap dapat meneruskan scroll ke halaman utama saat mencapai batas atas/bawah.
  */
 function shouldPreventLenis(node) {
   let el = node instanceof Element ? node : null;
@@ -25,13 +59,6 @@ function shouldPreventLenis(node) {
     if (el.classList?.contains('internal-main-scroll')) return false;
     if (el.getAttribute?.('role') === 'dialog' || el.getAttribute?.('aria-modal') === 'true') {
       return true;
-    }
-    if (el.hasAttribute?.('data-lenis-prevent')) {
-      const style = window.getComputedStyle(el);
-      const canScrollY =
-        (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-        el.scrollHeight > el.clientHeight + 2;
-      if (canScrollY) return true;
     }
     el = el.parentElement;
   }
@@ -55,9 +82,10 @@ export function mountSmoothScroll(wrapper, content) {
     touchMultiplier: 1.4,
     smoothWheel: true,
     syncTouch: false,
-    allowNestedScroll: false,
+    allowNestedScroll: true,
     gestureOrientation: 'vertical',
     prevent: shouldPreventLenis,
+    virtualScroll: shouldHandleWithLenis,
   });
 
   // Sinkronkan posisi scroll aktual (mis. setelah fokus input form) dan lepas fokus input[type="number"]
@@ -80,7 +108,7 @@ export function mountSmoothScroll(wrapper, content) {
   gsap.ticker.lagSmoothing(0);
   activeLenis = lenis;
 
-  // Konten yang berubah tinggi (tabel bertambah baris) → hitung ulang batas scroll.
+  // Konten atau viewport yang berubah ukuran (tabel dinamis / toggle sidebar) -> hitung ulang batas scroll.
   let refreshTimer;
   const resizeObserver = new ResizeObserver(() => {
     lenis.resize();
@@ -88,6 +116,7 @@ export function mountSmoothScroll(wrapper, content) {
     refreshTimer = setTimeout(() => ScrollTrigger.refresh(), 160);
   });
   resizeObserver.observe(content);
+  resizeObserver.observe(wrapper);
 
   return () => {
     clearTimeout(refreshTimer);
@@ -114,9 +143,10 @@ export function mountWindowSmoothScroll() {
     touchMultiplier: 1.35,
     smoothWheel: true,
     syncTouch: false,
-    allowNestedScroll: false,
+    allowNestedScroll: true,
     gestureOrientation: 'vertical',
     prevent: shouldPreventLenis,
+    virtualScroll: shouldHandleWithLenis,
   });
 
   const onTick = (time) => lenis.raf(time * 1000);

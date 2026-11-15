@@ -22,6 +22,8 @@ import {
   Smartphone,
   Download,
   CheckCircle2,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -57,6 +59,37 @@ export default function InternalLayout() {
   const { currentUser, activeWorkspace, activeContext, switchWorkspace, enterPRP, logout } = useAuth();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
+    try {
+      return localStorage.getItem('performa_desktop_sidebar_v1') !== 'collapsed';
+    } catch {
+      return true;
+    }
+  });
+  const handleToggleSidebar = useCallback(() => {
+    if (window.innerWidth <= 1024) {
+      setSidebarOpen((prev) => !prev);
+      return;
+    }
+    setDesktopSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('performa_desktop_sidebar_v1', next ? 'open' : 'collapsed');
+      } catch {
+        // Abaikan jika storage mode privat diblokir.
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      getLenis()?.resize();
+      ScrollTrigger.refresh();
+    }, 310);
+    return () => clearTimeout(timer);
+  }, [desktopSidebarOpen]);
+  const prevRouteScopeRef = useRef('');
   const [prpTreeOpen, setPrpTreeOpen] = useState(true);
   const [notifOpen, setNotifOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -457,7 +490,12 @@ export default function InternalLayout() {
   // 4. Transisi Rute & Konteks Halaman
   useGSAP(() => {
     requestAnimationFrame(syncActiveLaser);
+    const routeScopeKey = `${location.pathname}|${activeContext}|${effectiveWorkspace}`;
+    const isTabSwitchOnly = prevRouteScopeRef.current === routeScopeKey;
+    prevRouteScopeRef.current = routeScopeKey;
+
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      getLenis()?.resize();
       ScrollTrigger.refresh();
       return undefined;
     }
@@ -471,19 +509,27 @@ export default function InternalLayout() {
         .to(routeLaserRef.current, { scaleX: 0, opacity: 0, duration: 0.34, ease: 'power3.inOut' });
     }
 
-    if (scrollContentRef.current) {
+    if (scrollContentRef.current && !isTabSwitchOnly) {
       gsap.fromTo(
         scrollContentRef.current,
-        { opacity: 0, y: 16 },
+        { opacity: 0, y: 14 },
         {
           opacity: 1,
           y: 0,
-          duration: 0.48,
+          duration: 0.42,
           ease: 'expo.out',
           clearProps: 'transform',
-          onComplete: () => ScrollTrigger.refresh(),
+          onComplete: () => {
+            getLenis()?.resize();
+            ScrollTrigger.refresh();
+          },
         }
       );
+    } else {
+      requestAnimationFrame(() => {
+        getLenis()?.resize();
+        ScrollTrigger.refresh();
+      });
     }
   }, { dependencies: [location.pathname, location.search, activeContext, effectiveWorkspace] });
 
@@ -722,14 +768,15 @@ export default function InternalLayout() {
       {/* Bilah sisi navigasi ruang kerja internal. */}
       <aside
         aria-label="Navigasi ruang kerja internal"
+        aria-hidden={isMobile ? !sidebarOpen : !desktopSidebarOpen}
         className={`corp-sidebar ${sidebarOpen ? 'open' : ''}`}
         style={{
-          width: isMobile ? 'min(284px, 86vw)' : '264px',
-          minWidth: isMobile ? 'min(284px, 86vw)' : '264px',
-          maxWidth: isMobile ? 'min(284px, 86vw)' : '264px',
+          width: isMobile ? 'min(284px, 86vw)' : (desktopSidebarOpen ? '264px' : '0px'),
+          minWidth: isMobile ? 'min(284px, 86vw)' : (desktopSidebarOpen ? '264px' : '0px'),
+          maxWidth: isMobile ? 'min(284px, 86vw)' : (desktopSidebarOpen ? '264px' : '0px'),
           flexShrink: 0,
           background: '#F7FAFB',
-          borderRight: '1px solid #D8E4EA',
+          borderRight: isMobile || desktopSidebarOpen ? '1px solid #D8E4EA' : 'none',
           display: 'flex',
           flexDirection: 'column',
           position: isMobile ? 'fixed' : 'relative',
@@ -739,8 +786,13 @@ export default function InternalLayout() {
           height: '100dvh',
           zIndex: isMobile ? 95 : 20,
           overflow: 'hidden',
+          opacity: isMobile ? (sidebarOpen ? 1 : 0) : (desktopSidebarOpen ? 1 : 0),
+          visibility: isMobile ? (sidebarOpen ? 'visible' : 'hidden') : (desktopSidebarOpen ? 'visible' : 'hidden'),
+          pointerEvents: (isMobile ? !sidebarOpen : !desktopSidebarOpen) ? 'none' : 'auto',
           transform: isMobile ? (sidebarOpen ? 'translateX(0)' : 'translateX(-100%)') : 'none',
-          transition: 'transform 0.34s cubic-bezier(0.16, 1, 0.3, 1)',
+          transition: (isMobile ? sidebarOpen : desktopSidebarOpen)
+            ? 'transform 0.34s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.28s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, visibility 0s'
+            : 'transform 0.34s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.28s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, visibility 0s linear 0.34s',
         }}
       >
         {/* Brand Header */}
@@ -796,7 +848,7 @@ export default function InternalLayout() {
             </div>
           </Link>
 
-          {isMobile && (
+          {isMobile ? (
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
@@ -814,6 +866,27 @@ export default function InternalLayout() {
               }}
             >
               <X size={18} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              aria-label="Tutup bilah navigasi"
+              title="Ciutkan sidebar"
+              style={{
+                background: '#F7FAFB',
+                border: '1px solid #D8E4EA',
+                borderRadius: '8px',
+                width: '34px',
+                height: '34px',
+                display: 'grid',
+                placeItems: 'center',
+                color: '#072534',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <PanelLeftClose size={16} />
             </button>
           )}
         </div>
@@ -1384,6 +1457,7 @@ export default function InternalLayout() {
           flex: 1,
           height: '100dvh',
           minWidth: 0,
+          maxWidth: '100%',
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -1411,27 +1485,42 @@ export default function InternalLayout() {
         >
           {/* Left: Hamburger + Breadcrumb */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
-            {isMobile && (
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Buka navigasi"
-                style={{
-                  background: '#F7FAFB',
-                  border: '1px solid #D8E4EA',
-                  borderRadius: '8px',
-                  width: '44px',
-                  height: '44px',
-                  display: 'grid',
-                  placeItems: 'center',
-                  color: '#072534',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              aria-label={isMobile ? 'Buka navigasi' : (desktopSidebarOpen ? 'Tutup bilah navigasi' : 'Buka bilah navigasi')}
+              aria-expanded={isMobile ? sidebarOpen : desktopSidebarOpen}
+              title={isMobile ? 'Buka menu navigasi' : (desktopSidebarOpen ? 'Tutup sidebar (lebih luas)' : 'Buka sidebar navigasi')}
+              style={{
+                background: !isMobile && !desktopSidebarOpen ? '#094E68' : '#F7FAFB',
+                border: `1px solid ${!isMobile && !desktopSidebarOpen ? '#094E68' : '#D8E4EA'}`,
+                borderRadius: '8px',
+                minWidth: isMobile ? '44px' : (desktopSidebarOpen ? '38px' : 'auto'),
+                height: isMobile ? '44px' : '38px',
+                padding: !isMobile && !desktopSidebarOpen ? '0 0.72rem' : '0',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.4rem',
+                color: !isMobile && !desktopSidebarOpen ? '#ffffff' : '#072534',
+                cursor: 'pointer',
+                flexShrink: 0,
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {isMobile ? (
                 <Menu size={19} />
-              </button>
-            )}
+              ) : desktopSidebarOpen ? (
+                <PanelLeftClose size={17} />
+              ) : (
+                <>
+                  <PanelLeftOpen size={17} />
+                  <span>Menu</span>
+                </>
+              )}
+            </button>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0, overflow: 'hidden' }}>
               <span
@@ -1939,6 +2028,8 @@ export default function InternalLayout() {
             flex: 1,
             minHeight: 0,
             minWidth: 0,
+            width: '100%',
+            maxWidth: '100%',
             height: 'calc(100dvh - 60px)',
             overflowY: 'auto',
             overflowX: 'hidden',
@@ -1948,7 +2039,7 @@ export default function InternalLayout() {
           }}
           ref={scrollWrapperRef}
         >
-          <div ref={scrollContentRef} style={{ maxWidth: '1480px', margin: '0 auto', width: '100%', minWidth: 0 }}>
+          <div ref={scrollContentRef} style={{ maxWidth: '1640px', margin: '0 auto', width: '100%', minWidth: 0 }}>
             <ActiveBroadcastBanner onOpenManager={() => setBroadcastModalOpen(true)} />
             <Outlet />
           </div>

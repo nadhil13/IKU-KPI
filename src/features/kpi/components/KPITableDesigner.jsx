@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowDown, ArrowUp, Check, CircleCheck, Copy, Ellipsis, Eye, GitMerge, History, Lock, LockOpen, MousePointerClick,
+  ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, CircleCheck, Copy, Ellipsis, Eye, GitMerge, History, Lock, LockOpen, MousePointerClick,
   PanelRightClose, Plus, Radio, RotateCcw, Send, Settings2, Sigma, Split, Table2, Trash2, TriangleAlert, Users, X,
 } from 'lucide-react';
 import gsap from 'gsap';
@@ -151,6 +151,7 @@ export default function KPITableDesigner() {
   const { currentUser } = useAuth();
   const rootRef = useRef(null);
   const formulaRef = useRef(null);
+  const sheetScrollRef = useRef(null);
   const noticeTimer = useRef(null);
   const sendingRef = useRef(false);
   const pickingRef = useRef(false);
@@ -764,6 +765,20 @@ export default function KPITableDesigner() {
             <Radio size={14} /> Sync Baris Aktif
           </button>
           <button type="button" onClick={() => setSimValues({})}><RotateCcw size={14} /> Kosongkan simulasi</button>
+          <button
+            type="button"
+            onClick={() => sheetScrollRef.current?.scrollBy({ left: -340, behavior: 'smooth' })}
+            title="Geser tampilan tabel ke kiri"
+          >
+            <ChevronLeft size={14} /> Geser Kiri
+          </button>
+          <button
+            type="button"
+            onClick={() => sheetScrollRef.current?.scrollBy({ left: 340, behavior: 'smooth' })}
+            title="Geser tampilan tabel ke kanan (kolom Rumus, Capaian, Skor)"
+          >
+            Geser Kanan <ChevronRight size={14} />
+          </button>
           <button type="button" aria-pressed={showPreview} onClick={() => setShowPreview((value) => !value)}>
             <Eye size={14} /> {showPreview ? 'Kembali ke editor' : 'Preview user'}
           </button>
@@ -1029,7 +1044,7 @@ export default function KPITableDesigner() {
               )}
             </div>
 
-            <div className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`} role="region" aria-label="Lembar Desainer KPI" tabIndex={0} data-lenis-prevent>
+            <div ref={sheetScrollRef} className={`sheet-scroll ${pickMode && formulaEditable ? 'picking' : ''}`} role="region" aria-label="Lembar Desainer KPI" tabIndex={0} data-lenis-prevent>
               <table className="sheet">
                 <colgroup>
                   <col className="c-gutter" />

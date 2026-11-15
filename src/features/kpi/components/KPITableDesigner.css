@@ -13,6 +13,8 @@
   color: #072534;
   padding-bottom: 3rem;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .kpi-designer-page .sr-only {
@@ -108,10 +110,10 @@
 .kpi-designer-page .designer-check input { accent-color: #094E68; width: 16px; height: 16px; }
 .kpi-designer-page .designer-notice { min-height: 1.4rem; padding: .3rem 0; font-size: .76rem; font-weight: 650; color: #14532D; }
 
-.kpi-designer-page .designer-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+.kpi-designer-page .designer-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; min-width: 0; width: 100%; max-width: 100%; }
 .kpi-designer-page .designer-layout.with-panel { grid-template-columns: minmax(0, 1fr) 340px; }
 .kpi-designer-page .sheet-shell {
-  min-width: 0; border: 1px solid var(--line-strong); border-radius: 6px; background: #FFFFFF; overflow: hidden;
+  min-width: 0; width: 100%; max-width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; background: #FFFFFF; overflow: hidden;
 }
 
 .kpi-designer-page .formula-bar {
@@ -163,7 +165,22 @@
 .kpi-designer-page .formula-detail label:has(input[type='date']) { flex: 0 1 170px; }
 .kpi-designer-page .formula-detail input { min-height: 36px; padding: .4rem .55rem; border: 1px solid var(--line-strong); border-radius: 5px; background: #FFFFFF; font: inherit; font-size: .76rem; color: #072534; }
 
-.kpi-designer-page .sheet-scroll { overflow: auto; -webkit-overflow-scrolling: touch; max-height: calc(100dvh - 230px); min-height: 380px; }
+.kpi-designer-page .sheet-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(100dvh - 230px);
+  min-height: 380px;
+  overscroll-behavior: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #94B8C7 #F7FAFB;
+}
+.kpi-designer-page .sheet-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+.kpi-designer-page .sheet-scroll::-webkit-scrollbar-track { background: #F7FAFB; }
+.kpi-designer-page .sheet-scroll::-webkit-scrollbar-thumb { background: #94B8C7; border-radius: 999px; border: 2px solid #F7FAFB; }
+.kpi-designer-page .sheet-scroll::-webkit-scrollbar-thumb:hover { background: #0E7480; }
 .kpi-designer-page .sheet { width: 100%; min-width: 1320px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: .78rem; }
 .kpi-designer-page .c-gutter { width: 42px; }
 .kpi-designer-page .c-no { width: 52px; }
