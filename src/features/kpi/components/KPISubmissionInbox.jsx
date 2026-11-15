@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Check, ExternalLink, Eye, Download, FileText, Image as ImageIcon,
   Link2, Search, ShieldCheck, X, Layers, History, CheckCircle2,
+  Save, FolderDown, PenLine, Send,
 } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
@@ -17,6 +18,7 @@ import {
   readUnitEvidence,
   reviewUnitKpi,
   reviewUnitEvidence,
+  saveUnitKpiByAdmin,
   resetUnitKpiByAdmin,
   subscribeKpiWorkflow,
   readIntegratedKpiBoard,
@@ -27,6 +29,7 @@ import { formatIndonesianNumber } from '../kpiSchema';
 import { readAudit } from '../../internal/adminStore';
 
 const labels = {
+  EMPTY: 'Belum mengirim',
   DRAFT: 'Sedang dikerjakan (Draft)',
   SUBMITTED: 'Dikirim ke pusat',
   APPROVED: 'Disetujui PRP',
@@ -68,6 +71,12 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
   const [localSelected, setLocalSelected] = useState(null);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [showIntegratedSheet, setShowIntegratedSheet] = useState(false);
+  const [showEvidenceVault, setShowEvidenceVault] = useState(false);
+  const [boardViewMode, setBoardViewMode] = useState('auto');
+  const [vaultUnitFilter, setVaultUnitFilter] = useState('');
+  const [vaultStatusFilter, setVaultStatusFilter] = useState('');
+  const [adminUnitEdits, setAdminUnitEdits] = useState(null);
+  const [savedNotice, setSavedNotice] = useState('');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [note, setNote] = useState('');
@@ -82,6 +91,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     setNote('');
     setComplete(false);
     setError('');
+    setAdminUnitEdits(null);
+    setSavedNotice('');
   }, [onSelect]);
 
   useEffect(() => {
@@ -99,7 +110,11 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
 
   const latestForm = state.forms[state.forms.length - 1] || null;
   const integratedBoard = useMemo(
-    () => (latestForm ? readIntegratedKpiBoard(latestForm.id, state) : null),
+    () => (latestForm ? readIntegratedKpiBoard(latestForm.id, state, { confirmedOnly: false }) : null),
+    [latestForm, state],
+  );
+  const confirmedBoard = useMemo(
+    () => (latestForm ? readIntegratedKpiBoard(latestForm.id, state, { confirmedOnly: true }) : null),
     [latestForm, state],
   );
 
@@ -113,13 +128,14 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
 
   const form = state.forms.find((f) => f.id === selected?.formId);
   const record = selected && readUnitSubmission(selected.formId, selected.email, state);
+  const draft = selected && readUnitDraft(selected.formId, selected.email, state);
   const selectedFormBoard = useMemo(
     () => (form ? readIntegratedKpiBoard(form.id, state) : null),
     [form, state],
   );
 
   useEffect(() => {
-    if (!record || !form) return undefined;
+    if (!selected || !form) return undefined;
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         if (pendingUnlock) setPendingUnlock(null);
@@ -128,7 +144,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [record, form, previewDoc, pendingUnlock, updateSelected]);
+  }, [selected, form, previewDoc, pendingUnlock, updateSelected]);
 
   const mutate = (action) => {
     setError('');
@@ -152,6 +168,99 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     return { submittedCount, approvedCount, draftCount, totalEvidence, verifiedEvidence };
   }, [integratedBoard]);
 
+  const resolvedBoardMode = boardViewMode === 'auto'
+    ? ((boardMetrics?.approvedCount || 0) > 0 ? 'confirmed' : 'live')
+    : boardViewMode;
+  const activeBoard = resolvedBoardMode === 'confirmed' && confirmedBoard ? confirmedBoard : integratedBoard;
+
+  const latestIndicatorLabelById = useMemo(() => {
+    const map = {};
+    (latestForm?.sections || []).forEach((sec) => {
+      (sec.items || []).forEach((item) => {
+        map[item.id] = `${sec.code}.${item.no} ${item.indikator}`;
+      });
+    });
+    return map;
+  }, [latestForm]);
+
+  const allPeriodEvidence = useMemo(() => {
+    if (!latestForm) return [];
+    const entries = [];
+    (latestForm.units || []).forEach((u) => {
+      const sub = readUnitSubmission(latestForm.id, u.email, state);
+      const unitStatus = sub?.status || 'DRAFT';
+      const evList = readUnitEvidence(latestForm.id, u.email, state);
+      evList.forEach((ev) => {
+        entries.push({
+          ...ev,
+          unitName: sub?.unit || u.name,
+          unitEmail: u.email,
+          unitPicCodes: sub?.picCodes || u.picCodes || [],
+          unitStatus,
+          indicatorLabel: latestIndicatorLabelById[ev.indicatorId] || ev.indicatorId,
+        });
+      });
+    });
+    return entries;
+  }, [latestForm, state, latestIndicatorLabelById]);
+
+  const filteredVaultEvidence = useMemo(() => (
+    allPeriodEvidence.filter((ev) => {
+      if (vaultUnitFilter && ev.unitEmail.toLowerCase() !== vaultUnitFilter.toLowerCase()) return false;
+      if (vaultStatusFilter && ev.status !== vaultStatusFilter) return false;
+      return true;
+    })
+  ), [allPeriodEvidence, vaultUnitFilter, vaultStatusFilter]);
+
+  const handleDownloadAllAttachedFiles = () => {
+    const files = filteredVaultEvidence.filter((ev) => ev.kind === 'file' && ev.dataUrl);
+    if (!files.length) {
+      setSavedNotice('Tidak ada berkas PDF/gambar terlampir pada filter aktif (hanya tautan Drive/HTTP). Gunakan tombol Unduh Rekap Daftar Bukti (.csv).');
+      return;
+    }
+    files.forEach((ev, idx) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = ev.dataUrl;
+        const safeUnit = (ev.unitPicCodes?.[0] || ev.unitName || 'UNIT').replace(/[^a-z0-9_-]/gi, '_');
+        a.download = `${safeUnit}_${ev.fileName || `${ev.label}.pdf`}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, idx * 220);
+    });
+    setSavedNotice(`Mengunduh ${files.length} berkas bukti PDF/gambar unit secara berurutan...`);
+  };
+
+  const handleDownloadEvidenceManifestCsv = () => {
+    if (!filteredVaultEvidence.length) return;
+    const escCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const headers = ['No', 'Unit Kerja', 'Email PIC', 'Kode PIC', 'Status Submission', 'Indikator', 'Jenis Bukti', 'Judul Dokumen', 'Nama Berkas / Tautan HTTPS', 'Status Verifikasi', 'Catatan PRP'];
+    const rows = filteredVaultEvidence.map((ev, idx) => [
+      idx + 1,
+      ev.unitName,
+      ev.unitEmail,
+      (ev.unitPicCodes || []).join('; '),
+      labels[ev.unitStatus] || ev.unitStatus,
+      ev.indicatorLabel,
+      ev.kind === 'file' ? 'Berkas Terunggah' : 'Tautan HTTPS',
+      ev.label,
+      ev.kind === 'file' ? (ev.fileName || 'Dokumen') : ev.url,
+      ev.status,
+      ev.note || '',
+    ].map(escCsv).join(','));
+    const csv = `\uFEFF${[headers.map(escCsv).join(','), ...rows].join('\r\n')}`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Rekap_Daftar_Berkas_Bukti_KPI_${latestForm?.period || '2026'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const indicatorLabelById = useMemo(() => {
     const map = {};
     (form?.sections || []).forEach((sec) => {
@@ -164,24 +273,35 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0, width: '100%', maxWidth: '100%' }}>
-      {latestForm && integratedBoard && boardMetrics && (
-        <section className="gov-table" aria-label="Papan Integrasi Sistem Pusat KPI">
+      {latestForm && activeBoard && boardMetrics && (
+        <section className="gov-table" aria-label="Papan Integrasi & Tabel Final KPI Terkonsolidasi">
           <div className="gov-table-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.85rem' }}>
             <div>
-              <h2>Papan Integrasi Sistem Pusat KPI Lintas Unit &amp; PIC</h2>
+              <h2>Tabel Final KPI Terkonsolidasi &amp; Gudang Berkas Unit</h2>
               <span>
-                Rekonsiliasi otomatis capaian, bukti dukung, dan keterangan dari seluruh unit kerja pada Periode {latestForm.period} (Versi v{latestForm.version})
+                Rekonsiliasi hasil revisi &amp; konfirmasi seluruh unit kerja pada Periode {latestForm.period} (Versi v{latestForm.version}). Ekspor full Excel/PDF dan unduh semua bukti unit.
               </span>
             </div>
-            <button
-              type="button"
-              className="ent-btn ent-btn-primary"
-              style={{ minHeight: '44px' }}
-              onClick={() => setShowIntegratedSheet((prev) => !prev)}
-            >
-              <Layers size={14} />
-              <span>{showIntegratedSheet ? 'Sembunyikan Tabel Terpusat' : 'Buka Tabel Rekonsiliasi Indikator'}</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="ent-btn"
+                style={{ minHeight: '44px' }}
+                onClick={() => setShowEvidenceVault((prev) => !prev)}
+              >
+                <FolderDown size={15} />
+                <span>{showEvidenceVault ? 'Tutup Gudang Berkas' : `Semua Berkas Unit (${allPeriodEvidence.length})`}</span>
+              </button>
+              <button
+                type="button"
+                className="ent-btn ent-btn-primary"
+                style={{ minHeight: '44px' }}
+                onClick={() => setShowIntegratedSheet((prev) => !prev)}
+              >
+                <Layers size={14} />
+                <span>{showIntegratedSheet ? 'Sembunyikan Tabel Final' : 'Buka Tabel Final & Ekspor'}</span>
+              </button>
+            </div>
           </div>
 
           <div
@@ -195,19 +315,19 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
           >
             <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
               <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Skor Institusi Terpusat
+                {resolvedBoardMode === 'confirmed' ? 'Skor Final Terkonfirmasi' : 'Skor Institusi (Progres Live)'}
               </div>
               <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#072534', marginTop: '0.2rem', fontVariantNumeric: 'tabular-nums' }}>
-                {formatIndonesianNumber(integratedBoard.totalScore, 2)} <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>/ 100 Poin</span>
+                {formatIndonesianNumber(activeBoard.totalScore, 2)} <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>/ 100 Poin</span>
               </div>
             </div>
 
             <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
               <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Cakupan Indikator Terisi
+                Cakupan Indikator ({resolvedBoardMode === 'confirmed' ? 'Final' : 'Live'})
               </div>
               <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#094E68', marginTop: '0.2rem', fontVariantNumeric: 'tabular-nums' }}>
-                {integratedBoard.filledIndicatorCount} / {integratedBoard.totalIndicatorCount} <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>Baris</span>
+                {activeBoard.filledIndicatorCount} / {activeBoard.totalIndicatorCount} <span style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600 }}>Baris</span>
               </div>
             </div>
 
@@ -216,7 +336,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                 Status Pengajuan Unit PIC
               </div>
               <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#072534', marginTop: '0.35rem', lineHeight: 1.45 }}>
-                {boardMetrics.submittedCount} Menunggu Review · {boardMetrics.approvedCount} Disetujui · {boardMetrics.draftCount} Draft
+                {boardMetrics.submittedCount} Menunggu Review · {boardMetrics.approvedCount} Terkonfirmasi · {boardMetrics.draftCount} Draft
               </div>
             </div>
 
@@ -230,16 +350,190 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             </div>
           </div>
 
+          {showEvidenceVault && (
+            <div style={{ padding: '1rem 1.3rem', borderTop: '1px solid #D8E4EA', background: '#F7FAFB', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <strong style={{ fontSize: '0.88rem', color: '#072534', fontFamily: 'Outfit, sans-serif', display: 'block' }}>
+                    Gudang Seluruh Berkas &amp; Tautan Bukti Unit (Periode {latestForm.period})
+                  </strong>
+                  <span style={{ fontSize: '0.73rem', color: '#475569' }}>
+                    Pratinjau langsung dokumen PDF/gambar, akses tautan HTTPS, atau unduh seluruh berkas unit dalam satu klik.
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="ent-btn"
+                    style={{ minHeight: '44px' }}
+                    disabled={filteredVaultEvidence.length === 0}
+                    onClick={handleDownloadEvidenceManifestCsv}
+                  >
+                    <Download size={14} />
+                    <span>Unduh Rekap Daftar Bukti (.csv)</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ent-btn ent-btn-teal"
+                    style={{ minHeight: '44px' }}
+                    disabled={!filteredVaultEvidence.some((ev) => ev.kind === 'file' && ev.dataUrl)}
+                    onClick={handleDownloadAllAttachedFiles}
+                  >
+                    <FolderDown size={14} />
+                    <span>Unduh Semua Berkas PDF/Gambar ({filteredVaultEvidence.filter((ev) => ev.kind === 'file' && ev.dataUrl).length})</span>
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '0.65rem' }}>
+                <select className="gov-field" aria-label="Filter unit pada gudang berkas" value={vaultUnitFilter} onChange={(e) => setVaultUnitFilter(e.target.value)}>
+                  <option value="">Semua unit pengirim ({latestForm.units?.length || 0})</option>
+                  {(latestForm.units || []).map((u) => (
+                    <option key={u.email} value={u.email}>{u.name} ({(u.picCodes || []).join(', ') || 'PIC'})</option>
+                  ))}
+                </select>
+                <select className="gov-field" aria-label="Filter status verifikasi berkas" value={vaultStatusFilter} onChange={(e) => setVaultStatusFilter(e.target.value)}>
+                  <option value="">Semua status verifikasi</option>
+                  <option value="VERIFIED">Terverifikasi (VERIFIED)</option>
+                  <option value="PENDING">Menunggu Verifikasi (PENDING)</option>
+                  <option value="REJECTED">Ditolak (REJECTED)</option>
+                </select>
+              </div>
+
+              {savedNotice && !selected && (
+                <div role="status" style={{ padding: '0.65rem 0.9rem', borderRadius: '8px', background: '#F0FDF4', border: '1px solid #86EFAC', color: '#14532D', fontSize: '0.75rem', fontWeight: 600 }}>
+                  {savedNotice}
+                </div>
+              )}
+
+              {filteredVaultEvidence.length === 0 ? (
+                <div className="gov-placeholder">Belum ada berkas atau tautan bukti dukung yang cocok dengan filter aktif.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '0.7rem', maxHeight: '380px', overflowY: 'auto' }}>
+                  {filteredVaultEvidence.map((ev) => {
+                    const isFile = ev.kind === 'file' || Boolean(ev.dataUrl);
+                    const isImg = /^image\//i.test(ev.mimeType || '');
+                    return (
+                      <article
+                        key={`${ev.unitEmail}:${ev.id}`}
+                        style={{
+                          padding: '0.8rem 0.9rem',
+                          borderRadius: '8px',
+                          background: '#FFFFFF',
+                          border: '1px solid #D8E4EA',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.45rem',
+                          minWidth: 0,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, fontSize: '0.78rem', color: '#072534', overflowWrap: 'anywhere' }}>
+                              {isFile ? (isImg ? <ImageIcon size={14} color="#094E68" /> : <FileText size={14} color="#094E68" />) : <Link2 size={14} color="#094E68" />}
+                              <span>{ev.label}</span>
+                            </div>
+                            <div style={{ fontSize: '0.69rem', color: '#334155', marginTop: '0.2rem', fontWeight: 600 }}>
+                              {ev.unitName} · <span style={{ color: '#094E68' }}>{(ev.unitPicCodes || []).join(', ') || 'PIC'}</span>
+                            </div>
+                            <div style={{ fontSize: '0.67rem', color: '#475569', overflowWrap: 'anywhere' }}>
+                              {ev.indicatorLabel}{ev.fileName ? ` · ${ev.fileName} (${formatBytes(ev.fileSize)})` : ''}
+                            </div>
+                          </div>
+                          <span className="ent-badge">{ev.status}</span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginTop: 'auto' }}>
+                          {isFile ? (
+                            <>
+                              <button type="button" className="gov-button" style={{ minHeight: '38px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc(ev)}>
+                                <Eye size={12} /> Pratinjau
+                              </button>
+                              {ev.dataUrl && (
+                                <a
+                                  href={ev.dataUrl}
+                                  download={ev.fileName || `${ev.label}.pdf`}
+                                  className="gov-button"
+                                  style={{ minHeight: '38px', fontSize: '0.7rem', textDecoration: 'none' }}
+                                >
+                                  <Download size={12} /> Unduh Berkas
+                                </a>
+                              )}
+                            </>
+                          ) : (
+                            <a
+                              href={ev.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="gov-button"
+                              style={{ minHeight: '38px', fontSize: '0.7rem', textDecoration: 'none' }}
+                            >
+                              <ExternalLink size={12} /> Buka Tautan Drive
+                            </a>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {showIntegratedSheet && (
-            <div style={{ padding: 'clamp(0.75rem, 2vw, 1.3rem)', borderTop: '1px solid #D8E4EA', background: '#F7FAFB', minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}>
+            <div style={{ padding: 'clamp(0.75rem, 2vw, 1.3rem)', borderTop: '1px solid #D8E4EA', background: '#F7FAFB', minWidth: 0, maxWidth: '100%', overflowX: 'auto', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.65rem' }}>
+                <div style={{ display: 'inline-flex', background: '#EDF3F6', padding: '3px', borderRadius: '8px', border: '1px solid #B8CAD4', gap: '3px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setBoardViewMode('confirmed')}
+                    style={{
+                      minHeight: '40px',
+                      padding: '0.35rem 0.85rem',
+                      borderRadius: '6px',
+                      border: resolvedBoardMode === 'confirmed' ? '1px solid #094E68' : '1px solid transparent',
+                      background: resolvedBoardMode === 'confirmed' ? '#094E68' : 'transparent',
+                      color: resolvedBoardMode === 'confirmed' ? '#FFFFFF' : '#334155',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Tabel Final Terkonfirmasi ({boardMetrics.approvedCount} Unit Disetujui/Dikunci)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBoardViewMode('live')}
+                    style={{
+                      minHeight: '40px',
+                      padding: '0.35rem 0.85rem',
+                      borderRadius: '6px',
+                      border: resolvedBoardMode === 'live' ? '1px solid #094E68' : '1px solid transparent',
+                      background: resolvedBoardMode === 'live' ? '#094E68' : 'transparent',
+                      color: resolvedBoardMode === 'live' ? '#FFFFFF' : '#334155',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Semua Progres Realtime (Termasuk Draft &amp; Revisi)
+                  </button>
+                </div>
+                {resolvedBoardMode === 'confirmed' && boardMetrics.approvedCount === 0 && (
+                  <span style={{ fontSize: '0.73rem', fontWeight: 600, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '6px', padding: '0.4rem 0.7rem' }}>
+                    Belum ada unit yang dikonfirmasi (Disetujui / Dikunci). Beralih ke tab Progres Realtime atau konfirmasi unit di tabel bawah.
+                  </span>
+                )}
+              </div>
+
               <KPIDataEntrySheet
-                key={`integrated:${latestForm.id}:${auditTick}`}
+                key={`integrated:${latestForm.id}:${resolvedBoardMode}:${auditTick}`}
                 period={latestForm.period}
                 sectionsOverride={latestForm.sections}
-                valuesOverride={integratedBoard.values}
-                notesOverride={integratedBoard.notes}
-                evidenceOverride={Object.values(integratedBoard.evidenceByItem || {}).flat()}
-                contributorMapOverride={integratedBoard.contributorsByItem}
+                valuesOverride={activeBoard.values}
+                notesOverride={activeBoard.notes}
+                evidenceOverride={Object.values(activeBoard.evidenceByItem || {}).flat()}
+                contributorMapOverride={activeBoard.contributorsByItem}
                 persist={false}
                 readOnly
               />
@@ -286,7 +580,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
           </select>
         </div>
 
-        {error && !record && (
+        {error && !selected && (
           <div role="alert" style={{ margin: '1rem 1.3rem', padding: '0.75rem 1rem', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#7F1D1D', fontSize: '0.78rem', fontWeight: 600 }}>
             {error}
           </div>
@@ -414,19 +708,13 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                           {r ? `${formatIndonesianNumber(r.totalScore, 2)} Poin` : '-'}
                         </td>
                         <td style={{ padding: '0.75rem 0.85rem', textAlign: 'right' }}>
-                          {r ? (
-                            <button
-                              type="button"
-                              className="gov-button"
-                              onClick={() => updateSelected({ formId: f.id, email: u.email })}
-                            >
-                              Tinjau &amp; Verifikasi
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: '0.71rem', color: '#475569' }}>
-                              {effectiveStatus === 'DRAFT' ? 'Draft unit' : 'Belum kirim'}
-                            </span>
-                          )}
+                          <button
+                            type="button"
+                            className="gov-button"
+                            onClick={() => updateSelected({ formId: f.id, email: u.email })}
+                          >
+                            {r ? 'Tinjau, Edit & Revisi' : 'Kelola & Edit Unit'}
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -491,16 +779,14 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         <strong>{r ? `${formatIndonesianNumber(r.totalScore, 2)} Poin` : 'Belum ada skor'}</strong>
                         {' · '}Bukti {verifiedCount}/{evList.length}
                       </div>
-                      {r && (
-                        <button
-                          type="button"
-                          className="gov-button"
-                          style={{ minHeight: '44px' }}
-                          onClick={() => updateSelected({ formId: f.id, email: u.email })}
-                        >
-                          Tinjau &amp; Verifikasi
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="gov-button"
+                        style={{ minHeight: '44px' }}
+                        onClick={() => updateSelected({ formId: f.id, email: u.email })}
+                      >
+                        {r ? 'Tinjau, Edit & Revisi' : 'Kelola & Edit Unit'}
+                      </button>
                     </div>
                   </article>
                 ))
@@ -571,12 +857,69 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
         )}
       </section>
 
-      {record && form && (() => {
+      {selected && form && (() => {
+        const targetEmail = selected.email;
+        const unitMeta = (form.units || []).find((u) => u.email?.toLowerCase() === targetEmail?.toLowerCase()) || {
+          email: targetEmail,
+          name: record?.unit || draft?.unit || targetEmail,
+          picCodes: record?.picCodes || draft?.picCodes || [],
+        };
+        const unitDisplayName = record?.unit || draft?.unit || unitMeta.name || targetEmail;
+        const unitPicCodes = record?.picCodes || draft?.picCodes || unitMeta.picCodes || [];
+        const unitAssignedCount = record?.assignedIndicatorIds?.length
+          ?? getEditableItemsForUser(form, { role: 'kpi_only', status: 'Aktif', email: targetEmail, picCodes: unitPicCodes, unit: unitDisplayName }).length;
+        const activeUnitStatus = record?.status || (draft ? 'DRAFT' : 'EMPTY');
+        const unitInitialValues = { ...(draft?.values || {}), ...(record?.values || {}) };
+        const unitInitialNotes = { ...(draft?.notes || {}), ...(record?.notes || {}) };
+        const currentValuesPayload = adminUnitEdits?.values ?? unitInitialValues;
+        const currentNotesPayload = adminUnitEdits?.notes ?? unitInitialNotes;
+        const unitEvidenceList = readUnitEvidence(form.id, targetEmail, state);
+        const unitVerifiedEvidenceCount = unitEvidenceList.filter((ev) => ev.status === 'VERIFIED').length;
+
+        const saveUnitEditsNow = (nextTransition = null) => {
+          mutate(() => {
+            saveUnitKpiByAdmin(form.id, targetEmail, currentUser, {
+              values: currentValuesPayload,
+              notes: currentNotesPayload,
+              statusTransition: nextTransition,
+              revisionNote: note.trim(),
+            });
+            setAdminUnitEdits(null);
+            setSavedNotice(`Data KPI ${unitDisplayName} berhasil diperbarui${nextTransition ? ` (${labels[nextTransition] || nextTransition})` : ''}.`);
+          });
+        };
+
+        const runUnitTransition = (status) => {
+          if (status === 'LOCKED' || record?.status === 'LOCKED') {
+            if (record?.status === 'LOCKED') {
+              setPendingUnlock({
+                formId: form.id,
+                email: targetEmail,
+                status,
+                nextNote: note || 'Submission dibuka kembali oleh PRP',
+                pendingEdits: adminUnitEdits,
+              });
+              return;
+            }
+          }
+          mutate(() => {
+            if (adminUnitEdits) {
+              saveUnitKpiByAdmin(form.id, targetEmail, currentUser, {
+                values: adminUnitEdits.values,
+                notes: adminUnitEdits.notes,
+              });
+            }
+            reviewUnitKpi(form.id, targetEmail, status, note || 'Disetujui dan terverifikasi oleh PRP', currentUser);
+            setAdminUnitEdits(null);
+            setSavedNotice(`Status unit ${unitDisplayName} diperbarui ke ${labels[status] || status}.`);
+          });
+        };
+
         const detailDialog = (
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Tinjauan KPI Unit"
+            aria-label="Tinjauan & Revisi KPI Unit"
             data-lenis-prevent
             onClick={(event) => {
               if (event.target === event.currentTarget) updateSelected(null);
@@ -624,22 +967,31 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               >
                 <div style={{ minWidth: 0, flex: '1 1 260px' }}>
                   <div className="ent-eyebrow" style={{ marginBottom: '0.35rem' }}>
-                    <ShieldCheck size={12} /> VERIFIKASI SUBMISSION &amp; BUKTI CAPAIAN KPI
+                    <ShieldCheck size={12} /> REVIEW, EDIT LANGSUNG &amp; REVISI PER UNIT
                   </div>
                   <h3 style={{ margin: 0, fontSize: 'clamp(1rem, 2vw, 1.18rem)', fontFamily: 'Outfit, sans-serif', color: '#072534', overflowWrap: 'anywhere' }}>
-                    {record.unit} · Periode {form.period}
+                    {unitDisplayName} · Periode {form.period}
                   </h3>
                   <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '0.2rem', overflowWrap: 'anywhere' }}>
-                    Akun: <strong>{record.email}</strong>
-                    {(record.picCodes || []).length > 0 ? ` · Kode PIC: ${record.picCodes.join(', ')}` : ''}
-                    {Array.isArray(record.assignedIndicatorIds) ? ` · ${record.assignedIndicatorIds.length} indikator ditugaskan` : ''}
+                    Akun: <strong>{targetEmail}</strong>
+                    {unitPicCodes.length > 0 ? ` · Kode PIC: ${unitPicCodes.join(', ')}` : ''}
+                    {` · ${unitAssignedCount} indikator tugas unit`}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-                  <span className={badgeFor(record.status)}>
+                  <span className={badgeFor(activeUnitStatus)}>
                     <span className="ent-badge-dot" />
-                    {labels[record.status]}
+                    {labels[activeUnitStatus] || activeUnitStatus}
                   </span>
+                  <button
+                    type="button"
+                    className="ent-btn ent-btn-primary"
+                    style={{ minHeight: '44px' }}
+                    onClick={() => saveUnitEditsNow(null)}
+                  >
+                    <Save size={14} />
+                    <span>{adminUnitEdits ? 'Simpan Editan Unit Ini*' : 'Simpan Nilai Unit Ini'}</span>
+                  </button>
                   <button type="button" className="gov-button" style={{ minHeight: '44px' }} onClick={() => updateSelected(null)}>
                     <X size={15} /> Tutup Detail
                   </button>
@@ -652,15 +1004,20 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     {error}
                   </div>
                 )}
+                {savedNotice && (
+                  <div role="status" style={{ padding: '0.8rem 1rem', borderRadius: '8px', background: '#F0FDF4', border: '1px solid #86EFAC', color: '#14532D', fontSize: '0.8rem', fontWeight: 600 }}>
+                    {savedNotice}
+                  </div>
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.15rem', minWidth: 0 }}>
                   <div className="ent-card" style={{ padding: '1.2rem', minWidth: 0 }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
-                      Catatan pemeriksaan PRP (wajib diisi saat menolak bukti, meminta revisi, atau menolak submission)
+                      Catatan pemeriksaan &amp; instruksi revisi PRP (berlaku saat meminta revisi, edit langsung, atau menolak)
                       <textarea
                         className="ent-textarea"
                         rows={3}
-                        placeholder="Tuliskan catatan verifikasi atau instruksi revisi untuk unit kerja..."
+                        placeholder="Tuliskan catatan verifikasi, perbaikan isian, atau instruksi revisi untuk unit ini..."
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                       />
@@ -671,67 +1028,86 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                       <span>Saya telah memeriksa kesesuaian capaian, bukti fisik/digital, dan keterangan unit.</span>
                     </label>
 
-                    {(() => {
-                      const items = readUnitEvidence(form.id, record.email, state);
-                      const verified = items.filter((e) => e.status === 'VERIFIED').length;
-                      return (
-                        <p style={{ margin: '0.65rem 0 0.95rem', fontSize: '0.75rem', color: '#475569' }}>
-                          Bukti terverifikasi: <strong style={{ color: '#072534' }}>{verified}/{items.length}</strong>
-                          {items.length && verified < items.length ? '. Verifikasi seluruh bukti capaian sebelum menyetujui submission.' : ''}
-                        </p>
-                      );
-                    })()}
+                    <p style={{ margin: '0.65rem 0 0.95rem', fontSize: '0.75rem', color: '#475569' }}>
+                      Bukti terverifikasi: <strong style={{ color: '#072534' }}>{unitVerifiedEvidenceCount}/{unitEvidenceList.length}</strong>
+                      {unitEvidenceList.length && unitVerifiedEvidenceCount < unitEvidenceList.length ? '. Verifikasi seluruh bukti capaian sebelum menyetujui submission.' : ''}
+                    </p>
 
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      {(KPI_TRANSITIONS[record.status] || []).filter((s) => s !== 'SUBMITTED').map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          className={`ent-btn ${status === 'APPROVED' ? 'ent-btn-teal' : status === 'LOCKED' ? 'ent-btn-primary' : ''}`}
-                          style={{ minHeight: '44px' }}
-                          disabled={(status === 'APPROVED' && !complete) || (status !== 'APPROVED' && status !== 'LOCKED' && !note.trim())}
-                          onClick={() => {
-                            if (record.status === 'LOCKED') {
-                              setPendingUnlock({
-                                formId: form.id,
-                                email: record.email,
-                                status,
-                                nextNote: note || 'Submission dibuka kembali oleh PRP',
-                              });
-                              return;
-                            }
-                            mutate(() => reviewUnitKpi(form.id, record.email, status, note || 'Disetujui dan terverifikasi oleh PRP', currentUser));
-                          }}
-                        >
-                          {status === 'APPROVED' && <Check size={14} />}
-                          {actionLabel(record.status, status)}
-                        </button>
-                      ))}
                       <button
                         type="button"
                         className="ent-btn"
-                        style={{ minHeight: '44px', borderColor: '#FCA5A5', color: '#991B1B', background: '#FEF2F2' }}
-                        onClick={() => {
-                          const ok = typeof window === 'undefined'
-                            || window.confirm(`Hapus & reset data submission uji coba milik ${record.unit} (${record.email}) kembali ke Belum Diisi (0,00)?`);
-                          if (!ok) return;
-                          mutate(() => {
-                            resetUnitKpiByAdmin(form.id, record.email, currentUser);
-                            updateSelected(null);
-                          });
-                        }}
+                        style={{ minHeight: '44px', borderColor: '#094E68', color: '#094E68', background: '#EDF3F6' }}
+                        onClick={() => saveUnitEditsNow(null)}
                       >
-                        Reset Data Unit ke Semula
+                        <PenLine size={14} />
+                        <span>{adminUnitEdits ? 'Simpan Editan Isi Unit*' : 'Simpan Editan Isi Unit'}</span>
                       </button>
+
+                      {!record ? (
+                        <>
+                          <button
+                            type="button"
+                            className="ent-btn ent-btn-primary"
+                            style={{ minHeight: '44px' }}
+                            onClick={() => saveUnitEditsNow('SUBMITTED')}
+                          >
+                            <Send size={14} />
+                            <span>Simpan &amp; Ajukan atas Nama Unit</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="ent-btn"
+                            style={{ minHeight: '44px' }}
+                            disabled={!note.trim()}
+                            onClick={() => saveUnitEditsNow('NEEDS_REVISION')}
+                          >
+                            Kirim Revisi + Email ke Unit
+                          </button>
+                        </>
+                      ) : (
+                        (KPI_TRANSITIONS[record.status] || []).filter((s) => s !== 'SUBMITTED').map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            className={`ent-btn ${status === 'APPROVED' ? 'ent-btn-teal' : status === 'LOCKED' ? 'ent-btn-primary' : ''}`}
+                            style={{ minHeight: '44px' }}
+                            disabled={(status === 'APPROVED' && !complete) || (status !== 'APPROVED' && status !== 'LOCKED' && !note.trim())}
+                            onClick={() => runUnitTransition(status)}
+                          >
+                            {status === 'APPROVED' && <Check size={14} />}
+                            {actionLabel(record.status, status)}
+                          </button>
+                        ))
+                      )}
+
+                      {(record || draft || unitEvidenceList.length > 0) && (
+                        <button
+                          type="button"
+                          className="ent-btn"
+                          style={{ minHeight: '44px', borderColor: '#FCA5A5', color: '#991B1B', background: '#FEF2F2' }}
+                          onClick={() => {
+                            const ok = typeof window === 'undefined'
+                              || window.confirm(`Hapus & reset seluruh isian uji coba milik ${unitDisplayName} (${targetEmail}) kembali ke Belum Diisi (0,00)?`);
+                            if (!ok) return;
+                            mutate(() => {
+                              resetUnitKpiByAdmin(form.id, targetEmail, currentUser);
+                              updateSelected(null);
+                            });
+                          }}
+                        >
+                          Reset Data Unit ke Semula
+                        </button>
+                      )}
                     </div>
 
-                    {record.notes && Object.keys(record.notes).length > 0 && (
+                    {Object.keys(currentNotesPayload || {}).length > 0 && (
                       <div style={{ marginTop: '1rem', paddingTop: '0.9rem', borderTop: '1px solid #D8E4EA' }}>
                         <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#072534', marginBottom: '0.45rem' }}>
-                          Ringkasan Keterangan per Baris ({Object.keys(record.notes).length})
+                          Ringkasan Keterangan per Baris ({Object.keys(currentNotesPayload).length})
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '150px', overflowY: 'auto' }}>
-                          {Object.entries(record.notes).map(([itemId, text]) => (
+                          {Object.entries(currentNotesPayload).map(([itemId, text]) => (
                             <div key={itemId} style={{ fontSize: '0.72rem', padding: '0.45rem 0.6rem', borderRadius: '6px', background: '#F7FAFB', border: '1px solid #D8E4EA', color: '#334155', overflowWrap: 'anywhere' }}>
                               <strong style={{ color: '#094E68' }}>{indicatorLabelById[itemId] || itemId}:</strong> {text}
                             </div>
@@ -744,19 +1120,19 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                   <div className="ent-card" style={{ padding: '1.2rem', minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                       <h4 style={{ margin: 0, fontSize: '0.88rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
-                        Daftar Dokumen &amp; Tautan Bukti Capaian ({readUnitEvidence(form.id, record.email, state).length})
+                        Daftar Dokumen &amp; Tautan Bukti Capaian ({unitEvidenceList.length})
                       </h4>
-                      {record.status === 'SUBMITTED' && readUnitEvidence(form.id, record.email, state).some((e) => e.status !== 'VERIFIED') && (
+                      {unitEvidenceList.some((e) => e.status !== 'VERIFIED') && (
                         <button
                           type="button"
                           className="ent-btn ent-btn-teal"
                           style={{ minHeight: '40px', padding: '0.38rem 0.75rem', fontSize: '0.71rem' }}
                           onClick={() => mutate(() => {
-                            const pendingList = readUnitEvidence(form.id, record.email, readKpiWorkflow()).filter((ev) => ev.status !== 'VERIFIED');
+                            const pendingList = readUnitEvidence(form.id, targetEmail, readKpiWorkflow()).filter((ev) => ev.status !== 'VERIFIED');
                             pendingList.forEach((ev) => {
                               reviewUnitEvidence(
                                 form.id,
-                                record.email,
+                                targetEmail,
                                 ev.id,
                                 'VERIFIED',
                                 note.trim() || 'Bukti capaian sesuai dan terverifikasi oleh PRP',
@@ -771,12 +1147,14 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                       )}
                     </div>
 
-                    {!readUnitEvidence(form.id, record.email, state).length && (
-                      <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>Belum ada bukti capaian yang dilampirkan oleh unit ini.</p>
+                    {!unitEvidenceList.length && (
+                      <p style={{ color: '#475569', fontSize: '0.78rem', margin: 0 }}>
+                        Belum ada bukti capaian yang dilampirkan unit ini. Admin PRP juga dapat mengunggah bukti langsung pada baris tabel unit di bawah.
+                      </p>
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '340px', overflowY: 'auto' }}>
-                      {readUnitEvidence(form.id, record.email, state).map((e) => {
+                      {unitEvidenceList.map((e) => {
                         const isFile = e.kind === 'file' || Boolean(e.dataUrl);
                         const isImg = /^image\//i.test(e.mimeType || '');
                         return (
@@ -842,34 +1220,34 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                 </a>
                               )}
 
-                              {record.status === 'SUBMITTED' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="ent-btn ent-btn-teal"
-                                    style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
-                                    onClick={() => mutate(() => reviewUnitEvidence(
-                                      form.id,
-                                      record.email,
-                                      e.id,
-                                      'VERIFIED',
-                                      note.trim() || 'Bukti capaian sesuai dan terverifikasi oleh PRP',
-                                      currentUser,
-                                    ))}
-                                  >
-                                    Verifikasi Bukti
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="ent-btn"
-                                    style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#7F1D1D' }}
-                                    disabled={!note.trim()}
-                                    title={note.trim() ? '' : 'Tuliskan alasan penolakan pada kolom catatan terlebih dahulu'}
-                                    onClick={() => mutate(() => reviewUnitEvidence(form.id, record.email, e.id, 'REJECTED', note, currentUser))}
-                                  >
-                                    Tolak Bukti
-                                  </button>
-                                </>
+                              {e.status !== 'VERIFIED' && (
+                                <button
+                                  type="button"
+                                  className="ent-btn ent-btn-teal"
+                                  style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
+                                  onClick={() => mutate(() => reviewUnitEvidence(
+                                    form.id,
+                                    targetEmail,
+                                    e.id,
+                                    'VERIFIED',
+                                    note.trim() || 'Bukti capaian sesuai dan terverifikasi oleh PRP',
+                                    currentUser,
+                                  ))}
+                                >
+                                  Verifikasi Bukti
+                                </button>
+                              )}
+                              {e.status !== 'REJECTED' && (
+                                <button
+                                  type="button"
+                                  className="ent-btn"
+                                  style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#7F1D1D' }}
+                                  disabled={!note.trim()}
+                                  title={note.trim() ? '' : 'Tuliskan alasan penolakan pada kolom catatan terlebih dahulu'}
+                                  onClick={() => mutate(() => reviewUnitEvidence(form.id, targetEmail, e.id, 'REJECTED', note, currentUser))}
+                                >
+                                  Tolak Bukti
+                                </button>
                               )}
                             </div>
 
@@ -881,7 +1259,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                   </div>
                 </div>
 
-                {(record.history || []).length > 0 && (
+                {(record?.history || []).length > 0 && (
                   <div className="ent-card" style={{ padding: '1rem 1.2rem', minWidth: 0 }}>
                     <h4 style={{ margin: '0 0 0.6rem', fontSize: '0.86rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}>
                       Riwayat Audit Submission &amp; Snapshot ({record.history.length})
@@ -911,16 +1289,26 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
 
                 <div style={{ minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}>
                   <KPIDataEntrySheet
-                    key={`${form.id}:${record.email}:${record.status}`}
+                    key={`${form.id}:${targetEmail}:${activeUnitStatus}`}
                     period={form.period}
                     sectionsOverride={form.sections}
-                    valuesOverride={{ ...(selectedFormBoard?.values || {}), ...(record.values || {}) }}
-                    notesOverride={{ ...(selectedFormBoard?.notes || {}), ...(record.notes || {}) }}
-                    evidenceOverride={readUnitEvidence(form.id, record.email, state)}
+                    valuesOverride={unitInitialValues}
+                    notesOverride={unitInitialNotes}
+                    evidenceOverride={unitEvidenceList}
                     contributorMapOverride={selectedFormBoard?.contributorsByItem}
-                    highlightPicCodes={record.picCodes}
+                    integratedBoardOverride={selectedFormBoard}
+                    highlightPicCodes={unitPicCodes}
+                    adminUnitContext={{
+                      formId: form.id,
+                      email: targetEmail,
+                      unitName: unitDisplayName,
+                      picCodes: unitPicCodes,
+                      status: activeUnitStatus,
+                      period: form.period,
+                    }}
+                    onAdminUnitDraftChange={setAdminUnitEdits}
                     persist={false}
-                    readOnly
+                    readOnly={false}
                   />
                 </div>
               </div>
@@ -985,7 +1373,16 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                   onClick={() => {
                     const target = pendingUnlock;
                     setPendingUnlock(null);
-                    mutate(() => reviewUnitKpi(target.formId, target.email, target.status, target.nextNote, currentUser));
+                    mutate(() => {
+                      if (target.pendingEdits) {
+                        saveUnitKpiByAdmin(target.formId, target.email, currentUser, {
+                          values: target.pendingEdits.values,
+                          notes: target.pendingEdits.notes,
+                        });
+                      }
+                      reviewUnitKpi(target.formId, target.email, target.status, target.nextNote, currentUser);
+                      setAdminUnitEdits(null);
+                    });
                   }}
                 >
                   Ya, Buka Kunci

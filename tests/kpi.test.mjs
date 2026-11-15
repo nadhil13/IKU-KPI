@@ -393,3 +393,92 @@ test('sinkronisasi master tabel lintas periode menjaga keutuhan data historis, o
   assert.ok(notifs.some((n) => n.kind === 'REVISION' && n.meta?.targetId === 'B_new_2027'));
   assert.ok(emails.some((e) => e.kind === 'REVISION' && e.toEmails.includes('ppa@itpln.ac.id')));
 });
+
+test('Admin PRP dapat mengedit unit sebelum & sesudah kirim, revisi per kolom/unit, serta filter tabel final terkonfirmasi', () => {
+  memory.clear();
+  const prpAdmin = { email: 'admin@itpln.ac.id', name: 'Superadmin PRP', role: 'superadmin_prp', status: 'Aktif' };
+  const ppaUser = { email: 'ppa@itpln.ac.id', name: 'Operator PPA', unit: 'PPA', role: 'kpi_only', picCodes: ['PPA'], status: 'Aktif' };
+
+  const multiUnitSections = [{
+    code: 'A',
+    title: 'PERSPEKTIF KEBERLANJUTAN & AKADEMIK',
+    totalWeight: 100,
+    items: [
+      {
+        id: 'A_bakt_1',
+        no: '1',
+        indikator: 'Pendapatan BAKT',
+        calcType: 'single_target',
+        targetNum: 100,
+        bobot: 40,
+        pics: ['BAKT'],
+        subrows: [{ key: 'a_bakt_val', label: 'Realisasi BAKT' }],
+      },
+      {
+        id: 'A_ppa_1',
+        no: '2',
+        indikator: 'Akreditasi PPA',
+        calcType: 'single_target',
+        targetNum: 100,
+        bobot: 60,
+        pics: ['PPA'],
+        subrows: [{ key: 'a_ppa_val', label: 'Realisasi PPA' }],
+      },
+    ],
+  }];
+
+  const form = store.distributeKpiForm(multiUnitSections, { period: '2026' });
+
+  // 1. Admin PRP mengedit unit BAKT sebelum BAKT mengirim apa pun (status EMPTY -> DRAFT + isolasi PIC BAKT)
+  const draftRes = store.saveUnitKpiByAdmin(form.id, 'bakt@itpln.ac.id', prpAdmin, {
+    values: { a_bakt_val: '50', a_ppa_val: '999' }, // a_ppa_val harus terfilter karena bukan PIC BAKT
+    notes: { A_bakt_1: 'Diinput awal oleh Admin PRP untuk simulasi', A_ppa_1: 'Seharusnya tidak tersimpan di BAKT' },
+  });
+  assert.equal(draftRes.record, null);
+  assert.equal(draftRes.draft?.values?.a_bakt_val, '50');
+  assert.equal(draftRes.draft?.values?.a_ppa_val, undefined);
+  assert.equal(draftRes.draft?.notes?.A_ppa_1, undefined);
+
+  // Admin menambahkan bukti dukung untuk unit PPA lalu unit submit dan Admin edit + verifikasi bukti sebelum menyetujui
+  const ppaEv = store.addUnitEvidenceByAdmin(form.id, 'ppa@itpln.ac.id', prpAdmin, {
+    indicatorId: 'A_ppa_1',
+    kind: 'link',
+    label: 'SK Akreditasi Resmi',
+    url: 'https://drive.google.com/file/d/sk-akreditasi/view',
+  });
+  store.submitUnitKpi(form.id, ppaUser, { a_ppa_val: '100' }, { notes: { A_ppa_1: 'Akreditasi unggul 100%' } });
+  // Admin edit ulang nilai PPA sebelum approve dan memverifikasi bukti setelah submission
+  store.saveUnitKpiByAdmin(form.id, 'ppa@itpln.ac.id', prpAdmin, {
+    values: { a_ppa_val: '80' },
+    notes: { A_ppa_1: 'Penyesuaian verifikasi Admin PRP' },
+  });
+  store.reviewUnitEvidence(form.id, 'ppa@itpln.ac.id', ppaEv.id, 'VERIFIED', 'Bukti sah dan sesuai', prpAdmin);
+  store.reviewUnitKpi(form.id, 'ppa@itpln.ac.id', 'APPROVED', 'Terverifikasi final PRP', prpAdmin);
+
+  // Cek perbedaan Papan Live (memuat draft BAKT + approved PPA) vs Tabel Final Terkonfirmasi (hanya PPA)
+  const liveBoard = store.readIntegratedKpiBoard(form.id, store.readKpiWorkflow(), { confirmedOnly: false });
+  assert.equal(liveBoard.values.a_bakt_val, '50');
+  assert.equal(liveBoard.values.a_ppa_val, '80');
+
+  const finalBoard = store.readIntegratedKpiBoard(form.id, store.readKpiWorkflow(), { confirmedOnly: true });
+  assert.equal(finalBoard.values.a_bakt_val, undefined);
+  assert.equal(finalBoard.values.a_ppa_val, '80');
+  assert.equal(finalBoard.totalScore, 48); // 80% * 60 = 48
+
+  // Admin meminta revisi spesifik kolom 'Isian Capaian' hanya untuk unit BAKT (PPA tetap APPROVED)
+  store.saveUnitKpiByAdmin(form.id, 'bakt@itpln.ac.id', prpAdmin, {
+    values: { a_bakt_val: '50' },
+    statusTransition: 'SUBMITTED',
+  });
+  const revResult = store.saveKpiRevisionComment(form.id, prpAdmin, {
+    scope: 'ITEM',
+    targetId: 'A_bakt_1',
+    targetColumn: 'Isian Capaian',
+    targetEmail: 'bakt@itpln.ac.id',
+    comment: 'Mohon sesuaikan angka realisasi pendapatan BAKT dengan neraca audit.',
+  });
+  assert.deepEqual(revResult.notifiedEmails, ['bakt@itpln.ac.id']);
+  assert.equal(revResult.items.A_bakt_1.targetColumn, 'Isian Capaian');
+  assert.equal(store.readUnitSubmission(form.id, 'bakt@itpln.ac.id')?.status, 'NEEDS_REVISION');
+  assert.equal(store.readUnitSubmission(form.id, 'ppa@itpln.ac.id')?.status, 'APPROVED');
+});

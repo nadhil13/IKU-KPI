@@ -24,11 +24,14 @@ import {
   submitUnitKpi,
   readUnitEvidence,
   addUnitEvidence,
+  addUnitEvidenceByAdmin,
   removeUnitEvidence,
+  removeUnitEvidenceByAdmin,
   ensureDefaultKpiDistribution,
   readIntegratedKpiBoard,
   readKpiWorkflow,
   saveAdminKpiOverride,
+  saveUnitKpiByAdmin,
   saveKpiRevisionComment,
   MAX_EVIDENCE_FILE_BYTES,
   ALLOWED_EVIDENCE_MIME_TYPES,
@@ -159,6 +162,9 @@ export default function KPIDataEntrySheet(props) {
   const isAdminPrp = currentUser?.role === 'superadmin_prp';
 
   const activeForm = useMemo(() => {
+    if (props.adminUnitContext?.formId) {
+      return workflowState.forms.find((f) => f.id === props.adminUnitContext.formId) || workflowState.forms[workflowState.forms.length - 1] || null;
+    }
     if (isUnit) {
       return getUnitKpiForm(currentUser?.email, workflowState, requestedPeriod);
     }
@@ -166,7 +172,7 @@ export default function KPIDataEntrySheet(props) {
       return getFormForPeriod(requestedPeriod, workflowState, { fallbackToLatest: true });
     }
     return workflowState.forms[workflowState.forms.length - 1] || null;
-  }, [isUnit, currentUser?.email, workflowState, requestedPeriod]);
+  }, [props.adminUnitContext?.formId, isUnit, currentUser?.email, workflowState, requestedPeriod]);
 
   const periodStatusMeta = useMemo(() => {
     void revision;
@@ -215,9 +221,9 @@ export default function KPIDataEntrySheet(props) {
 
   const record = isUnit && activeForm ? readUnitSubmission(activeForm.id, currentUser.email, workflowState) : null;
   const unitDraft = isUnit && activeForm ? readUnitDraft(activeForm.id, currentUser.email, workflowState) : null;
-  const integratedBoard = activeForm && props.persist !== false
+  const integratedBoard = props.integratedBoardOverride || (activeForm && (props.persist !== false || props.adminUnitContext?.formId)
     ? readIntegratedKpiBoard(activeForm.id, workflowState)
-    : null;
+    : null);
 
   const effectiveReadOnly = Boolean(props.readOnly) || isSpiMode || (isUnit && periodStatusMeta.isLocked);
 
@@ -377,6 +383,13 @@ export function EvidencePreviewModal({ evidence, onClose }) {
   return typeof document !== 'undefined' ? createPortal(dialogNode, document.body) : dialogNode;
 }
 
+const REVISION_COLUMN_OPTIONS = [
+  'Semua Kolom Baris',
+  'Isian Capaian',
+  'Bukti Capaian',
+  'Keterangan Capaian',
+];
+
 function RowEvidenceAndNotesCell({
   sectionCode,
   item,
@@ -384,6 +397,7 @@ function RowEvidenceAndNotesCell({
   isLocked,
   isUnitMode = false,
   isAdminPrp = false,
+  isAdminUnitReview = false,
   ownEvidence,
   sharedEvidence,
   noteValue,
@@ -403,6 +417,7 @@ function RowEvidenceAndNotesCell({
   const [rowError, setRowError] = useState('');
   const [revComposerOpen, setRevComposerOpen] = useState(false);
   const [revText, setRevText] = useState(itemRevision?.comment || '');
+  const [revColumn, setRevColumn] = useState(itemRevision?.targetColumn || 'Semua Kolom Baris');
   const fileInputRef = useRef(null);
 
   const visibleEvidence = useMemo(() => {
@@ -495,9 +510,14 @@ function RowEvidenceAndNotesCell({
             lineHeight: 1.4,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem', fontWeight: 800, marginBottom: '0.15rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem', fontWeight: 800, marginBottom: '0.15rem', flexWrap: 'wrap' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <MessageSquareWarning size={12} /> CATATAN REVISI PRP
+              {itemRevision.targetColumn && itemRevision.targetColumn !== 'Semua Kolom Baris' && (
+                <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: '#FEF3C7', border: '1px solid #F59E0B', color: '#78350F' }}>
+                  {itemRevision.targetColumn}
+                </span>
+              )}
             </span>
             <span style={{ fontSize: '0.6rem', color: '#92400E', fontFamily: 'JetBrains Mono, monospace' }}>
               <MailCheck size={10} style={{ verticalAlign: 'middle' }} /> Email Terkirim
@@ -604,7 +624,7 @@ function RowEvidenceAndNotesCell({
                       <span>Buka Tautan</span>
                     </a>
                   )}
-                  {canEditRow && !isLocked && ev.isOwn && (
+                  {canEditRow && !isLocked && (ev.isOwn || isAdminUnitReview) && (
                     <button
                       type="button"
                       className="clean-mini-btn clean-mini-btn-danger"
@@ -797,6 +817,7 @@ function RowEvidenceAndNotesCell({
               style={{ width: '100%', justifyContent: 'center', borderColor: itemRevision?.comment ? '#F59E0B' : '#B8CAD4', color: itemRevision?.comment ? '#92400E' : '#094E68', background: itemRevision?.comment ? '#FFFBEB' : '#FFFFFF' }}
               onClick={() => {
                 setRevText(itemRevision?.comment || '');
+                setRevColumn(itemRevision?.targetColumn || 'Semua Kolom Baris');
                 setRevComposerOpen(true);
               }}
             >
@@ -808,6 +829,17 @@ function RowEvidenceAndNotesCell({
               <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#78350F' }}>
                 Komentar Revisi PRP ({sectionCode}.{item.no})
               </div>
+              <select
+                className="clean-row-text-input"
+                aria-label={`Kolom sasaran revisi ${sectionCode}.${item.no}`}
+                value={revColumn}
+                onChange={(e) => setRevColumn(e.target.value)}
+                style={{ fontSize: '0.69rem', fontWeight: 600 }}
+              >
+                {REVISION_COLUMN_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>Sasaran: {opt}</option>
+                ))}
+              </select>
               <textarea
                 rows={2}
                 className="clean-row-textarea"
@@ -821,7 +853,7 @@ function RowEvidenceAndNotesCell({
                   className="clean-mini-btn"
                   style={{ background: '#094E68', color: '#FFFFFF', borderColor: '#094E68', flex: 1 }}
                   onClick={() => {
-                    onSaveItemRevision(item.id, revText, false);
+                    onSaveItemRevision(item.id, revText, false, revColumn);
                     setRevComposerOpen(false);
                   }}
                 >
@@ -878,9 +910,28 @@ function KPIEntryContent({
   evidenceOverride = null,
   contributorMapOverride = null,
   highlightPicCodes = null,
+  adminUnitContext = null,
+  onAdminUnitDraftChange = null,
 }) {
   const isUnitMode = Boolean(unitForm && (unitUser?.role === 'kpi_only' || unitUser?.role === 'dual'));
-  const targetFormId = unitForm?.id || activeForm?.id || 'global';
+  const isAdminUnitReview = Boolean(isAdminPrp && !isUnitMode && adminUnitContext?.email && !readOnly);
+  const adminUnitPics = useMemo(
+    () => normalizePicCodes(adminUnitContext?.picCodes || highlightPicCodes || []),
+    [adminUnitContext?.picCodes, highlightPicCodes],
+  );
+  const adminUnitProxy = useMemo(
+    () => (isAdminUnitReview
+      ? {
+        role: 'kpi_only',
+        status: 'Aktif',
+        email: adminUnitContext.email,
+        unit: adminUnitContext.unitName || adminUnitContext.email,
+        picCodes: adminUnitPics,
+      }
+      : null),
+    [isAdminUnitReview, adminUnitContext?.email, adminUnitContext?.unitName, adminUnitPics],
+  );
+  const targetFormId = unitForm?.id || adminUnitContext?.formId || activeForm?.id || 'global';
   const valuesKey = unitForm ? `${STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : `${STORAGE_KEY}:${targetFormId}`;
   const notesKey = unitForm ? `${NOTES_STORAGE_KEY}:${unitForm.id}:${unitUser.email}` : `${NOTES_STORAGE_KEY}:${targetFormId}`;
   const localEvidenceKey = `${LOCAL_EVIDENCE_STORAGE_KEY}:${targetFormId}`;
@@ -892,9 +943,10 @@ function KPIEntryContent({
   const tabPillRef = useRef(null);
   const [governanceRevision, setGovernanceRevision] = useState(0);
   const [previewEvidence, setPreviewEvidence] = useState(null);
-  const [rowScopeFilter, setRowScopeFilter] = useState(() => (isUnitMode ? 'MY_PIC' : 'ALL'));
-  const [sectionRevComposer, setSectionRevComposer] = useState({ code: null, text: '' });
-  const isPreview = Boolean(sectionsOverride) && !isUnitMode && !activeForm;
+  const [rowScopeFilter, setRowScopeFilter] = useState(() => (isUnitMode || isAdminUnitReview ? 'MY_PIC' : 'ALL'));
+  const [sectionRevComposer, setSectionRevComposer] = useState({ code: null, text: '', targetColumn: 'Semua Kolom Baris' });
+  const [hasUnsavedUnitEdit, setHasUnsavedUnitEdit] = useState(false);
+  const isPreview = Boolean(sectionsOverride) && !isUnitMode && !activeForm && !isAdminUnitReview;
 
   const governedSections = useMemo(
     () => (sectionsOverride ? normalizeKpiSections(hydrateSectionsWithDefaultPics(sectionsOverride)) : getGovernedKpiSections()),
@@ -909,21 +961,27 @@ function KPIEntryContent({
 
   const userPicCodes = useMemo(() => getUserPicCodes(unitUser), [unitUser]);
   const highlightedPicsSet = useMemo(
-    () => new Set(normalizePicCodes(highlightPicCodes || []).map((c) => c.toLowerCase())),
-    [highlightPicCodes],
+    () => new Set(normalizePicCodes(highlightPicCodes || adminUnitContext?.picCodes || []).map((c) => c.toLowerCase())),
+    [highlightPicCodes, adminUnitContext?.picCodes],
   );
 
   const editableItemIds = useMemo(() => {
     const ids = new Set();
     governedSections.forEach((sec) => {
       sec.items.forEach((item) => {
-        if (!isUnitMode || canUserEditKpiItem(item, unitUser)) {
+        if (isUnitMode) {
+          if (canUserEditKpiItem(item, unitUser)) ids.add(item.id);
+        } else if (isAdminUnitReview) {
+          if (adminUnitPics.length === 0 || canUserEditKpiItem(item, adminUnitProxy)) {
+            ids.add(item.id);
+          }
+        } else {
           ids.add(item.id);
         }
       });
     });
     return ids;
-  }, [governedSections, isUnitMode, unitUser]);
+  }, [governedSections, isUnitMode, unitUser, isAdminUnitReview, adminUnitPics, adminUnitProxy]);
 
   const editableSubKeys = useMemo(() => {
     const keys = new Set();
@@ -1143,12 +1201,15 @@ function KPIEntryContent({
 
   const ownEvidenceList = useMemo(() => {
     void workflowRevision;
+    if (isAdminUnitReview && adminUnitContext?.formId && adminUnitContext?.email) {
+      return readUnitEvidence(adminUnitContext.formId, adminUnitContext.email);
+    }
     if (Array.isArray(evidenceOverride)) return evidenceOverride;
     if (isUnitMode && unitForm && unitUser?.email) {
       return readUnitEvidence(unitForm.id, unitUser.email);
     }
     return localEvidenceList;
-  }, [evidenceOverride, isUnitMode, unitForm, unitUser, localEvidenceList, workflowRevision]);
+  }, [evidenceOverride, isAdminUnitReview, adminUnitContext?.formId, adminUnitContext?.email, isUnitMode, unitForm, unitUser, localEvidenceList, workflowRevision]);
 
   const ownEvidenceByItem = useMemo(() => {
     const map = {};
@@ -1160,6 +1221,9 @@ function KPIEntryContent({
   }, [ownEvidenceList]);
 
   const effectiveValues = useMemo(() => {
+    if (isAdminUnitReview && !readOnly) {
+      return { ...emptyDefaults, ...(valuesOverride || {}), ...values };
+    }
     if (valuesOverride) return { ...emptyDefaults, ...(integratedBoard?.values || {}), ...valuesOverride };
     if (!isUnitMode) {
       if (integratedBoard?.values) {
@@ -1195,7 +1259,7 @@ function KPIEntryContent({
   }, [valuesOverride, emptyDefaults, integratedBoard, isUnitMode, values, governedSections, editableItemIds]);
 
   useEffect(() => {
-    if (!persist || !isAdminPrp || isUnitMode || readOnly || !activeForm?.id) return undefined;
+    if (!persist || !isAdminPrp || isUnitMode || isAdminUnitReview || readOnly || !activeForm?.id) return undefined;
     const hasOverrideValues = Object.values(values || {}).some((v) => String(v ?? '').trim() !== '')
       || Object.values(notes || {}).some((v) => String(v ?? '').trim() !== '');
     if (!hasOverrideValues) return undefined;
@@ -1219,13 +1283,29 @@ function KPIEntryContent({
     }
   };
 
-  const handleSaveItemRevision = (itemId, comment, resolved = false) => {
-    const fId = activeForm?.id || unitForm?.id;
+  const handleSaveAdminUnitChanges = () => {
+    if (!isAdminUnitReview || !adminUnitContext?.formId || !adminUnitContext?.email) return;
+    try {
+      saveUnitKpiByAdmin(adminUnitContext.formId, adminUnitContext.email, unitUser, {
+        values,
+        notes,
+      });
+      setHasUnsavedUnitEdit(false);
+      showToast(`Perubahan isian & keterangan ${adminUnitContext.unitName || adminUnitContext.email} berhasil disimpan dan disinkronkan.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal menyimpan perubahan unit oleh Admin PRP.');
+    }
+  };
+
+  const handleSaveItemRevision = (itemId, comment, resolved = false, targetColumn = '') => {
+    const fId = adminUnitContext?.formId || activeForm?.id || unitForm?.id;
     if (!isAdminPrp || !fId) return;
     try {
       const res = saveKpiRevisionComment(fId, unitUser, {
         scope: 'ITEM',
         targetId: itemId,
+        targetColumn,
+        targetEmail: isAdminUnitReview ? adminUnitContext.email : '',
         comment,
         resolved,
       });
@@ -1240,17 +1320,19 @@ function KPIEntryContent({
     }
   };
 
-  const handleSaveSectionRevision = (sectionCode, comment, resolved = false) => {
-    const fId = activeForm?.id || unitForm?.id;
+  const handleSaveSectionRevision = (sectionCode, comment, resolved = false, targetColumn = '') => {
+    const fId = adminUnitContext?.formId || activeForm?.id || unitForm?.id;
     if (!isAdminPrp || !fId) return;
     try {
       const res = saveKpiRevisionComment(fId, unitUser, {
         scope: 'SECTION',
         targetId: sectionCode,
+        targetColumn,
+        targetEmail: isAdminUnitReview ? adminUnitContext.email : '',
         comment,
         resolved,
       });
-      setSectionRevComposer({ code: null, text: '' });
+      setSectionRevComposer({ code: null, text: '', targetColumn: 'Semua Kolom Baris' });
       if (resolved || !String(comment || '').trim()) {
         showToast(`Catatan revisi Bagian ${sectionCode} ditandai selesai.`);
       } else {
@@ -1534,13 +1616,15 @@ function KPIEntryContent({
 
   const handleCellChange = (key, val) => {
     if (readOnly) return;
-    if (isUnitMode && !editableSubKeys.has(key)) return;
-    if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
+    if ((isUnitMode || isAdminUnitReview) && !editableSubKeys.has(key)) return;
+    if (!isAdminUnitReview && (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED)) return;
 
-    setValues((prev) => ({
-      ...prev,
-      [key]: val,
-    }));
+    const nextValues = { ...values, [key]: val };
+    setValues(nextValues);
+    if (isAdminUnitReview) {
+      setHasUnsavedUnitEdit(true);
+      onAdminUnitDraftChange?.({ values: nextValues, notes });
+    }
     setWorkflow((prev) => ({
       ...prev,
       status: prev.status === WORKFLOW_STATUS.NOT_STARTED ? WORKFLOW_STATUS.DRAFT : prev.status,
@@ -1549,9 +1633,14 @@ function KPIEntryContent({
 
   const handleNoteChange = (itemId, text) => {
     if (readOnly) return;
-    if (isUnitMode && !editableItemIds.has(itemId)) return;
-    if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
-    setNotes((prev) => ({ ...prev, [itemId]: text }));
+    if ((isUnitMode || isAdminUnitReview) && !editableItemIds.has(itemId)) return;
+    if (!isAdminUnitReview && (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED)) return;
+    const nextNotes = { ...notes, [itemId]: text };
+    setNotes(nextNotes);
+    if (isAdminUnitReview) {
+      setHasUnsavedUnitEdit(true);
+      onAdminUnitDraftChange?.({ values, notes: nextNotes });
+    }
     setWorkflow((prev) => ({
       ...prev,
       status: prev.status === WORKFLOW_STATUS.NOT_STARTED ? WORKFLOW_STATUS.DRAFT : prev.status,
@@ -1559,6 +1648,10 @@ function KPIEntryContent({
   };
 
   const handleAddRowEvidence = (payload) => {
+    if (isAdminUnitReview && adminUnitContext?.formId && adminUnitContext?.email) {
+      addUnitEvidenceByAdmin(adminUnitContext.formId, adminUnitContext.email, unitUser, payload);
+      return;
+    }
     if (isUnitMode && unitForm) {
       addUnitEvidence(unitForm.id, unitUser, payload);
       return;
@@ -1597,6 +1690,10 @@ function KPIEntryContent({
   };
 
   const handleRemoveRowEvidence = (evidenceId) => {
+    if (isAdminUnitReview && adminUnitContext?.formId && adminUnitContext?.email) {
+      removeUnitEvidenceByAdmin(adminUnitContext.formId, adminUnitContext.email, unitUser, evidenceId);
+      return;
+    }
     if (isUnitMode && unitForm) {
       removeUnitEvidence(unitForm.id, unitUser, evidenceId);
       return;
@@ -1605,8 +1702,8 @@ function KPIEntryContent({
   };
 
   const navigableKeys = useMemo(
-    () => (isUnitMode ? orderedKeys.filter((k) => editableSubKeys.has(k)) : orderedKeys),
-    [isUnitMode, orderedKeys, editableSubKeys],
+    () => (isUnitMode || isAdminUnitReview ? orderedKeys.filter((k) => editableSubKeys.has(k)) : orderedKeys),
+    [isUnitMode, isAdminUnitReview, orderedKeys, editableSubKeys],
   );
 
   const handleKeyDown = (e, currentKey) => {
@@ -1875,8 +1972,8 @@ function KPIEntryContent({
     showToast('Hubungi Admin PRP untuk membuka kembali pengajuan melalui ruang tinjauan.');
   };
 
-  readOnly = readOnly || ['REJECTED', 'LOCKED'].includes(workflow.status);
-  const isLocked = readOnly || workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED;
+  readOnly = readOnly || (!isAdminUnitReview && ['REJECTED', 'LOCKED'].includes(workflow.status));
+  const isLocked = readOnly || (!isAdminUnitReview && (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED));
   const isReadyToSubmit = isUnitMode
     ? (
       calculated.picTotalIndicators > 0
@@ -2411,9 +2508,9 @@ ${sectionSummaryHtml}
   };
 
   const availableSectionsForTabs = useMemo(() => {
-    if (!isUnitMode) return governedSections;
+    if (!isUnitMode && !(isAdminUnitReview && rowScopeFilter === 'MY_PIC')) return governedSections;
     return governedSections.filter((sec) => sec.items.some((item) => editableItemIds.has(item.id)));
-  }, [governedSections, isUnitMode, editableItemIds]);
+  }, [governedSections, isUnitMode, isAdminUnitReview, rowScopeFilter, editableItemIds]);
 
   const visibleSections = useMemo(() => {
     const byTab = activeSectionTab === 'ALL'
@@ -2746,7 +2843,13 @@ ${sectionSummaryHtml}
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
               <strong style={{ color: isSpiMode ? '#072534' : workflowStatusTone.color, fontSize: '0.86rem' }}>
-                {isSpiMode ? 'Mode Audit SPI (Hanya Lihat & Unduh Bukti)' : isAdminPrp && !isUnitMode ? 'Kendali Penuh Admin PRP (Full Access & Override Edit)' : workflowStatusLabel}
+                {isSpiMode
+                  ? 'Mode Audit SPI (Hanya Lihat & Unduh Bukti)'
+                  : isAdminUnitReview
+                    ? `Mode Review & Edit Unit PRP: ${adminUnitContext.unitName || adminUnitContext.email}`
+                    : isAdminPrp && !isUnitMode
+                      ? 'Kendali Penuh Admin PRP (Full Access & Override Edit)'
+                      : workflowStatusLabel}
               </strong>
               {periodStatusMeta && (
                 <span
@@ -2793,11 +2896,13 @@ ${sectionSummaryHtml}
             <div style={{ color: '#334155', fontSize: '0.73rem', marginTop: '0.2rem', lineHeight: 1.45 }}>
               {isSpiMode
                 ? 'Akun SPI memiliki akses satu halaman tabel KPI terintegrasi (View-Only) beserta akses pratinjau/unduh seluruh dokumen evidence dan ekspor Excel dengan tautan bukti aktif.'
-                : isAdminPrp && !isUnitMode
-                  ? `Menampilkan seluruh ${calculated.totalIndicatorsCount} indikator dari semua unit kerja. Admin PRP dapat mengedit langsung nilai/keterangan (Override Edit) dan memberi catatan revisi per baris atau bagian.`
-                  : isLocked
-                    ? `Terintegrasi ke sistem pusat ${workflow.submittedAt ? new Date(workflow.submittedAt).toLocaleString('id-ID') : `(${periodStatusMeta?.lockReason || 'sesi aktif'})`}`
-                    : `Menampilkan khusus ${calculated.picTotalIndicators} indikator kinerja milik unit/PIC Anda (${calculated.picFilledInputs}/${calculated.picTotalInputs} isian terisi). Data antar-unit terisolasi secara penuh.`}
+                : isAdminUnitReview
+                  ? `Menampilkan khusus ${calculated.picTotalIndicators} indikator tugas unit (${adminUnitPics.join(', ') || 'Semua PIC'}) agar revisi berlangsung fokus tanpa tabel panjang. Admin PRP dapat mengedit langsung nilai, bukti, keterangan, dan catatan revisi per kolom/baris.`
+                  : isAdminPrp && !isUnitMode
+                    ? `Menampilkan seluruh ${calculated.totalIndicatorsCount} indikator dari semua unit kerja. Admin PRP dapat mengedit langsung nilai/keterangan (Override Edit) dan memberi catatan revisi per baris atau bagian.`
+                    : isLocked
+                      ? `Terintegrasi ke sistem pusat ${workflow.submittedAt ? new Date(workflow.submittedAt).toLocaleString('id-ID') : `(${periodStatusMeta?.lockReason || 'sesi aktif'})`}`
+                      : `Menampilkan khusus ${calculated.picTotalIndicators} indikator kinerja milik unit/PIC Anda (${calculated.picFilledInputs}/${calculated.picTotalInputs} isian terisi). Data antar-unit terisolasi secara penuh.`}
               {!isLocked && isUnitMode && calculated.missingEvidenceIndicators.length > 0 && (
                 <span style={{ display: 'block', color: '#78350F', fontWeight: 600, marginTop: '0.15rem' }}>
                   Bukti capaian wajib dilengkapi pada {calculated.missingEvidenceIndicators.length} baris PIC ({calculated.missingEvidenceIndicators.slice(0, 5).join(', ')}{calculated.missingEvidenceIndicators.length > 5 ? '...' : ''}).
@@ -2817,7 +2922,17 @@ ${sectionSummaryHtml}
               <div style={{ width: `${calculated.completionRatio * 100}%`, height: '100%', background: '#0E7480', borderRadius: '3px', transition: 'width 0.3s ease' }} />
             </div>
           </div>
-          {isAdminPrp && !isUnitMode && !readOnly && activeForm?.id && (
+          {isAdminUnitReview ? (
+            <button
+              type="button"
+              onClick={handleSaveAdminUnitChanges}
+              className="clean-btn clean-btn-primary"
+              style={hasUnsavedUnitEdit ? { background: '#0E7480', borderColor: '#0E7480' } : undefined}
+            >
+              <Save size={14} />
+              <span>{hasUnsavedUnitEdit ? 'Simpan Editan Unit Ini*' : 'Simpan Editan Unit Ini'}</span>
+            </button>
+          ) : isAdminPrp && !isUnitMode && !readOnly && activeForm?.id && (
             <button
               type="button"
               onClick={handleSaveAdminOverrideManual}
@@ -2994,6 +3109,25 @@ ${sectionSummaryHtml}
                 gap: '2px',
               }}
             >
+              {isAdminUnitReview && (
+                <button
+                  type="button"
+                  onClick={() => setRowScopeFilter('MY_PIC')}
+                  style={{
+                    minHeight: '44px',
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '6px',
+                    border: rowScopeFilter === 'MY_PIC' ? '1px solid #B8CAD4' : '1px solid transparent',
+                    background: rowScopeFilter === 'MY_PIC' ? '#FFFFFF' : 'transparent',
+                    color: rowScopeFilter === 'MY_PIC' ? '#072534' : '#334155',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Indikator Unit Ini ({calculated.picTotalIndicators})
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setRowScopeFilter('ALL')}
@@ -3001,9 +3135,9 @@ ${sectionSummaryHtml}
                   minHeight: '44px',
                   padding: '0.35rem 0.75rem',
                   borderRadius: '6px',
-                  border: '1px solid #D8E4EA',
-                  background: '#FFFFFF',
-                  color: '#072534',
+                  border: rowScopeFilter === 'ALL' ? '1px solid #B8CAD4' : '1px solid transparent',
+                  background: rowScopeFilter === 'ALL' ? '#FFFFFF' : 'transparent',
+                  color: rowScopeFilter === 'ALL' ? '#072534' : '#334155',
                   fontSize: '0.72rem',
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -3187,7 +3321,7 @@ ${sectionSummaryHtml}
               >
                 Skor Bagian {sec.code}: {formatIndonesianNumber(isUnitMode ? sec.items.reduce((s, it) => s + (it.weightedScore || 0), 0) : sec.secScore, 2)} / {sec.weightDisplay}
               </span>
-              {isAdminPrp && (activeForm?.id || unitForm?.id) && (
+              {isAdminPrp && (adminUnitContext?.formId || activeForm?.id || unitForm?.id) && (
                 <button
                   type="button"
                   className="clean-mini-btn"
@@ -3198,7 +3332,9 @@ ${sectionSummaryHtml}
                     background: secRevision?.comment ? '#FFFBEB' : '#FFFFFF',
                     color: secRevision?.comment ? '#92400E' : '#094E68',
                   }}
-                  onClick={() => setSectionRevComposer((prev) => (prev.code === sec.code ? { code: null, text: '' } : { code: sec.code, text: secRevision?.comment || '' }))}
+                  onClick={() => setSectionRevComposer((prev) => (prev.code === sec.code
+                    ? { code: null, text: '', targetColumn: 'Semua Kolom Baris' }
+                    : { code: sec.code, text: secRevision?.comment || '', targetColumn: secRevision?.targetColumn || 'Semua Kolom Baris' }))}
                 >
                   <MessageSquareWarning size={13} />
                   <span>{secRevision?.comment ? `Edit Revisi Bagian ${sec.code}` : `Catatan Revisi Bagian ${sec.code}`}</span>
@@ -3210,7 +3346,10 @@ ${sectionSummaryHtml}
           {secRevision?.comment && (
             <div style={{ padding: '0.7rem 1.4rem', background: '#FFFBEB', borderBottom: '1px solid #FCD34D', color: '#78350F', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
               <div>
-                <strong><MessageSquareWarning size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> CATATAN REVISI ADMIN PRP (BAGIAN {sec.code}):</strong>{' '}
+                <strong>
+                  <MessageSquareWarning size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+                  CATATAN REVISI ADMIN PRP (BAGIAN {sec.code}{secRevision.targetColumn && secRevision.targetColumn !== 'Semua Kolom Baris' ? ` · ${secRevision.targetColumn}` : ''}):
+                </strong>{' '}
                 {secRevision.comment}
               </div>
               <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#92400E', fontFamily: 'JetBrains Mono, monospace' }}>
@@ -3222,8 +3361,19 @@ ${sectionSummaryHtml}
           {isAdminPrp && sectionRevComposer.code === sec.code && (
             <div style={{ padding: '0.85rem 1.4rem', background: '#FFFBEB', borderBottom: '1px solid #FCD34D', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#78350F' }}>
-                Kirim Catatan Revisi untuk Seluruh PIC pada Bagian {sec.code} ({sec.title})
+                Kirim Catatan Revisi untuk {isAdminUnitReview ? `${adminUnitContext.unitName || adminUnitContext.email} pada ` : 'Seluruh PIC pada '}Bagian {sec.code} ({sec.title})
               </div>
+              <select
+                className="clean-row-text-input"
+                aria-label={`Sasaran kolom revisi Bagian ${sec.code}`}
+                value={sectionRevComposer.targetColumn || 'Semua Kolom Baris'}
+                onChange={(e) => setSectionRevComposer((prev) => ({ ...prev, targetColumn: e.target.value }))}
+                style={{ maxWidth: '320px', fontSize: '0.72rem', fontWeight: 600 }}
+              >
+                {REVISION_COLUMN_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>Sasaran Kolom: {opt}</option>
+                ))}
+              </select>
               <textarea
                 rows={2}
                 className="clean-row-textarea"
@@ -3236,7 +3386,7 @@ ${sectionSummaryHtml}
                   type="button"
                   className="clean-btn clean-btn-primary"
                   style={{ minHeight: '34px', padding: '0.35rem 0.8rem' }}
-                  onClick={() => handleSaveSectionRevision(sec.code, sectionRevComposer.text, false)}
+                  onClick={() => handleSaveSectionRevision(sec.code, sectionRevComposer.text, false, sectionRevComposer.targetColumn)}
                 >
                   <Send size={13} />
                   <span>Kirim Revisi Bagian {sec.code} + Email ke PIC</span>
@@ -3255,7 +3405,7 @@ ${sectionSummaryHtml}
                   type="button"
                   className="clean-btn"
                   style={{ minHeight: '34px', padding: '0.35rem 0.8rem' }}
-                  onClick={() => setSectionRevComposer({ code: null, text: '' })}
+                  onClick={() => setSectionRevComposer({ code: null, text: '', targetColumn: 'Semua Kolom Baris' })}
                 >
                   Batal
                 </button>
@@ -3305,7 +3455,7 @@ ${sectionSummaryHtml}
                   item.ratioPercent !== null ? Math.min(100, Math.max(0, item.ratioPercent)) : 0;
                 const hasSplitTargets = Array.isArray(item.subrowTargets);
                 const canEditRow = item.canEditRow;
-                const isRowInputDisabled = isLocked || (isUnitMode && !canEditRow);
+                const isRowInputDisabled = isLocked || ((isUnitMode || isAdminUnitReview) && !canEditRow);
                 const rowPics = normalizePicCodes(item.pics);
                 const picDisplayLabel = formatPicDisplay(rowPics, item.picDisplay) || 'Semua Unit';
                 const isHighlightedForReview = highlightedPicsSet.size > 0
@@ -3676,6 +3826,7 @@ ${sectionSummaryHtml}
                                   isLocked={isLocked}
                                   isUnitMode={isUnitMode}
                                   isAdminPrp={isAdminPrp}
+                                  isAdminUnitReview={isAdminUnitReview}
                                   itemRevision={integratedBoard?.revisions?.items?.[item.id] || null}
                                   onSaveItemRevision={handleSaveItemRevision}
                                   ownEvidence={ownEvidenceByItem[item.id] || []}

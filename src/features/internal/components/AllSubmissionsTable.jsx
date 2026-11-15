@@ -48,7 +48,7 @@ function collectRows(user) {
       email: unit.email,
       period: `${form.period} · v${form.version}`,
       status: effectiveStatus,
-      canReviewKpi: Boolean(record),
+      canReviewKpi: true,
       updatedAt: record?.history?.at(-1)?.at || record?.submittedAt || draft?.updatedAt || '',
       filled: record ? `Skor ${record.totalScore ?? '-'}` : (draft ? `${Object.keys(draft.values || {}).length} isian draft` : '-'),
       evidence: evidence.length
@@ -257,14 +257,10 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                       <Link className="gov-button" to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
                         Tinjau Detail
                       </Link>
-                    ) : row.canReviewKpi ? (
-                      <button type="button" className="gov-button" onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
-                        Tinjau Detail
-                      </button>
                     ) : (
-                      <span style={{ fontSize: '0.71rem', color: '#475569', fontWeight: 500 }}>
-                        {row.status === 'DRAFT' ? 'Draft unit' : 'Belum kirim'}
-                      </span>
+                      <button type="button" className="gov-button" onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
+                        {row.status === 'EMPTY' || row.status === 'DRAFT' ? 'Kelola & Isi Unit' : 'Tinjau & Revisi'}
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -342,14 +338,10 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                   <Link className="gov-button" style={{ minHeight: '44px' }} to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
                     Tinjau Detail
                   </Link>
-                ) : row.canReviewKpi ? (
-                  <button type="button" className="gov-button" style={{ minHeight: '44px' }} onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
-                    Tinjau Detail
-                  </button>
                 ) : (
-                  <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
-                    {row.status === 'DRAFT' ? 'Draft unit (belum submit)' : 'Belum ada pengajuan'}
-                  </span>
+                  <button type="button" className="gov-button" style={{ minHeight: '44px' }} onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
+                    {row.status === 'EMPTY' || row.status === 'DRAFT' ? 'Kelola & Isi Unit' : 'Tinjau & Revisi'}
+                  </button>
                 )}
               </div>
             </article>
