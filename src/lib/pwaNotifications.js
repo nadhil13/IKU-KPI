@@ -176,29 +176,88 @@ export function applyPwaUpdateNow() {
   window.location.reload();
 }
 
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = typeof window !== 'undefined' && typeof window.atob === 'function'
+    ? window.atob(base64)
+    : '';
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+export async function syncWebPushSubscription() {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined') return null;
+  if (Notification.permission !== 'granted') return null;
+
+  try {
+    const token = localStorage.getItem('prp_access_token') || '';
+    const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
+    if (!token || !activeUser?.email) return null;
+
+    let reg = swRegistration;
+    if (!reg && 'serviceWorker' in navigator) {
+      reg = await navigator.serviceWorker.ready;
+      swRegistration = reg;
+    }
+    if (!reg?.pushManager) return null;
+
+    const keyRes = await fetch('/api/v1/push/vapid-public-key', {
+      headers: { Accept: 'application/json' },
+    });
+    if (!keyRes.ok) return null;
+    const keyData = await keyRes.json();
+    const publicKey = String(keyData?.publicKey || '').trim();
+    if (!publicKey) return null;
+
+    const applicationServerKey = urlBase64ToUint8Array(publicKey);
+    let subscription = await reg.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+    }
+
+    const subJson = typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription;
+    await fetch('/api/v1/push/subscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ subscription: subJson }),
+    });
+
+    emitPwaState();
+    return subJson;
+  } catch {
+    return null;
+  }
+}
+
 export function bindAutomaticNotificationActivation() {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') return () => {};
-  const triggerOnce = () => {
+
+  const syncIfAlreadyGranted = () => {
     try {
       const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
       if (!activeUser?.email) return;
-      if (Notification.permission === 'default') {
-        requestOsNotificationPermission();
+      if (Notification.permission === 'granted' && isOsNotificationEnabledByUser()) {
+        syncWebPushSubscription();
       }
     } catch {
       // Abaikan
-    } finally {
-      window.removeEventListener('pointerdown', triggerOnce, true);
-      window.removeEventListener('keydown', triggerOnce, true);
     }
   };
-  if (Notification.permission === 'default') {
-    window.addEventListener('pointerdown', triggerOnce, { capture: true, passive: true });
-    window.addEventListener('keydown', triggerOnce, { capture: true, passive: true });
-  }
+
+  syncIfAlreadyGranted();
+  window.addEventListener('focus', syncIfAlreadyGranted);
   return () => {
-    window.removeEventListener('pointerdown', triggerOnce, true);
-    window.removeEventListener('keydown', triggerOnce, true);
+    window.removeEventListener('focus', syncIfAlreadyGranted);
   };
 }
 
@@ -226,6 +285,7 @@ export async function requestOsNotificationPermission() {
   if (Notification.permission !== 'default') {
     if (Notification.permission === 'granted') {
       setOsNotificationEnabledByUser(true);
+      syncWebPushSubscription();
     }
     emitPwaState();
     return Notification.permission;
@@ -238,6 +298,7 @@ export async function requestOsNotificationPermission() {
     const result = await pendingPermissionRequest;
     if (result === 'granted') {
       setOsNotificationEnabledByUser(true);
+      syncWebPushSubscription();
     }
     emitPwaState();
     return result;

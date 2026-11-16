@@ -84,11 +84,14 @@ function sendSseEvent(client, eventName, data) {
 export function publishRealtimeEvent(eventName, payload, filterFn = null) {
   let delivered = 0;
   for (const client of clients.values()) {
+    if (eventName === 'state:updated' && !client.user) {
+      continue;
+    }
     if (typeof filterFn === 'function' && !filterFn(client)) {
       continue;
     }
     let clientPayload = payload;
-    if (payload?.stores?.prp_kpi_distribution_v1 && client.user?.role === 'kpi_only') {
+    if (payload?.stores?.prp_kpi_distribution_v1 && !['superadmin_prp', 'spi'].includes(client.user?.role)) {
       clientPayload = {
         ...payload,
         stores: {

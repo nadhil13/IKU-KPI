@@ -89,6 +89,19 @@ export default function IKUSubmissions() {
   const [checked, setChecked] = useState(false);
   const [confirmUnlockOpen, setConfirmUnlockOpen] = useState(false);
 
+  const paramPeriod = params.get('period');
+  const paramId = params.get('id');
+  useEffect(() => {
+    if (paramPeriod && periods.some((p) => p.id === paramPeriod) && paramPeriod !== period) {
+      setPeriod(paramPeriod);
+      setDraftValues(null);
+    }
+    if (paramId !== null && paramId !== selected) {
+      setSelected(paramId);
+      setDraftValues(null);
+    }
+  }, [paramPeriod, paramId, periods, period, selected]);
+
   const records = listIkuSubmissions(currentUser).filter((r) => r.period === period);
   const record = admin ? records.find((r) => r.id === selected) : records[0];
   const issue = ikuInputIssue(period);
@@ -169,6 +182,7 @@ export default function IKUSubmissions() {
         '-=0.6'
       );
 
+    const scrollerEl = pageRef.current?.closest('.internal-main-scroll') || undefined;
     gsap.utils.toArray('.iku-ind-card').forEach((card, idx) => {
       gsap.fromTo(
         card,
@@ -184,6 +198,7 @@ export default function IKUSubmissions() {
             trigger: card,
             start: 'top 92%',
             once: true,
+            ...(scrollerEl ? { scroller: scrollerEl } : {}),
           },
         }
       );
@@ -425,7 +440,7 @@ export default function IKUSubmissions() {
           Periode Evaluasi
           <select
             className="ent-select"
-            style={{ minHeight: '42px' }}
+            style={{ minHeight: '44px' }}
             value={period}
             onChange={(e) => {
               setPeriod(e.target.value);
@@ -449,7 +464,7 @@ export default function IKUSubmissions() {
             Pilih Submission Unit Kerja
             <select
               className="ent-select"
-              style={{ minHeight: '42px' }}
+              style={{ minHeight: '44px' }}
               value={selected}
               onChange={(e) => {
                 setSelected(e.target.value);
@@ -621,7 +636,7 @@ export default function IKUSubmissions() {
                     Realisasi Aktual
                     <input
                       className="ent-input"
-                      style={{ minHeight: '42px' }}
+                      style={{ minHeight: '44px' }}
                       aria-label={`Aktual indikator ${i + 1}`}
                       type="number"
                       min="0"
@@ -636,7 +651,7 @@ export default function IKUSubmissions() {
                     Target Indikator
                     <input
                       className="ent-input"
-                      style={{ minHeight: '42px' }}
+                      style={{ minHeight: '44px' }}
                       aria-label={`Target indikator ${i + 1}`}
                       type="number"
                       min="0.000000001"
@@ -666,7 +681,7 @@ export default function IKUSubmissions() {
                   Tautan Bukti Pendukung (HTTPS)
                   <input
                     className="ent-input"
-                    style={{ minHeight: '42px' }}
+                    style={{ minHeight: '44px' }}
                     aria-label={`Bukti indikator ${i + 1}`}
                     type="url"
                     placeholder="https://drive.itpln.ac.id/..."
@@ -702,7 +717,7 @@ export default function IKUSubmissions() {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '5px',
-                          minHeight: '32px',
+                          minHeight: '44px',
                         }}
                       >
                         <FileCheck2 size={14} /> Buka Dokumen Bukti {i + 1} <ExternalLink size={12} />
@@ -732,7 +747,7 @@ export default function IKUSubmissions() {
                         key={st}
                         type="button"
                         className={`ent-btn ${st === 'VERIFIED' ? 'ent-btn-primary' : ''}`}
-                        style={{ minHeight: '40px', padding: '0.45rem 0.85rem', fontSize: '0.74rem' }}
+                        style={{ minHeight: '44px', padding: '0.45rem 0.85rem', fontSize: '0.74rem' }}
                         disabled={maintenance || !reason.trim()}
                         title={!reason.trim() ? 'Isi catatan pada panel Keputusan dan Verifikasi di bawah terlebih dahulu' : ''}
                         onClick={() =>
@@ -842,7 +857,7 @@ export default function IKUSubmissions() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.6rem',
-              minHeight: '40px',
+              minHeight: '44px',
               fontSize: '0.82rem',
               fontWeight: 600,
               color: '#072534',
@@ -890,7 +905,7 @@ export default function IKUSubmissions() {
               key={`${entry.at}-${i}`}
               style={{ padding: '0.75rem 0', borderTop: i > 0 ? '1px solid #EDF3F6' : 'none', fontSize: '0.78rem' }}
             >
-              <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#072534', minHeight: '32px' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#072534', minHeight: '44px' }}>
                 {new Date(entry.at).toLocaleString('id-ID')} · {entry.action} · {entry.actor.email} ({entry.from || 'Baru'} -&gt; {entry.status})
               </summary>
               {entry.reason && <p style={{ margin: '0.4rem 0', color: '#334155' }}>Catatan: {entry.reason}</p>}

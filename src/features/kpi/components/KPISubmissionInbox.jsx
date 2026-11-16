@@ -89,7 +89,18 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
   const [note, setNote] = useState('');
   const [complete, setComplete] = useState(false);
   const [pendingUnlock, setPendingUnlock] = useState(null);
+  const [pendingResetUnit, setPendingResetUnit] = useState(null);
   const [error, setError] = useState('');
+  const [isMobileView, setIsMobileView] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onResize = () => setIsMobileView(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const selected = controlledSelected !== undefined ? controlledSelected : localSelected;
   const updateSelected = useCallback((next) => {
@@ -147,13 +158,14 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     if (!selected || !form) return undefined;
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        if (pendingUnlock) setPendingUnlock(null);
+        if (pendingResetUnit) setPendingResetUnit(null);
+        else if (pendingUnlock) setPendingUnlock(null);
         else if (!previewDoc) updateSelected(null);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selected, form, previewDoc, pendingUnlock, updateSelected]);
+  }, [selected, form, previewDoc, pendingUnlock, pendingResetUnit, updateSelected]);
 
   const mutate = (action) => {
     setError('');
@@ -463,7 +475,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginTop: 'auto' }}>
                           {isFile ? (
                             <>
-                              <button type="button" className="gov-button" style={{ minHeight: '38px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc({ ...ev, _formId: latestForm.id, _email: ev.unitEmail })}>
+                              <button type="button" className="gov-button" style={{ minHeight: '44px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc({ ...ev, _formId: latestForm.id, _email: ev.unitEmail })}>
                                 <Eye size={12} /> Pratinjau, Revisi &amp; Edit
                               </button>
                               {ev.dataUrl && (
@@ -471,7 +483,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   href={ev.dataUrl}
                                   download={ev.fileName || `${ev.label}.pdf`}
                                   className="gov-button"
-                                  style={{ minHeight: '38px', fontSize: '0.7rem', textDecoration: 'none' }}
+                                  style={{ minHeight: '44px', fontSize: '0.7rem', textDecoration: 'none' }}
                                 >
                                   <Download size={12} /> Unduh Berkas
                                 </a>
@@ -479,7 +491,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             </>
                           ) : (
                             <>
-                              <button type="button" className="gov-button" style={{ minHeight: '38px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc({ ...ev, _formId: latestForm.id, _email: ev.unitEmail })}>
+                              <button type="button" className="gov-button" style={{ minHeight: '44px', fontSize: '0.7rem' }} onClick={() => setPreviewDoc({ ...ev, _formId: latestForm.id, _email: ev.unitEmail })}>
                                 <PenLine size={12} /> Revisi / Edit
                               </button>
                               <a
@@ -487,7 +499,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="gov-button"
-                                style={{ minHeight: '38px', fontSize: '0.7rem', textDecoration: 'none' }}
+                                style={{ minHeight: '44px', fontSize: '0.7rem', textDecoration: 'none' }}
                               >
                                 <ExternalLink size={12} /> Buka Tautan Drive
                               </a>
@@ -510,7 +522,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     type="button"
                     onClick={() => setBoardViewMode('confirmed')}
                     style={{
-                      minHeight: '40px',
+                      minHeight: '44px',
                       padding: '0.35rem 0.85rem',
                       borderRadius: '6px',
                       border: resolvedBoardMode === 'confirmed' ? '1px solid #094E68' : '1px solid transparent',
@@ -527,7 +539,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     type="button"
                     onClick={() => setBoardViewMode('live')}
                     style={{
-                      minHeight: '40px',
+                      minHeight: '44px',
                       padding: '0.35rem 0.85rem',
                       borderRadius: '6px',
                       border: resolvedBoardMode === 'live' ? '1px solid #094E68' : '1px solid transparent',
@@ -949,38 +961,37 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             style={{
               position: 'fixed',
               inset: 0,
-              zIndex: 1300,
+              zIndex: 1400,
               background: 'rgba(6, 44, 61, 0.58)',
               display: 'flex',
               justifyContent: 'center',
-              alignItems: 'flex-start',
+              alignItems: 'center',
               paddingTop: 'max(0.65rem, env(safe-area-inset-top, 0px))',
               paddingRight: 'max(0.65rem, env(safe-area-inset-right, 0px))',
               paddingBottom: 'max(0.65rem, env(safe-area-inset-bottom, 0px))',
               paddingLeft: 'max(0.65rem, env(safe-area-inset-left, 0px))',
-              overflowY: 'auto',
-              overflowX: 'hidden',
+              overflow: 'hidden',
               boxSizing: 'border-box',
             }}
           >
             <div
               style={{
                 width: 'min(1340px, 100%)',
+                maxHeight: 'calc(100dvh - 1.3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
                 minWidth: 0,
                 background: '#FFFFFF',
                 border: '1px solid #B8CAD4',
                 borderRadius: '8px',
                 boxShadow: '0 20px 48px rgba(7, 37, 52, 0.22)',
+                display: 'flex',
+                flexDirection: 'column',
                 overflow: 'hidden',
-                margin: 'auto 0',
               }}
             >
               <div
                 style={{
-                  position: typeof window !== 'undefined' && window.innerWidth <= 768 ? 'relative' : 'sticky',
-                  top: 0,
-                  zIndex: 20,
-                  padding: 'clamp(0.9rem, 2vw, 1.25rem) clamp(1rem, 2.5vw, 1.5rem)',
+                  flexShrink: 0,
+                  padding: isMobileView ? '0.85rem 1rem' : 'clamp(0.9rem, 2vw, 1.25rem) clamp(1rem, 2.5vw, 1.5rem)',
                   borderBottom: '1px solid #D8E4EA',
                   background: '#F7FAFB',
                   display: 'flex',
@@ -1023,7 +1034,20 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                 </div>
               </div>
 
-              <div style={{ padding: 'clamp(0.9rem, 2.2vw, 1.5rem)', display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
+              <div
+                data-lenis-prevent
+                style={{
+                  padding: 'clamp(0.9rem, 2.2vw, 1.5rem)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                  minWidth: 0,
+                  flex: '1 1 auto',
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                }}
+              >
                 {error && (
                   <div role="alert" style={{ padding: '0.8rem 1rem', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#7F1D1D', fontSize: '0.8rem', fontWeight: 600 }}>
                     {error}
@@ -1112,12 +1136,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                           className="ent-btn"
                           style={{ minHeight: '44px', borderColor: '#FCA5A5', color: '#991B1B', background: '#FEF2F2' }}
                           onClick={() => {
-                            const ok = typeof window === 'undefined'
-                              || window.confirm(`Hapus & reset seluruh isian uji coba milik ${unitDisplayName} (${targetEmail}) kembali ke Belum Diisi (0,00)?`);
-                            if (!ok) return;
-                            mutate(() => {
-                              resetUnitKpiByAdmin(form.id, targetEmail, currentUser);
-                              updateSelected(null);
+                            setPendingResetUnit({
+                              formId: form.id,
+                              email: targetEmail,
+                              unitDisplayName,
                             });
                           }}
                         >
@@ -1151,7 +1173,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         <button
                           type="button"
                           className="ent-btn"
-                          style={{ minHeight: '40px', padding: '0.38rem 0.75rem', fontSize: '0.71rem' }}
+                          style={{ minHeight: '44px', padding: '0.38rem 0.75rem', fontSize: '0.71rem' }}
                           onClick={() => {
                             const unitItems = getEditableItemsForUser(form, {
                               role: 'kpi_only',
@@ -1178,7 +1200,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                           <button
                             type="button"
                             className="ent-btn ent-btn-teal"
-                            style={{ minHeight: '40px', padding: '0.38rem 0.75rem', fontSize: '0.71rem' }}
+                            style={{ minHeight: '44px', padding: '0.38rem 0.75rem', fontSize: '0.71rem' }}
                             onClick={() => mutate(() => {
                               const pendingList = readUnitEvidence(form.id, targetEmail, readKpiWorkflow()).filter((ev) => ev.status !== 'VERIFIED');
                               pendingList.forEach((ev) => {
@@ -1292,7 +1314,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             <button
                               type="button"
                               className="ent-btn ent-btn-primary"
-                              style={{ minHeight: '38px', fontSize: '0.72rem' }}
+                              style={{ minHeight: '44px', fontSize: '0.72rem' }}
                               onClick={() => mutate(() => {
                                 addUnitEvidenceByAdmin(form.id, targetEmail, currentUser, {
                                   indicatorId: newUnitEv.indicatorId,
@@ -1309,7 +1331,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               <Save size={13} />
                               <span>Simpan Bukti Unit</span>
                             </button>
-                            <button type="button" className="ent-btn" style={{ minHeight: '38px', fontSize: '0.72rem' }} onClick={() => setNewUnitEv(null)}>
+                            <button type="button" className="ent-btn" style={{ minHeight: '44px', fontSize: '0.72rem' }} onClick={() => setNewUnitEv(null)}>
                               Batal
                             </button>
                           </div>
@@ -1364,7 +1386,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   <button
                                     type="button"
                                     className="gov-button"
-                                    style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
+                                    style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
                                     onClick={() => setPreviewDoc({ ...e, _formId: form.id, _email: targetEmail })}
                                   >
                                     <Eye size={12} /> Pratinjau
@@ -1374,7 +1396,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                       href={e.dataUrl}
                                       download={e.fileName || `${e.label}.pdf`}
                                       className="gov-button"
-                                      style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', textDecoration: 'none' }}
+                                      style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', textDecoration: 'none' }}
                                     >
                                       <Download size={12} /> Unduh
                                     </a>
@@ -1386,7 +1408,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="gov-button"
-                                  style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', textDecoration: 'none' }}
+                                  style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', textDecoration: 'none' }}
                                 >
                                   <ExternalLink size={12} /> Buka Tautan
                                 </a>
@@ -1395,7 +1417,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               <button
                                 type="button"
                                 className="ent-btn"
-                                style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', borderColor: '#F59E0B', background: '#FFFBEB', color: '#92400E' }}
+                                style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', borderColor: '#F59E0B', background: '#FFFBEB', color: '#92400E' }}
                                 onClick={() => setEvActionPanel((prev) => (prev?.id === e.id && prev.mode === 'revise'
                                   ? null
                                   : { id: e.id, mode: 'revise', note: e.note || note || '' }))}
@@ -1406,7 +1428,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               <button
                                 type="button"
                                 className="ent-btn"
-                                style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
+                                style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
                                 onClick={() => setEvActionPanel((prev) => (prev?.id === e.id && prev.mode === 'edit'
                                   ? null
                                   : {
@@ -1426,7 +1448,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                 <button
                                   type="button"
                                   className="ent-btn ent-btn-teal"
-                                  style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
+                                  style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem' }}
                                   onClick={() => mutate(() => reviewUnitEvidence(
                                     form.id,
                                     targetEmail,
@@ -1443,7 +1465,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                 <button
                                   type="button"
                                   className="ent-btn"
-                                  style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#7F1D1D' }}
+                                  style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#7F1D1D' }}
                                   disabled={!note.trim()}
                                   title={note.trim() ? '' : 'Tuliskan alasan penolakan pada kolom catatan terlebih dahulu'}
                                   onClick={() => mutate(() => reviewUnitEvidence(form.id, targetEmail, e.id, 'REJECTED', note, currentUser))}
@@ -1454,7 +1476,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               <button
                                 type="button"
                                 className="ent-btn"
-                                style={{ minHeight: '38px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#991B1B', borderColor: '#FCA5A5', background: '#FEF2F2' }}
+                                style={{ minHeight: '44px', padding: '0.35rem 0.7rem', fontSize: '0.7rem', color: '#991B1B', borderColor: '#FCA5A5', background: '#FEF2F2' }}
                                 aria-label={`Hapus bukti ${e.label}`}
                                 onClick={() => mutate(() => {
                                   removeUnitEvidenceByAdmin(form.id, targetEmail, currentUser, e.id);
@@ -1481,7 +1503,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   <button
                                     type="button"
                                     className="ent-btn ent-btn-primary"
-                                    style={{ minHeight: '38px', fontSize: '0.71rem', background: '#92400E', borderColor: '#92400E' }}
+                                    style={{ minHeight: '44px', fontSize: '0.71rem', background: '#92400E', borderColor: '#92400E' }}
                                     onClick={() => mutate(() => {
                                       reviewUnitEvidence(form.id, targetEmail, e.id, 'NEEDS_REVISION', evActionPanel.note || '', currentUser);
                                       setEvActionPanel(null);
@@ -1490,7 +1512,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   >
                                     <Send size={12} /> Kirim Revisi Bukti + Email
                                   </button>
-                                  <button type="button" className="ent-btn" style={{ minHeight: '38px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
+                                  <button type="button" className="ent-btn" style={{ minHeight: '44px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
                                     Batal
                                   </button>
                                 </div>
@@ -1568,7 +1590,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   <button
                                     type="button"
                                     className="ent-btn ent-btn-primary"
-                                    style={{ minHeight: '38px', fontSize: '0.71rem' }}
+                                    style={{ minHeight: '44px', fontSize: '0.71rem' }}
                                     onClick={() => mutate(() => {
                                       const updated = updateUnitEvidenceByAdmin(form.id, targetEmail, currentUser, e.id, {
                                         label: evActionPanel.label,
@@ -1583,7 +1605,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   >
                                     <Save size={12} /> Simpan Perubahan Bukti
                                   </button>
-                                  <button type="button" className="ent-btn" style={{ minHeight: '38px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
+                                  <button type="button" className="ent-btn" style={{ minHeight: '44px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
                                     Batal
                                   </button>
                                 </div>
@@ -1626,7 +1648,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                   </div>
                 )}
 
-                <div style={{ minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}>
+                <div style={{ minWidth: 0, maxWidth: '100%' }}>
                   <KPIDataEntrySheet
                     key={`${form.id}:${targetEmail}:${activeUnitStatus}`}
                     period={form.period}
@@ -1751,6 +1773,71 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
           </div>
         );
         return typeof document !== 'undefined' ? createPortal(unlockDialog, document.body) : unlockDialog;
+      })()}
+
+      {pendingResetUnit && (() => {
+        const resetDialog = (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kpi-reset-unit-title"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10025,
+              background: 'rgba(7, 37, 52, 0.58)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setPendingResetUnit(null);
+            }}
+          >
+            <div
+              style={{
+                width: 'min(440px, 100%)',
+                background: '#FFFFFF',
+                borderRadius: '10px',
+                border: '1px solid #64748B',
+                boxShadow: '0 24px 48px rgba(7, 37, 52, 0.22)',
+                padding: '1.35rem',
+              }}
+            >
+              <h3
+                id="kpi-reset-unit-title"
+                style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
+              >
+                Reset Data Unit ke Semula
+              </h3>
+              <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
+                Hapus dan reset seluruh isian uji coba milik <strong>{pendingResetUnit.unitDisplayName}</strong> ({pendingResetUnit.email}) kembali ke Belum Diisi (0,00)?
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
+                <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setPendingResetUnit(null)}>
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  className="ent-btn"
+                  style={{ minHeight: '44px', borderColor: '#DC2626', background: '#DC2626', color: '#FFFFFF' }}
+                  onClick={() => {
+                    const target = pendingResetUnit;
+                    setPendingResetUnit(null);
+                    mutate(() => {
+                      resetUnitKpiByAdmin(target.formId, target.email, currentUser);
+                      updateSelected(null);
+                    });
+                  }}
+                >
+                  Ya, Reset Data Unit
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+        return typeof document !== 'undefined' ? createPortal(resetDialog, document.body) : resetDialog;
       })()}
     </div>
   );

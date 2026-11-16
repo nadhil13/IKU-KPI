@@ -103,6 +103,7 @@ export function mountSmoothScroll(wrapper, content) {
   wrapper.addEventListener('wheel', handleFormWheelCapture, { passive: true, capture: true });
 
   const onTick = (time) => lenis.raf(time * 1000);
+  ScrollTrigger.defaults({ scroller: wrapper });
   lenis.on('scroll', ScrollTrigger.update);
   gsap.ticker.add(onTick);
   gsap.ticker.lagSmoothing(0);
@@ -124,6 +125,9 @@ export function mountSmoothScroll(wrapper, content) {
     wrapper.removeEventListener('wheel', handleFormWheelCapture, { capture: true });
     gsap.ticker.remove(onTick);
     lenis.destroy();
+    if ( typeof window !== 'undefined' ) {
+      ScrollTrigger.defaults({ scroller: window });
+    }
     if (activeLenis === lenis) activeLenis = null;
   };
 }

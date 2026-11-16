@@ -84,7 +84,7 @@ const QUICK_TEMPLATES = [
     title: 'Tindak Lanjut Revisi & Bukti Capaian Khusus Unit Anda',
     message:
       'Mohon segera memeriksa catatan revisi dari Admin PRP dan memperbarui angka capaian serta lampiran bukti pada baris indikator milik unit Anda.',
-    actionUrl: '/internal/kpi',
+    actionUrl: '/internal',
     actionLabel: 'Buka Indikator Unit Anda',
   },
   {
@@ -300,7 +300,7 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
                       padding: '2px 7px',
                       borderRadius: '4px',
                       background: '#FFFFFF',
-                      border: '1px solid #CBD5E1',
+                      border: '1px solid #64748B',
                       color: '#072534',
                     }}
                   >
@@ -343,7 +343,7 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
                 <Link
                   to={b.actionUrl}
                   style={{
-                    minHeight: '38px',
+                    minHeight: '44px',
                     padding: '0.4rem 0.78rem',
                     borderRadius: '6px',
                     background: '#FFFFFF',
@@ -393,7 +393,7 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
                     padding: '0.45rem 0.85rem',
                     borderRadius: '6px',
                     background: '#FFFFFF',
-                    border: '1px solid #CBD5E1',
+                    border: '1px solid #64748B',
                     color: '#072534',
                     fontSize: '0.72rem',
                     fontWeight: 700,
@@ -610,7 +610,7 @@ export function BroadcastComposerModal({ open, onClose }) {
               minHeight: '44px',
               padding: '0.45rem 0.85rem',
               borderRadius: '6px',
-              border: '1px solid #CBD5E1',
+              border: '1px solid #64748B',
               background: '#FFFFFF',
               color: '#072534',
               fontSize: '0.75rem',
@@ -678,10 +678,10 @@ export function BroadcastComposerModal({ open, onClose }) {
                   value={targetType}
                   onChange={(e) => handleTargetTypeChange(e.target.value)}
                   style={{
-                    minHeight: '42px',
+                    minHeight: '44px',
                     padding: '0.45rem 0.65rem',
                     borderRadius: '6px',
-                    border: '1px solid #CBD5E1',
+                    border: '1px solid #64748B',
                     background: '#FFFFFF',
                     color: '#072534',
                     fontSize: '0.8rem',
@@ -702,10 +702,10 @@ export function BroadcastComposerModal({ open, onClose }) {
                     value={targetValue}
                     onChange={(e) => setTargetValue(e.target.value)}
                     style={{
-                      minHeight: '42px',
+                      minHeight: '44px',
                       padding: '0.45rem 0.65rem',
                       borderRadius: '6px',
-                      border: '1px solid #CBD5E1',
+                      border: '1px solid #64748B',
                       background: '#FFFFFF',
                       color: '#072534',
                       fontSize: '0.8rem',
@@ -727,10 +727,10 @@ export function BroadcastComposerModal({ open, onClose }) {
                     value={targetValue}
                     onChange={(e) => setTargetValue(e.target.value)}
                     style={{
-                      minHeight: '42px',
+                      minHeight: '44px',
                       padding: '0.45rem 0.65rem',
                       borderRadius: '6px',
-                      border: '1px solid #CBD5E1',
+                      border: '1px solid #64748B',
                       background: '#FFFFFF',
                       color: '#072534',
                       fontSize: '0.8rem',
@@ -753,10 +753,10 @@ export function BroadcastComposerModal({ open, onClose }) {
                     value={targetValue}
                     onChange={(e) => setTargetValue(e.target.value)}
                     style={{
-                      minHeight: '42px',
+                      minHeight: '44px',
                       padding: '0.45rem 0.65rem',
                       borderRadius: '6px',
-                      border: '1px solid #CBD5E1',
+                      border: '1px solid #64748B',
                       background: '#FFFFFF',
                       color: '#072534',
                       fontSize: '0.8rem',
@@ -778,10 +778,10 @@ export function BroadcastComposerModal({ open, onClose }) {
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
                   style={{
-                    minHeight: '42px',
+                    minHeight: '44px',
                     padding: '0.45rem 0.65rem',
                     borderRadius: '6px',
-                    border: '1px solid #CBD5E1',
+                    border: '1px solid #64748B',
                     background: '#FFFFFF',
                     color: '#072534',
                     fontSize: '0.8rem',
@@ -803,10 +803,10 @@ export function BroadcastComposerModal({ open, onClose }) {
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Contoh: Instruksi Pengisian & Submit Capaian KPI Triwulan Berjalan"
                 style={{
-                  minHeight: '42px',
+                  minHeight: '44px',
                   padding: '0.45rem 0.75rem',
                   borderRadius: '6px',
-                  border: '1px solid #CBD5E1',
+                  border: '1px solid #64748B',
                   fontSize: '0.82rem',
                   color: '#072534',
                 }}
@@ -823,7 +823,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                 style={{
                   padding: '0.55rem 0.75rem',
                   borderRadius: '6px',
-                  border: '1px solid #CBD5E1',
+                  border: '1px solid #64748B',
                   fontSize: '0.82rem',
                   color: '#072534',
                   fontFamily: 'inherit',
@@ -857,7 +857,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                 type="submit"
                 disabled={sending}
                 style={{
-                  minHeight: '42px',
+                  minHeight: '44px',
                   padding: '0.5rem 1.15rem',
                   borderRadius: '6px',
                   background: '#094E68',
@@ -890,7 +890,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                   padding: '1rem',
                   borderRadius: '6px',
                   background: '#F7FAFB',
-                  border: '1px dashed #CBD5E1',
+                  border: '1px dashed #64748B',
                   fontSize: '0.78rem',
                   color: '#475569',
                   textAlign: 'center',
@@ -949,7 +949,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                         type="button"
                         onClick={() => stopRealtimeBroadcast(b.id, currentUser)}
                         style={{
-                          minHeight: '36px',
+                          minHeight: '44px',
                           padding: '0.35rem 0.7rem',
                           borderRadius: '6px',
                           border: '1px solid #FCA5A5',
@@ -989,7 +989,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                   padding: '0.85rem',
                   borderRadius: '6px',
                   background: '#F7FAFB',
-                  border: '1px dashed #CBD5E1',
+                  border: '1px dashed #64748B',
                   fontSize: '0.76rem',
                   color: '#475569',
                   textAlign: 'center',
@@ -1047,7 +1047,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                     <a
                       href={buildMailtoHref(mail)}
                       style={{
-                        minHeight: '34px',
+                        minHeight: '44px',
                         padding: '0.3rem 0.65rem',
                         borderRadius: '6px',
                         border: '1px solid #094E68',

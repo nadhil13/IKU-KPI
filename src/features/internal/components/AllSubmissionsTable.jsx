@@ -153,14 +153,14 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
 
       <div className="resp-desktop-table">
         <HorizontalTableViewport panLabel="Geser kolom daftar submission">
-          <table style={{ width: '100%', minWidth: '840px', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+          <table style={{ width: '100%', minWidth: '620px', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
             <thead>
-              <tr style={{ textAlign: 'left', color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
+              <tr style={{ textAlign: 'left', color: '#475569', background: '#F7FAFB', borderBottom: '1px solid #64748B' }}>
                 {['Modul', 'Unit Kerja / Pengusul', 'Periode', 'Status', 'Kelengkapan', 'Bukti Pendukung', 'Diperbarui', 'Aksi'].map((h, idx) => (
                   <th
                     key={h}
                     style={{
-                      padding: '0.7rem 0.72rem',
+                      padding: '0.62rem 0.55rem',
                       fontSize: '0.65rem',
                       fontWeight: 700,
                       textTransform: 'uppercase',
@@ -170,8 +170,10 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                         ? {
                             position: 'sticky',
                             right: 0,
+                            zIndex: 2,
                             background: '#F7FAFB',
-                            borderLeft: '1px solid #E2EDF2',
+                            borderLeft: '1px solid #64748B',
+                            boxShadow: '-4px 0 10px rgba(7, 37, 52, 0.06)',
                             textAlign: 'right',
                           }
                         : null),
@@ -186,11 +188,11 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
               {visible.map((row) => (
                 <tr
                   key={row.key}
-                  style={{ borderTop: '1px solid #D8E4EA', background: '#ffffff', transition: 'background-color 0.18s ease' }}
+                  style={{ borderTop: '1px solid #CBD5E1', background: '#ffffff', transition: 'background-color 0.18s ease' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = '#F7FAFB'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
                 >
-                  <td style={{ padding: '0.72rem 0.72rem', verticalAlign: 'middle' }}>
+                  <td style={{ padding: '0.62rem 0.55rem', verticalAlign: 'middle' }}>
                     <span
                       style={{
                         display: 'inline-block',
@@ -202,13 +204,13 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                         letterSpacing: '0.06em',
                         background: row.module === 'IKU' ? '#094E68' : '#EDF3F6',
                         color: row.module === 'IKU' ? '#FFFFFF' : '#072534',
-                        border: row.module === 'IKU' ? '1px solid #094E68' : '1px solid #B8CAD4',
+                        border: row.module === 'IKU' ? '1px solid #094E68' : '1px solid #64748B',
                       }}
                     >
                       {row.module}
                     </span>
                   </td>
-                  <td style={{ padding: '0.72rem 0.72rem', minWidth: '180px' }}>
+                  <td style={{ padding: '0.62rem 0.55rem', minWidth: '150px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <strong style={{ color: '#072534', fontSize: '0.77rem' }}>{row.unit}</strong>
                       {row.picBadge && (
@@ -220,7 +222,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                             padding: '1px 5px',
                             borderRadius: '4px',
                             background: '#EDF3F6',
-                            border: '1px solid #B8CAD4',
+                            border: '1px solid #64748B',
                             color: '#094E68',
                           }}
                         >
@@ -230,35 +232,37 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                     </div>
                     <small style={{ color: '#475569', fontSize: '0.68rem' }}>{row.email}</small>
                   </td>
-                  <td style={{ padding: '0.72rem 0.72rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
-                  <td style={{ padding: '0.72rem 0.72rem', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '0.62rem 0.55rem', color: '#334155', whiteSpace: 'nowrap' }}>{row.period}</td>
+                  <td style={{ padding: '0.62rem 0.55rem', whiteSpace: 'nowrap' }}>
                     <span className={BADGE_CLASS[row.status] || 'ent-badge'}>
                       <span className="ent-badge-dot" />
                       {STATUS[row.status] || row.status}
                     </span>
                   </td>
-                  <td style={{ padding: '0.72rem 0.72rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{row.filled}</td>
-                  <td style={{ padding: '0.72rem 0.72rem', color: '#475569', whiteSpace: 'nowrap' }}>{row.evidence}</td>
-                  <td style={{ padding: '0.72rem 0.72rem', color: '#475569', fontSize: '0.7rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '0.62rem 0.55rem', fontWeight: 600, color: '#334155' }}>{row.filled}</td>
+                  <td style={{ padding: '0.62rem 0.55rem', color: '#475569' }}>{row.evidence}</td>
+                  <td style={{ padding: '0.62rem 0.55rem', color: '#475569', fontSize: '0.69rem', fontVariantNumeric: 'tabular-nums' }}>
                     {row.updatedAt ? new Date(row.updatedAt).toLocaleString('id-ID') : '-'}
                   </td>
                   <td
                     style={{
-                      padding: '0.72rem 0.72rem',
+                      padding: '0.62rem 0.55rem',
                       whiteSpace: 'nowrap',
                       textAlign: 'right',
                       position: 'sticky',
                       right: 0,
+                      zIndex: 1,
                       background: 'inherit',
-                      borderLeft: '1px solid #E2EDF2',
+                      borderLeft: '1px solid #64748B',
+                      boxShadow: '-4px 0 10px rgba(7, 37, 52, 0.06)',
                     }}
                   >
                     {row.module === 'IKU' ? (
-                      <Link className="gov-button" to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
+                      <Link className="gov-button" style={{ minHeight: '44px' }} to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
                         Tinjau Detail
                       </Link>
                     ) : (
-                      <button type="button" className="gov-button" onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
+                      <button type="button" className="gov-button" style={{ minHeight: '44px' }} onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
                         {row.status === 'EMPTY' || row.status === 'DRAFT' ? 'Kelola & Isi Unit' : 'Tinjau & Revisi'}
                       </button>
                     )}

@@ -164,9 +164,10 @@ export default function KPIDataEntrySheet(props) {
   const isSpiMode = currentUser?.role === 'spi';
   const isAdminPrp = currentUser?.role === 'superadmin_prp';
 
+  const adminFormId = props.adminUnitContext?.formId;
   const activeForm = useMemo(() => {
-    if (props.adminUnitContext?.formId) {
-      return workflowState.forms.find((f) => f.id === props.adminUnitContext.formId) || workflowState.forms[workflowState.forms.length - 1] || null;
+    if (adminFormId) {
+      return workflowState.forms.find((f) => f.id === adminFormId) || workflowState.forms[workflowState.forms.length - 1] || null;
     }
     if (isUnit) {
       return getUnitKpiForm(currentUser?.email, workflowState, requestedPeriod);
@@ -175,7 +176,7 @@ export default function KPIDataEntrySheet(props) {
       return getFormForPeriod(requestedPeriod, workflowState, { fallbackToLatest: true });
     }
     return workflowState.forms[workflowState.forms.length - 1] || null;
-  }, [props.adminUnitContext?.formId, isUnit, currentUser?.email, workflowState, requestedPeriod]);
+  }, [adminFormId, isUnit, currentUser?.email, workflowState, requestedPeriod]);
 
   const periodStatusMeta = useMemo(() => {
     void revision;
@@ -251,6 +252,8 @@ export default function KPIDataEntrySheet(props) {
 }
 
 export function EvidencePreviewModal({ evidence, onClose, adminActions = null }) {
+  const evidenceSyncKey = evidence ? `${evidence.id || ''}:${evidence.status || ''}:${evidence.label || ''}:${evidence.url || ''}:${evidence.fileName || ''}` : '';
+  const [prevSyncKey, setPrevSyncKey] = useState(evidenceSyncKey);
   const [noteText, setNoteText] = useState(evidence?.note || '');
   const [actionError, setActionError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -260,7 +263,8 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
   const [editDesc, setEditDesc] = useState(evidence?.description || '');
   const [replacementFile, setReplacementFile] = useState(null);
 
-  useEffect(() => {
+  if (evidenceSyncKey !== prevSyncKey) {
+    setPrevSyncKey(evidenceSyncKey);
     setNoteText(evidence?.note || '');
     setActionError('');
     setEditOpen(false);
@@ -269,7 +273,7 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
     setEditUrl(evidence?.url || '');
     setEditDesc(evidence?.description || '');
     setReplacementFile(null);
-  }, [evidence]);
+  }
 
   useEffect(() => {
     if (!evidence) return undefined;
@@ -486,7 +490,7 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
                 <button
                   type="button"
                   className="clean-btn"
-                  style={{ minHeight: '38px', fontSize: '0.72rem' }}
+                  style={{ minHeight: '44px', fontSize: '0.72rem' }}
                   onClick={() => setEditOpen((prev) => !prev)}
                 >
                   <PenLine size={13} />
@@ -550,11 +554,11 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
                   onChange={(e) => setEditDesc(e.target.value)}
                 />
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <button type="button" className="clean-btn clean-btn-primary" style={{ minHeight: '38px' }} onClick={handleSaveEdit}>
+                  <button type="button" className="clean-btn clean-btn-primary" style={{ minHeight: '44px' }} onClick={handleSaveEdit}>
                     <Save size={13} />
                     <span>Simpan Perubahan Bukti</span>
                   </button>
-                  <button type="button" className="clean-btn" style={{ minHeight: '38px' }} onClick={() => setEditOpen(false)}>
+                  <button type="button" className="clean-btn" style={{ minHeight: '44px' }} onClick={() => setEditOpen(false)}>
                     Batal
                   </button>
                 </div>
@@ -573,7 +577,7 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
                   <button
                     type="button"
                     className="clean-btn clean-btn-primary"
-                    style={{ minHeight: '40px', background: '#14532D', borderColor: '#14532D' }}
+                    style={{ minHeight: '44px', background: '#14532D', borderColor: '#14532D' }}
                     onClick={() => runAdminDecision('VERIFIED')}
                   >
                     <CheckCircle2 size={14} />
@@ -582,7 +586,7 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
                   <button
                     type="button"
                     className="clean-btn"
-                    style={{ minHeight: '40px', background: '#FFFBEB', borderColor: '#F59E0B', color: '#92400E' }}
+                    style={{ minHeight: '44px', background: '#FFFBEB', borderColor: '#F59E0B', color: '#92400E' }}
                     disabled={!noteText.trim()}
                     onClick={() => runAdminDecision('NEEDS_REVISION')}
                   >
@@ -592,7 +596,7 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
                   <button
                     type="button"
                     className="clean-btn"
-                    style={{ minHeight: '40px', background: '#FEF2F2', borderColor: '#FCA5A5', color: '#7F1D1D' }}
+                    style={{ minHeight: '44px', background: '#FEF2F2', borderColor: '#FCA5A5', color: '#7F1D1D' }}
                     disabled={!noteText.trim()}
                     onClick={() => runAdminDecision('REJECTED')}
                   >
@@ -1174,7 +1178,7 @@ function RowEvidenceAndNotesCell({
                 />
               )}
 
-              <button type="button" className="clean-btn clean-btn-primary" style={{ minHeight: '34px', padding: '0.35rem 0.65rem', fontSize: '0.72rem' }} onClick={handleSaveEvidence}>
+              <button type="button" className="clean-btn clean-btn-primary" style={{ minHeight: '44px', padding: '0.35rem 0.65rem', fontSize: '0.72rem' }} onClick={handleSaveEvidence}>
                 Simpan Bukti Baris {sectionCode}.{item.no}
               </button>
             </div>
@@ -1674,7 +1678,7 @@ function KPIEntryContent({
       });
     });
     return merged;
-  }, [valuesOverride, emptyDefaults, integratedBoard, isUnitMode, values, governedSections, editableItemIds]);
+  }, [isAdminUnitReview, readOnly, valuesOverride, emptyDefaults, integratedBoard, isUnitMode, values, governedSections, editableItemIds]);
 
   useEffect(() => {
     if (!persist || !isAdminPrp || isUnitMode || isAdminUnitReview || readOnly || !activeForm?.id) return undefined;
@@ -1689,7 +1693,7 @@ function KPIEntryContent({
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [values, notes, persist, isAdminPrp, isUnitMode, readOnly, activeForm?.id, unitUser]);
+  }, [values, notes, persist, isAdminPrp, isUnitMode, isAdminUnitReview, readOnly, activeForm?.id, unitUser]);
 
   const handleSaveAdminOverrideManual = () => {
     if (!isAdminPrp || !activeForm?.id) return;
@@ -2314,30 +2318,12 @@ function KPIEntryContent({
     );
   };
 
-  const handleReset = () => {
-    if (readOnly) return;
-    if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED || workflow.status === 'LOCKED') return;
-    if (isUnitMode) {
-      const cleared = { ...values };
-      editableSubKeys.forEach((k) => { cleared[k] = ''; });
-      const clearedNotes = { ...notes };
-      editableItemIds.forEach((id) => { delete clearedNotes[id]; });
-      setValues(cleared);
-      setNotes(clearedNotes);
-      if (unitForm && unitUser) {
-        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true });
-      }
-    } else {
-      if (isAdminPrp && activeForm?.id) {
-        const confirmed = typeof window === 'undefined'
-          || window.confirm('Reset seluruh data isian, submission unit, evidence, dan override pada periode ini kembali ke kondisi awal (0,00)?');
-        if (!confirmed) return;
-        resetAllFormKpiData(activeForm.id, unitUser);
-      }
-      setValues(emptyDefaults);
-      setNotes({});
-      setLocalEvidenceList([]);
-    }
+  const [pendingResetConfirm, setPendingResetConfirm] = useState(false);
+
+  const executeReset = () => {
+    setValues(emptyDefaults);
+    setNotes({});
+    setLocalEvidenceList([]);
     try {
       localStorage.removeItem(valuesKey);
       localStorage.removeItem(notesKey);
@@ -2351,6 +2337,37 @@ function KPIEntryContent({
         ? 'Seluruh data periode telah direset oleh Admin PRP kembali ke kondisi semula (0,00).'
         : 'Draf isian, keterangan, dan lampiran belum terkirim telah dikosongkan.',
     );
+  };
+
+  const handleReset = () => {
+    if (readOnly) return;
+    if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED || workflow.status === 'LOCKED') return;
+    if (isUnitMode) {
+      const cleared = { ...values };
+      editableSubKeys.forEach((k) => { cleared[k] = ''; });
+      const clearedNotes = { ...notes };
+      editableItemIds.forEach((id) => { delete clearedNotes[id]; });
+      setValues(cleared);
+      setNotes(clearedNotes);
+      if (unitForm && unitUser) {
+        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true });
+      }
+      try {
+        localStorage.removeItem(valuesKey);
+        localStorage.removeItem(notesKey);
+        localStorage.removeItem(workflowKey);
+      } catch {
+        // Abaikan kegagalan hapus penyimpanan lokal
+      }
+      setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
+      showToast('Draf isian, keterangan, dan lampiran belum terkirim telah dikosongkan.');
+      return;
+    }
+    if (isAdminPrp && activeForm?.id) {
+      setPendingResetConfirm(true);
+      return;
+    }
+    executeReset();
   };
 
   const handleSubmit = () => {
@@ -2952,7 +2969,18 @@ ${sectionSummaryHtml}
 
   const availableSectionsForTabs = useMemo(() => {
     if (!isUnitMode && !(isAdminUnitReview && rowScopeFilter === 'MY_PIC')) return governedSections;
-    return governedSections.filter((sec) => sec.items.some((item) => editableItemIds.has(item.id)));
+    return governedSections
+      .map((sec) => {
+        const unitItems = sec.items.filter((item) => editableItemIds.has(item.id));
+        const unitWeight = unitItems.reduce((sum, it) => sum + (Number(it.bobot) || 0), 0);
+        return {
+          ...sec,
+          items: unitItems,
+          totalWeight: unitWeight,
+          weightDisplay: formatIndonesianNumber(unitWeight, 2),
+        };
+      })
+      .filter((sec) => sec.items.length > 0);
   }, [governedSections, isUnitMode, isAdminUnitReview, rowScopeFilter, editableItemIds]);
 
   const visibleSections = useMemo(() => {
@@ -2960,21 +2988,24 @@ ${sectionSummaryHtml}
       ? calculated.sections
       : calculated.sections.filter((sec) => sec.code === activeSectionTab);
     const base = byTab.length ? byTab : calculated.sections;
-    if (isUnitMode) {
+    if (isUnitMode || rowScopeFilter === 'MY_PIC') {
       return base
-        .map((sec) => ({
-          ...sec,
-          items: sec.items.filter((item) => item.canEditRow),
-        }))
+        .map((sec) => {
+          const unitItems = sec.items.filter((item) => item.canEditRow);
+          const unitWeight = unitItems.reduce((sum, it) => sum + (Number(it.bobot) || 0), 0);
+          return {
+            ...sec,
+            items: unitItems,
+            totalWeight: unitWeight,
+            weightDisplay: formatIndonesianNumber(unitWeight, 2),
+            secScore: unitItems.reduce((sum, it) => sum + (it.weightedScore || 0), 0),
+            secCompleted: unitItems.filter((it) => it.ratioPercent !== null).length,
+            secTotalItems: unitItems.length,
+          };
+        })
         .filter((sec) => sec.items.length > 0);
     }
-    if (rowScopeFilter !== 'MY_PIC') return base;
-    return base
-      .map((sec) => ({
-        ...sec,
-        items: sec.items.filter((item) => item.canEditRow),
-      }))
-      .filter((sec) => sec.items.length > 0);
+    return base;
   }, [activeSectionTab, calculated.sections, isUnitMode, rowScopeFilter]);
 
   return (
@@ -3096,8 +3127,8 @@ ${sectionSummaryHtml}
         }
         .clean-sheet-input {
           width: 100%;
-          min-height: 38px;
-          border: 1px solid #94A3B8;
+          min-height: 44px;
+          border: 1px solid #64748B;
           border-radius: 6px;
           background: #FFFFFF;
           padding: 0.45rem 0.65rem;
@@ -3125,7 +3156,7 @@ ${sectionSummaryHtml}
           cursor: not-allowed;
           color: #475569;
           background: #EDF3F6;
-          border-color: #D8E4EA;
+          border-color: #64748B;
         }
         .clean-sheet-input::placeholder {
           color: #475569;
@@ -3135,7 +3166,8 @@ ${sectionSummaryHtml}
         .clean-row-text-input,
         .clean-row-textarea {
           width: 100%;
-          border: 1px solid #94A3B8;
+          min-height: 44px;
+          border: 1px solid #64748B;
           border-radius: 6px;
           background: #FFFFFF;
           padding: 0.4rem 0.55rem;
@@ -3161,14 +3193,14 @@ ${sectionSummaryHtml}
           align-items: center;
           justify-content: center;
           gap: 0.3rem;
-          min-height: 30px;
-          padding: 0.25rem 0.55rem;
+          min-height: 44px;
+          padding: 0.25rem 0.65rem;
           border-radius: 5px;
           font-size: 0.69rem;
           font-weight: 600;
           cursor: pointer;
           background: #FFFFFF;
-          border: 1px solid #B8CAD4;
+          border: 1px solid #64748B;
           color: #094E68;
           transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
         }
@@ -3196,14 +3228,14 @@ ${sectionSummaryHtml}
           align-items: center;
           justify-content: center;
           gap: 0.45rem;
-          min-height: 38px;
+          min-height: 44px;
           padding: 0.55rem 0.95rem;
           border-radius: 6px;
           font-size: 0.75rem;
           font-weight: 600;
           cursor: pointer;
           background: #FFFFFF;
-          border: 1px solid #D8E4EA;
+          border: 1px solid #64748B;
           color: #072534;
           transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
         }
@@ -3330,7 +3362,7 @@ ${sectionSummaryHtml}
                   PIC: {userPicCodes.join(', ') || 'BELUM DITAUTKAN'}
                 </span>
               )}
-              {isLocked && !isSpiMode && (
+              {isLocked && !isSpiMode && !isAdminPrp && !isAdminUnitReview && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', color: '#475569' }}>
                   <LockKeyhole size={12} /> Data terkunci
                 </span>
@@ -3344,7 +3376,11 @@ ${sectionSummaryHtml}
                   : isAdminPrp && !isUnitMode
                     ? `Menampilkan seluruh ${calculated.totalIndicatorsCount} indikator dari semua unit kerja. Admin PRP dapat mengedit langsung nilai/keterangan (Override Edit) dan memberi catatan revisi per baris atau bagian.`
                     : isLocked
-                      ? `Terintegrasi ke sistem pusat ${workflow.submittedAt ? new Date(workflow.submittedAt).toLocaleString('id-ID') : `(${periodStatusMeta?.lockReason || 'sesi aktif'})`}`
+                      ? (workflow.submittedAt
+                        ? `Terintegrasi ke sistem pusat pada ${new Date(workflow.submittedAt).toLocaleString('id-ID')}.`
+                        : periodStatusMeta?.isLocked
+                          ? `Periode evaluasi sedang dikunci (${periodStatusMeta.lockReason || 'Nonaktif'}).`
+                          : 'Data pengajuan sedang ditinjau oleh Admin PRP dan terkunci sementara dari pengeditan.')
                       : `Menampilkan khusus ${calculated.picTotalIndicators} indikator kinerja milik unit/PIC Anda (${calculated.picFilledInputs}/${calculated.picTotalInputs} isian terisi). Data antar-unit terisolasi secara penuh.`}
               {!isLocked && isUnitMode && calculated.missingEvidenceIndicators.length > 0 && (
                 <span style={{ display: 'block', color: '#78350F', fontWeight: 600, marginTop: '0.15rem' }}>
@@ -3356,10 +3392,10 @@ ${sectionSummaryHtml}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: '150px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', fontSize: '0.66rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+          <div style={{ minWidth: '175px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', color: '#475569', fontSize: '0.66rem', fontWeight: 700, marginBottom: '0.3rem' }}>
               <span>{isUnitMode ? 'KELENGKAPAN TUGAS PIC' : 'KELENGKAPAN TABEL'}</span>
-              <span>{Math.round(calculated.completionRatio * 100)}%</span>
+              <span>{' '}{Math.round(calculated.completionRatio * 100)}%</span>
             </div>
             <div style={{ height: '5px', background: '#D8E4EA', borderRadius: '3px', overflow: 'hidden' }}>
               <div style={{ width: `${calculated.completionRatio * 100}%`, height: '100%', background: '#0E7480', borderRadius: '3px', transition: 'width 0.3s ease' }} />
@@ -3630,10 +3666,12 @@ ${sectionSummaryHtml}
                 <span>Lompat ke Isian Kosong</span>
               </button>
 
-              <button type="button" onClick={handleFillSample} className="clean-btn" disabled={isLocked}>
-                <SlidersHorizontal size={13} />
-                <span>{isUnitMode ? 'Simulasi PIC' : 'Isi Simulasi'}</span>
-              </button>
+              {!isUnitMode && isAdminPrp && (
+                <button type="button" onClick={handleFillSample} className="clean-btn" disabled={isLocked}>
+                  <SlidersHorizontal size={13} />
+                  <span>Isi Simulasi</span>
+                </button>
+              )}
 
               <button type="button" onClick={handleReset} className="clean-btn" disabled={isLocked}>
                 <RotateCcw size={13} />
@@ -3769,7 +3807,7 @@ ${sectionSummaryHtml}
                   type="button"
                   className="clean-mini-btn"
                   style={{
-                    minHeight: '34px',
+                    minHeight: '44px',
                     padding: '0.35rem 0.7rem',
                     borderColor: secRevision?.comment ? '#F59E0B' : '#B8CAD4',
                     background: secRevision?.comment ? '#FFFBEB' : '#FFFFFF',
@@ -3828,7 +3866,7 @@ ${sectionSummaryHtml}
                 <button
                   type="button"
                   className="clean-btn clean-btn-primary"
-                  style={{ minHeight: '34px', padding: '0.35rem 0.8rem' }}
+                  style={{ minHeight: '44px', padding: '0.35rem 0.8rem' }}
                   onClick={() => handleSaveSectionRevision(sec.code, sectionRevComposer.text, false, sectionRevComposer.targetColumn)}
                 >
                   <Send size={13} />
@@ -3838,7 +3876,7 @@ ${sectionSummaryHtml}
                   <button
                     type="button"
                     className="clean-btn"
-                    style={{ minHeight: '34px', padding: '0.35rem 0.8rem', background: '#F0FDF4', color: '#14532D', borderColor: '#86EFAC' }}
+                    style={{ minHeight: '44px', padding: '0.35rem 0.8rem', background: '#F0FDF4', color: '#14532D', borderColor: '#86EFAC' }}
                     onClick={() => handleSaveSectionRevision(sec.code, '', true)}
                   >
                     Tandai Selesai
@@ -3847,7 +3885,7 @@ ${sectionSummaryHtml}
                 <button
                   type="button"
                   className="clean-btn"
-                  style={{ minHeight: '34px', padding: '0.35rem 0.8rem' }}
+                  style={{ minHeight: '44px', padding: '0.35rem 0.8rem' }}
                   onClick={() => setSectionRevComposer({ code: null, text: '', targetColumn: 'Semua Kolom Baris' })}
                 >
                   Batal
@@ -4373,6 +4411,75 @@ ${sectionSummaryHtml}
           onUpdate: (ev, metadata) => handleUpdateRowEvidence(ev.id, metadata),
         } : null}
       />
+
+      {pendingResetConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kpi-period-reset-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10030,
+            background: 'rgba(7, 37, 52, 0.58)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPendingResetConfirm(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setPendingResetConfirm(false);
+          }}
+        >
+          <div
+            style={{
+              width: 'min(440px, 100%)',
+              background: '#FFFFFF',
+              borderRadius: '10px',
+              border: '1px solid #64748B',
+              boxShadow: '0 24px 48px rgba(7, 37, 52, 0.22)',
+              padding: '1.35rem',
+            }}
+          >
+            <h3
+              id="kpi-period-reset-title"
+              style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
+            >
+              Reset Data Periode ke Kondisi Awal
+            </h3>
+            <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
+              Reset seluruh data isian, submission unit, bukti capaian, dan override pada periode ini kembali ke kondisi awal (0,00)?
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="clean-btn"
+                style={{ minHeight: '44px' }}
+                onClick={() => setPendingResetConfirm(false)}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="clean-btn"
+                style={{ minHeight: '44px', background: '#DC2626', borderColor: '#DC2626', color: '#FFFFFF' }}
+                onClick={() => {
+                  setPendingResetConfirm(false);
+                  if (activeForm?.id) {
+                    resetAllFormKpiData(activeForm.id, unitUser);
+                  }
+                  executeReset();
+                }}
+              >
+                Ya, Reset Data Periode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

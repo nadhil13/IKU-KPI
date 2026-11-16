@@ -387,10 +387,11 @@ export async function bootstrapFromBackend() {
     const data = await res.json();
     if (!data.ok) return false;
 
-    // Jika server masih kosong tetapi browser sudah punya state lokal, dorong state awal ke server
+    // Jika server masih kosong (mis. cold-start serverless) tetapi browser sudah punya state lokal, dorong state awal ke server
     const serverHasForms = Boolean(data.stores?.prp_kpi_distribution_v1?.forms?.length);
-    const localRaw = localStorage.getItem('prp_kpi_distribution_v1');
-    if (!serverHasForms && localRaw && token) {
+    const currentUser = getCurrentUserFromStorage();
+    const hasLocalStores = SYNCED_STORE_KEYS.some((k) => Boolean(localStorage.getItem(k)));
+    if (!serverHasForms && hasLocalStores && token && currentUser?.role !== 'spi') {
       queueStorePush(SYNCED_STORE_KEYS);
     } else if (data.stores && Object.keys(data.stores).length > 0) {
       applyRemoteStoresToLocal(data.stores, data.users, data.audit);
@@ -463,7 +464,7 @@ async function flushPendingStorePush() {
   if (pendingStoreKeys.size === 0) return;
   const user = getCurrentUserFromStorage();
   const token = getAccessToken();
-  if (!user || !token) {
+  if (!user || !token || user.role === 'spi') {
     pendingStoreKeys.clear();
     return;
   }

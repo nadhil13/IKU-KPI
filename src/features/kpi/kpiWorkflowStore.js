@@ -53,7 +53,7 @@ function dispatchWorkflowNotification({
   targetEmails = [],
   targetRoles = [],
   targetPicCodes = [],
-  actionUrl = '/internal/kpi',
+  actionUrl = '/internal',
   actionLabel = 'Buka Tabel KPI',
   meta = {},
   actor = null,
@@ -94,6 +94,19 @@ function dispatchWorkflowNotification({
         sentAt: now,
       };
       localStorage.setItem(EMAIL_OUTBOX_KEY, JSON.stringify([emailRecord, ...(Array.isArray(outbox) ? outbox : [])].slice(0, 400)));
+      if (typeof fetch === 'function') {
+        const token = localStorage.getItem('performa_access_token') || '';
+        if (token) {
+          fetch('/api/v1/notifications/email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(emailRecord),
+          }).catch(() => {});
+        }
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('prp-email-outbox-updated'));
       }
@@ -114,7 +127,7 @@ function dispatchWorkflowNotification({
       targetEmails: cleanEmails,
       targetRoles: cleanRoles,
       targetPicCodes: cleanPics,
-      actionUrl: String(actionUrl || '/internal/kpi'),
+      actionUrl: String(actionUrl || '/internal'),
       actionLabel: String(actionLabel || 'Buka Halaman Terkait'),
       indicatorCode: meta?.targetId || '',
       period: meta?.period || '',
@@ -155,8 +168,16 @@ function inputAllowed(form) {
   maintenance();
   const periods = read('prp_periods', []);
   const text = String(form.period);
+  const yearPrefix = text.match(/^\d{4}/)?.[0] || '';
+  const matchesYear = (p) => Boolean(yearPrefix) && (
+    p.start?.startsWith(yearPrefix)
+    || p.end?.startsWith(yearPrefix)
+    || p.label?.includes(yearPrefix)
+    || p.id?.includes(yearPrefix)
+  );
   const period = periods.find((p) => p.id === text || p.label === text)
-    || periods.find((p) => p.status === 'Active' && /^\d{4}$/.test(text) && (p.start?.startsWith(text) || p.end?.startsWith(text) || p.label?.includes(text)));
+    || periods.find((p) => p.status === 'Active' && matchesYear(p))
+    || periods.find((p) => matchesYear(p));
   const now = new Date();
   const effectiveEnd = period?.end === '2026-07-31' && period?.status === 'Active' && period?.inputOpen !== false
     ? '2026-12-31'
@@ -477,7 +498,7 @@ export function updateUnitEvidenceByAdmin(formId, targetEmail, actor, evidenceId
       message: `Admin PRP memperbarui rincian bukti capaian "${updatedEntry.label}".`,
       targetType: 'USER',
       targetEmails: [normalizedEmail],
-      actionUrl: `/internal/kpi?period=${encodeURIComponent(form.period || '2026')}&focusItem=${encodeURIComponent(updatedEntry.indicatorId)}`,
+      actionUrl: `/internal?period=${encodeURIComponent(form.period || '2026')}&focusItem=${encodeURIComponent(updatedEntry.indicatorId)}`,
       actionLabel: 'Lihat Bukti Indikator',
       meta: { formId: form.id, evidenceId, indicatorId: updatedEntry.indicatorId },
       actor,
@@ -557,14 +578,15 @@ export function reviewUnitEvidence(formId, email, evidenceId, status, note = '',
   const nextSubmissions = { ...(state.submissions || {}) };
   const nextDrafts = { ...(state.drafts || {}) };
   if (record) {
-    const nextRecordStatus = status === 'NEEDS_REVISION' ? 'NEEDS_REVISION' : record.status;
+    const requiresUnitFix = status === 'NEEDS_REVISION' || status === 'REJECTED';
+    const nextRecordStatus = requiresUnitFix ? 'NEEDS_REVISION' : record.status;
     nextSubmissions[key] = {
       ...record,
       status: nextRecordStatus,
-      revisionNote: status === 'NEEDS_REVISION'
-        ? `[Revisi Bukti: ${reviewedEv.label}] ${trimmedNote}`
+      revisionNote: requiresUnitFix
+        ? `[${status === 'REJECTED' ? 'Bukti Ditolak' : 'Revisi Bukti'}: ${reviewedEv.label}] ${trimmedNote}`
         : record.revisionNote,
-      reviewedAt: status === 'NEEDS_REVISION' ? now : record.reviewedAt,
+      reviewedAt: requiresUnitFix ? now : record.reviewedAt,
       history: history(
         record,
         nextRecordStatus,
@@ -639,7 +661,7 @@ export function reviewUnitEvidence(formId, email, evidenceId, status, note = '',
           : `Bukti "${reviewedEv.label}" telah diverifikasi oleh Admin PRP.`,
       targetType: 'USER',
       targetEmails: [email],
-      actionUrl: `/internal/kpi?period=${encodeURIComponent(form?.period || '2026')}&focusItem=${encodeURIComponent(reviewedEv.indicatorId || '')}`,
+      actionUrl: `/internal?period=${encodeURIComponent(form?.period || '2026')}&focusItem=${encodeURIComponent(reviewedEv.indicatorId || '')}`,
       actionLabel: 'Perbaiki Bukti Indikator',
       meta: { formId, evidenceId, indicatorId: reviewedEv.indicatorId || null, status },
       actor,
@@ -741,15 +763,18 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
       const isCurrentYear = String(yearStr) === String(new Date().getFullYear());
       const deadlinePassed = sysDeadline && now > new Date(sysDeadline);
       const isOpen = isCurrentYear && !deadlinePassed;
+      const lockReason = !isOpen ? (deadlinePassed ? 'Melewati Tenggat Waktu' : 'Periode Historis / Terkunci') : 'Terbuka untuk Pengisian';
       return {
         year: String(yearStr),
         id: String(yearStr),
         label: `Periode Evaluasi ${yearStr}`,
+        name: `Periode Evaluasi ${yearStr}`,
         status: isOpen ? 'Active' : 'Archived',
         inputOpen: isOpen,
         isOpenForInput: isOpen,
         isLocked: !isOpen,
-        lockReason: !isOpen ? (deadlinePassed ? 'Melewati Tenggat Waktu' : 'Periode Historis / Terkunci') : 'Terbuka untuk Pengisian',
+        lockReason,
+        statusLabel: lockReason,
         deadline: sysDeadline,
       };
     }
@@ -769,15 +794,18 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
       else if (!deadlineOk || !endOk) lockReason = 'Tenggat Waktu Berakhir';
       else if (!startOk) lockReason = 'Belum Dibuka';
     }
+    const resolvedLabel = periodObj.label || periodObj.name || `Periode Evaluasi ${yearStr}`;
     return {
       year: String(yearStr),
       id: periodObj.id || String(yearStr),
-      label: periodObj.label || `Periode Evaluasi ${yearStr}`,
+      label: resolvedLabel,
+      name: resolvedLabel,
       status: periodObj.status || (isOpen ? 'Active' : 'Archived'),
       inputOpen: isOpen,
       isOpenForInput: isOpen,
       isLocked: !isOpen,
       lockReason,
+      statusLabel: lockReason,
       deadline,
       start: periodObj.start || null,
       end: periodObj.end || null,
@@ -791,6 +819,9 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
     const evaluated = evaluateStatus(p, yearKey);
     if (!prev || (!prev.inputOpen && evaluated.inputOpen)) {
       byYear.set(yearKey, evaluated);
+    }
+    if (p.id && String(p.id) !== yearKey && byYear.get(yearKey)?.id !== p.id) {
+      byYear.set(String(p.id), evaluated);
     }
   });
 
@@ -951,7 +982,7 @@ export function syncPeriodMasterTable(sections, {
     message: note
       || `Admin PRP telah menyinkronkan struktur Master Tabel KPI untuk periode ${targetPeriod} (${openPeriod ? 'Status: AKTIF / Terbuka untuk Diisi' : 'Status: TERKUNCI / Arsip'}). Data historis periode sebelumnya tetap tersimpan utuh.`,
     targetType: 'ALL',
-    actionUrl: `/internal/kpi?period=${encodeURIComponent(targetYear)}`,
+    actionUrl: `/internal?period=${encodeURIComponent(targetYear)}`,
     actionLabel: `Buka Tabel Periode ${targetPeriod}`,
     meta: { formId: syncedForm.id, period: targetPeriod, openPeriod },
     actor,
@@ -1096,7 +1127,7 @@ export function distributeKpiForm(sections, { period = String(new Date().getFull
     title: `Formulir Evaluasi KPI Periode ${period} Didistribusikan`,
     message: `Admin PRP telah mendistribusikan struktur tabel KPI periode ${period} ke seluruh unit kerja PIC. Silakan buka lembar kerja untuk mengisi capaian unit Anda.`,
     targetType: 'ALL',
-    actionUrl: `/internal/kpi?period=${encodeURIComponent(period)}`,
+    actionUrl: `/internal?period=${encodeURIComponent(period)}`,
     actionLabel: 'Buka Lembar Kerja KPI',
     meta: { formId: form.id, period },
     actor,
@@ -1249,9 +1280,11 @@ export function saveUnitKpiByAdmin(formId, targetEmail, actor, {
     }
   });
 
+  const integrated = readIntegratedKpiBoard(form.id, state);
+  const evalValues = { ...integrated.values, ...nextValues };
   const sectionBuckets = new Map();
   scopedEntries.forEach(({ section, item }) => {
-    const computed = computeKpiItem(item, nextValues, section.isPenaltySection, form.sections);
+    const computed = computeKpiItem(item, evalValues, section.isPenaltySection, form.sections);
     if (!sectionBuckets.has(section.code)) {
       sectionBuckets.set(section.code, { code: section.code, title: section.title, score: 0 });
     }
@@ -1364,7 +1397,7 @@ export function saveUnitKpiByAdmin(formId, targetEmail, actor, {
     message: actionDesc,
     targetType: 'USER',
     targetEmails: [normalizedEmail],
-    actionUrl: `/internal/kpi?period=${encodeURIComponent(form.period || '2026')}`,
+    actionUrl: `/internal?period=${encodeURIComponent(form.period || '2026')}`,
     actionLabel: 'Buka Lembar KPI Unit',
     meta: { formId: form.id, period: form.period, email: normalizedEmail },
     actor,
@@ -1536,7 +1569,7 @@ export function saveKpiRevisionComment(formId, actor, {
       targetType: recipientEmails.length > 0 ? 'USER' : (affectedPics.length > 0 ? 'PIC' : 'ALL'),
       targetEmails: recipientEmails,
       targetPicCodes: affectedPics,
-      actionUrl: `/internal/kpi?period=${encodeURIComponent(form.period || '2026')}${focusParam}`,
+      actionUrl: `/internal?period=${encodeURIComponent(form.period || '2026')}${focusParam}`,
       actionLabel: 'Perbaiki Baris Indikator',
       meta: {
         formId: form.id,
@@ -1990,13 +2023,17 @@ export function submitUnitKpi(formId, user, values, options = {}) {
     }
   }
 
-  const evidence = unitEvidence.map((e) => ({
-    ...e,
-    status: 'PENDING',
-    note: '',
-    reviewedAt: null,
-    reviewedBy: null,
-  }));
+  const evidence = unitEvidence.map((e) => (
+    e.status === 'VERIFIED'
+      ? { ...e }
+      : {
+          ...e,
+          status: 'PENDING',
+          note: '',
+          reviewedAt: null,
+          reviewedBy: null,
+        }
+  ));
 
   const record = {
     formId,
@@ -2094,7 +2131,7 @@ export function reviewUnitKpi(formId, email, status, note = '', actor) {
         : `Pengajuan evaluasi KPI unit ${record.unit || email} telah diperbarui menjadi ${statusLabel}.${note.trim() ? ` Catatan: ${note.trim()}` : ''}`,
       targetType: 'USER',
       targetEmails: [email],
-      actionUrl: `/internal/kpi?period=${encodeURIComponent(form?.period || '2026')}`,
+      actionUrl: `/internal?period=${encodeURIComponent(form?.period || '2026')}`,
       actionLabel: isRev ? 'Buka & Perbaiki Isian KPI' : 'Lihat Hasil Evaluasi KPI',
       meta: { formId, status, note: note.trim() },
       actor,

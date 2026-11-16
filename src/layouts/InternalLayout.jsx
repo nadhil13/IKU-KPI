@@ -642,7 +642,7 @@ export default function InternalLayout() {
         { code: 'DIR.01', group: 'Direktori', label: 'Manajemen Pengguna & Hak Akses', run: () => navigate('/internal/users') }
       );
     }
-    if (!isKpiOnly) {
+    if (!isKpiOnly && !isSpiAuditor) {
       list.push({
         code: 'IKU.00',
         group: 'Ruang Kerja 8 IKU',
@@ -662,20 +662,24 @@ export default function InternalLayout() {
       list.push({
         code: 'KPI.00',
         group: 'Ruang Kerja KPI',
-        label: 'Lembar Kerja KPI Operasional Unit',
+        label: isSpiAuditor ? 'Tabel Audit KPI (Read-Only)' : 'Lembar Kerja KPI Operasional Unit',
         run: () => handleSelectWorkspaceMenu('kpi'),
       });
     }
+    if (!isSpiAuditor) {
+      list.push(
+        { code: 'ORG.01', group: 'Organisasi', label: 'Struktur Organisasi & Unit PIC', run: () => navigate('/internal/team') },
+        { code: 'DOC.01', group: 'Referensi', label: 'Dokumen & Regulasi Resmi', run: () => navigate('/internal/documents') }
+      );
+    }
     list.push(
-      { code: 'ORG.01', group: 'Organisasi', label: 'Struktur Organisasi & Unit PIC', run: () => navigate('/internal/team') },
-      { code: 'DOC.01', group: 'Referensi', label: 'Dokumen & Regulasi Resmi', run: () => navigate('/internal/documents') },
       { code: 'USR.01', group: 'Akun', label: 'Profil & Keamanan Sesi Saya', run: () => navigate('/internal/profile') },
       { code: 'PUB.01', group: 'Eksternal', label: 'Buka Beranda Publik ITPLN', run: () => navigate('/') }
     );
     const q = cmdQuery.trim().toLowerCase();
     if (!q) return list;
     return list.filter((item) => `${item.code} ${item.group} ${item.label}`.toLowerCase().includes(q));
-  }, [isSuperadminPrp, isKpiOnly, isIkuOnly, cmdQuery, enterPRP, navigate, handleSelectWorkspaceMenu]);
+  }, [isSuperadminPrp, isKpiOnly, isIkuOnly, isSpiAuditor, cmdQuery, enterPRP, navigate, handleSelectWorkspaceMenu]);
 
   const breadcrumb = useMemo(() => {
     const p = location.pathname;
@@ -1347,8 +1351,8 @@ export default function InternalLayout() {
                       type="button"
                       onMouseEnter={handleNavItemEnter}
                       onClick={() => handleSelectWorkspaceMenu('kpi')}
-                      data-nav-active={isExactPath('/internal') && effectiveWorkspace === 'kpi' ? 'true' : undefined}
-                      className={`corp-nav-item ${isExactPath('/internal') && effectiveWorkspace === 'kpi' ? 'active' : ''}`}
+                      data-nav-active={(isExactPath('/internal') || isExactPath('/internal/kpi')) && effectiveWorkspace === 'kpi' ? 'true' : undefined}
+                      className={`corp-nav-item ${(isExactPath('/internal') || isExactPath('/internal/kpi')) && effectiveWorkspace === 'kpi' ? 'active' : ''}`}
                     >
                       <Building2 size={15} strokeWidth={1.85} className="corp-item-icon" />
                       <span>{isSpiAuditor ? 'Tabel Audit KPI (Read-Only)' : 'Lembar Kerja KPI'}</span>
@@ -1592,9 +1596,9 @@ export default function InternalLayout() {
                   height: '34px',
                   padding: '0 0.65rem',
                   borderRadius: '4px',
-                  background: rtStatus.mode === 'server-sse' ? '#ECFDF5' : '#EDF3F6',
-                  border: rtStatus.mode === 'server-sse' ? '1px solid #86EFAC' : '1px solid #C5D5DF',
-                  color: rtStatus.mode === 'server-sse' ? '#047857' : '#094E68',
+                  background: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#ECFDF5' : '#EDF3F6',
+                  border: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '1px solid #86EFAC' : '1px solid #C5D5DF',
+                  color: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#047857' : '#094E68',
                   fontFamily: 'var(--ent-mono)',
                   fontSize: '0.64rem',
                   fontWeight: 700,
@@ -1607,10 +1611,16 @@ export default function InternalLayout() {
                     width: '6px',
                     height: '6px',
                     borderRadius: '1px',
-                    background: rtStatus.mode === 'server-sse' ? '#047857' : '#0E7480',
+                    background: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#047857' : '#0E7480',
                   }}
                 />
-                <span>{rtStatus.mode === 'server-sse' ? 'SSE AKTIF' : 'LOKAL AKTIF'}</span>
+                <span>
+                  {rtStatus.mode === 'server-sse'
+                    ? 'SSE AKTIF'
+                    : rtStatus.mode === 'server-digest'
+                      ? 'SYNC SERVER'
+                      : 'LOKAL AKTIF'}
+                </span>
               </div>
             )}
 
@@ -1774,13 +1784,13 @@ export default function InternalLayout() {
                           type="button"
                           onClick={() => markAllNotificationsRead(currentUser)}
                           style={{
-                            border: '1px solid #B8CAD4',
+                            border: '1px solid #64748B',
                             background: '#F7FAFB',
                             color: '#094E68',
                             borderRadius: '5px',
-                            minHeight: isMobile ? '36px' : '28px',
-                            padding: '4px 8px',
-                            fontSize: '0.64rem',
+                            minHeight: '44px',
+                            padding: '6px 10px',
+                            fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
                           }}
@@ -1796,10 +1806,10 @@ export default function InternalLayout() {
                         onClick={() => setNotifOpen(false)}
                         aria-label="Tutup panel notifikasi"
                         style={{
-                          width: isMobile ? '36px' : '28px',
-                          height: isMobile ? '36px' : '28px',
+                          width: '44px',
+                          height: '44px',
                           borderRadius: '6px',
-                          border: '1px solid #D8E4EA',
+                          border: '1px solid #64748B',
                           background: '#FFFFFF',
                           color: '#072534',
                           display: 'inline-grid',
@@ -1807,7 +1817,7 @@ export default function InternalLayout() {
                           cursor: 'pointer',
                         }}
                       >
-                        <X size={14} />
+                        <X size={16} />
                       </button>
                     </div>
                   </div>
@@ -1857,9 +1867,13 @@ export default function InternalLayout() {
                             onClick={() => {
                               markNotificationRead(notif.id, currentUser?.email);
                               setNotifOpen(false);
-                              const rawUrl = notif.actionUrl || '/internal/kpi';
-                              const [pathnamePart, hashPart] = rawUrl.split('#');
-                              navigate(pathnamePart || '/internal/kpi');
+                              const rawUrl = notif.actionUrl || '/internal';
+                              if (rawUrl.startsWith('/internal/kpi') && isDual) {
+                                switchWorkspace('kpi');
+                              }
+                              const normalizedUrl = rawUrl.replace(/^\/internal\/kpi(?=[?#]|$)/, '/internal');
+                              const [pathnamePart, hashPart] = normalizedUrl.split('#');
+                              navigate(pathnamePart || '/internal');
                               if (hashPart) {
                                 window.setTimeout(() => {
                                   const targetEl = document.getElementById(hashPart);
@@ -1875,7 +1889,7 @@ export default function InternalLayout() {
                               padding: '0.6rem 0.7rem',
                               borderRadius: '7px',
                               border: `1px solid ${!notif.isRead ? (isRev ? '#FCD34D' : '#94B8C7') : '#D8E4EA'}`,
-                              borderLeft: `3.5px solid ${isRev ? '#D97706' : !notif.isRead ? '#094E68' : '#94A3B8'}`,
+                              borderLeft: `3.5px solid ${isRev ? '#D97706' : !notif.isRead ? '#094E68' : '#64748B'}`,
                               background: !notif.isRead ? (isRev ? '#FFFBEB' : '#F0F7FA') : '#FFFFFF',
                               cursor: 'pointer',
                               display: 'grid',
@@ -2886,7 +2900,7 @@ export default function InternalLayout() {
           justify-content: space-between;
           padding: 0.48rem 0.68rem;
           border-radius: 6px;
-          border: 1px dashed #94a3b8;
+          border: 1px dashed #64748B;
           background: #ffffff;
           color: #475569;
           font-size: 0.77rem;
@@ -2920,13 +2934,13 @@ export default function InternalLayout() {
           background: #EDF3F6;
         }
         .corp-logout-btn {
-          min-height: 40px;
+          min-height: 44px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 0.4rem;
           padding: 0.48rem 0.75rem;
-          border: 1px solid #D8E4EA;
+          border: 1px solid #64748B;
           background: #ffffff;
           color: #072534;
           font-weight: 600;
@@ -2956,7 +2970,7 @@ export default function InternalLayout() {
           position: relative;
           z-index: 5;
         }
-        @media (max-width: 920px) {
+        @media (max-width: 1024px) {
           .arch-cmd-trigger,
           .corp-parent-hub-btn,
           .corp-tree-row,
@@ -2986,7 +3000,7 @@ export default function InternalLayout() {
         }
         .internal-main-scroll::-webkit-scrollbar-thumb,
         .corp-sidebar nav::-webkit-scrollbar-thumb {
-          background: #CBD5E1;
+          background: #64748B;
           border-radius: 3px;
         }
       `}</style>

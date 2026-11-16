@@ -116,6 +116,58 @@ export function AuthProvider({ children }) {
     localStorage.setItem('performa_context', effectiveContext);
   }, [effectiveContext]);
 
+  const finalizeSessionForUser = (userObj) => {
+    const normalizedRole = userObj.role || 'kpi_only';
+    const sessionUser = {
+      ...userObj,
+      allowedPortals: Array.isArray(userObj.allowedPortals) && userObj.allowedPortals.length > 0
+        ? userObj.allowedPortals
+        : portalsForRole(normalizedRole),
+    };
+    setCurrentUser(sessionUser);
+    writeAudit('LOGIN_BERHASIL', 'Login berhasil', sessionUser.email);
+
+    if (normalizedRole === 'iku_only') {
+      setActiveWorkspace('iku');
+      setActiveContext('iku');
+      return {
+        success: true,
+        user: sessionUser,
+        requiresWorkspaceChoice: false,
+        targetWorkspace: 'iku',
+      };
+    }
+
+    if (normalizedRole === 'kpi_only' || normalizedRole === 'spi') {
+      setActiveWorkspace('kpi');
+      setActiveContext('kpi');
+      return {
+        success: true,
+        user: sessionUser,
+        requiresWorkspaceChoice: false,
+        targetWorkspace: 'kpi',
+      };
+    }
+
+    if (normalizedRole === 'superadmin_prp') {
+      setActiveWorkspace('kpi');
+      setActiveContext('prp');
+      return {
+        success: true,
+        user: sessionUser,
+        requiresWorkspaceChoice: false,
+        targetWorkspace: 'admin',
+      };
+    }
+
+    return {
+      success: true,
+      user: sessionUser,
+      requiresWorkspaceChoice: true,
+      targetWorkspace: null,
+    };
+  };
+
   const login = (email, password) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = password || '';
@@ -125,8 +177,8 @@ export function AuthProvider({ children }) {
     );
 
     const maintenanceBlocked = readSystemConfig().maintenanceMode && matchedUser?.role !== 'superadmin_prp';
-    const passwordMatches = Boolean(matchedUser) && (
-      matchedUser.password ? cleanPass === matchedUser.password : Boolean(cleanPass)
+    const passwordMatches = Boolean(
+      matchedUser && typeof matchedUser.password === 'string' && matchedUser.password.length > 0 && cleanPass === matchedUser.password
     );
 
     if (!matchedUser || matchedUser.status !== 'Aktif' || !passwordMatches || maintenanceBlocked) {
@@ -137,57 +189,59 @@ export function AuthProvider({ children }) {
       };
     }
 
-    const sessionUser = { ...matchedUser, password: matchedUser.password || cleanPass };
-    setCurrentUser(sessionUser);
-    writeAudit('LOGIN_BERHASIL', 'Login berhasil', cleanEmail);
+    const sessionResult = finalizeSessionForUser(matchedUser);
 
     loginViaBackend(cleanEmail, cleanPass).then((res) => {
-      if (res?.handledByBackend && !res.success && !matchedUser.password) {
+      if (res?.handledByBackend && !res.success) {
         setCurrentUser(null);
+        localStorage.removeItem('performa_user');
         return;
       }
       connectRealtimeEngine();
     });
 
-    if (matchedUser.role === 'iku_only') {
-      setActiveWorkspace('iku');
-      setActiveContext('iku');
+    return sessionResult;
+  };
+
+  const authenticate = async (email, password) => {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPass = password || '';
+    if (!cleanEmail || !cleanPass) {
       return {
-        success: true,
-        user: sessionUser,
-        requiresWorkspaceChoice: false,
-        targetWorkspace: 'iku'
+        success: false,
+        message: 'Email dan kata sandi wajib diisi.',
       };
     }
 
-    if (matchedUser.role === 'kpi_only' || matchedUser.role === 'spi') {
-      setActiveWorkspace('kpi');
-      setActiveContext('kpi');
+    const matchedUser = readMergedUsers().find(
+      (acc) => acc.email.toLowerCase() === cleanEmail
+    );
+    const maintenanceBlocked = readSystemConfig().maintenanceMode && matchedUser?.role !== 'superadmin_prp';
+    if (maintenanceBlocked) {
+      writeAudit('LOGIN_GAGAL', 'Login ditolak karena mode pemeliharaan', cleanEmail);
       return {
-        success: true,
-        user: sessionUser,
-        requiresWorkspaceChoice: false,
-        targetWorkspace: 'kpi'
+        success: false,
+        message: 'Sistem sedang dalam pemeliharaan. Hanya Superadmin PRP yang dapat masuk.',
       };
     }
 
-    if (matchedUser.role === 'superadmin_prp') {
-      setActiveWorkspace('kpi');
-      setActiveContext('prp');
-      return {
-        success: true,
-        user: sessionUser,
-        requiresWorkspaceChoice: false,
-        targetWorkspace: 'admin'
-      };
+    const backendRes = await loginViaBackend(cleanEmail, cleanPass);
+    if (backendRes?.handledByBackend) {
+      if (!backendRes.success) {
+        writeAudit('LOGIN_GAGAL', 'Login ditolak oleh server', cleanEmail);
+        return {
+          success: false,
+          message: backendRes.message || 'Email atau kata sandi tidak sesuai atau akun sedang nonaktif.',
+        };
+      }
+      const mergedUser = { ...(matchedUser || {}), ...(backendRes.user || {}) };
+      delete mergedUser.password;
+      const result = finalizeSessionForUser(mergedUser);
+      connectRealtimeEngine();
+      return result;
     }
 
-    return {
-      success: true,
-      user: sessionUser,
-      requiresWorkspaceChoice: true,
-      targetWorkspace: null
-    };
+    return login(cleanEmail, cleanPass);
   };
 
   const completeDualLogin = (user, chosenWorkspace) => {
@@ -258,10 +312,45 @@ export function AuthProvider({ children }) {
 
   const canAccess = (portal) => {
     if (!currentUser) return false;
+    if (portal === 'admin') return currentUser.role === 'superadmin_prp';
     if (['dual', 'superadmin_prp'].includes(currentUser.role)) return true;
     if (portal === 'iku' && currentUser.role === 'iku_only') return true;
-    if (portal === 'kpi' && currentUser.role === 'kpi_only') return true;
+    if (portal === 'kpi' && (currentUser.role === 'kpi_only' || currentUser.role === 'spi')) return true;
     return false;
+  };
+
+  const updateOwnPassword = async (currentPassword, nextPassword) => {
+    if (!currentUser) return { ok: false, error: 'Sesi pengguna tidak ditemukan.' };
+    if (!currentPassword) return { ok: false, error: 'Kata sandi saat ini wajib diisi.' };
+    const minLen = minimumPasswordLength();
+    if (!nextPassword || nextPassword.length < minLen) {
+      return { ok: false, error: `Kata sandi baru minimal ${minLen} karakter.` };
+    }
+    if (currentUser.password && currentPassword !== currentUser.password) {
+      return { ok: false, error: 'Kata sandi saat ini tidak sesuai.' };
+    }
+
+    const res = await changeOwnPasswordViaBackend(currentPassword, nextPassword);
+    if (res.handled && !res.ok) {
+      return { ok: false, error: res.error || 'Gagal memperbarui kata sandi pada server.' };
+    }
+
+    const nextUser = {
+      ...currentUser,
+      ...(res.user || {}),
+      ...(res.handled ? {} : { password: nextPassword }),
+      mustChangePassword: false,
+    };
+    if (res.handled) {
+      delete nextUser.password;
+    }
+    const storedUsers = getStoredUsers().filter((u) => u.email?.toLowerCase() !== nextUser.email.toLowerCase());
+    localStorage.setItem('prp_users', JSON.stringify([...storedUsers, nextUser]));
+    localStorage.setItem('performa_user', JSON.stringify(nextUser));
+    setCurrentUser(nextUser);
+    writeAudit('PASSWORD_DIUBAH', 'Kata sandi diubah melalui halaman profil', nextUser.email);
+    notifyAdminUpdated();
+    return { ok: true, user: nextUser };
   };
 
   const isSuperadmin = currentUser?.role === 'superadmin_prp';
@@ -271,10 +360,12 @@ export function AuthProvider({ children }) {
     activeWorkspace: effectiveWorkspace,
     activeContext: effectiveContext,
     login,
+    authenticate,
     completeDualLogin,
     switchWorkspace,
     enterPRP,
     updateProfile,
+    updateOwnPassword,
     logout,
     canAccess,
     isSuperadmin,

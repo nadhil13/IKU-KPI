@@ -7,9 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { hashPassword, verifyPassword, computeSha256 } from '../config/security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_DB_PATH = process.env.VERCEL
-  ? path.join(os.tmpdir(), 'performa_itpln.sqlite')
-  : path.resolve(__dirname, '../../storage/app/private/performa_itpln.sqlite');
+const BUNDLED_DB_PATH = path.resolve(__dirname, '../../storage/app/private/performa_itpln.sqlite');
+const DEFAULT_DB_PATH = process.env.PERFORMA_DB_PATH
+  || process.env.DATABASE_PATH
+  || (process.env.VERCEL
+    ? path.join(os.tmpdir(), 'performa_itpln.sqlite')
+    : BUNDLED_DB_PATH);
 
 export const SEED_ACCOUNTS = Object.freeze([
   {
@@ -357,11 +360,29 @@ export function getDatabase(customPath = null) {
   try {
     if (resolvedPath !== ':memory:') {
       fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+      if (
+        resolvedPath !== BUNDLED_DB_PATH &&
+        !fs.existsSync(resolvedPath) &&
+        fs.existsSync(BUNDLED_DB_PATH)
+      ) {
+        try {
+          fs.copyFileSync(BUNDLED_DB_PATH, resolvedPath);
+        } catch {
+          // Lanjutkan inisialisasi skema baru bila bundel tidak dapat disalin
+        }
+      }
     }
     db = new DatabaseSync(resolvedPath);
   } catch {
     try {
       resolvedPath = path.join(os.tmpdir(), 'performa_itpln.sqlite');
+      if (!fs.existsSync(resolvedPath) && fs.existsSync(BUNDLED_DB_PATH)) {
+        try {
+          fs.copyFileSync(BUNDLED_DB_PATH, resolvedPath);
+        } catch {
+          // Abaikan bila gagal menyalin bundel awal
+        }
+      }
       db = new DatabaseSync(resolvedPath);
     } catch {
       resolvedPath = ':memory:';

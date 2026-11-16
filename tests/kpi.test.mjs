@@ -586,3 +586,178 @@ test('Admin PRP dapat meminta revisi gambar/bukti (NEEDS_REVISION + notif + emai
   assert.equal(verifiedEv.status, 'VERIFIED');
   assert.equal(store.readKpiRevisions(form.id).items.A_bakt_img, undefined);
 });
+
+
+test('Reject bukti otomatis membuka NEEDS_REVISION, kirim ulang mempertahankan VERIFIED, rumus lintas-unit Admin PRP akurat, dan periode kustom nonaktif mengunci input', async () => {
+  const assert = (await import('node:assert/strict')).default;
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+
+  const toDataModule = (relPath, replacements = {}) => {
+    let code = fs.readFileSync(path.resolve(relPath), 'utf8');
+    for (const [from, to] of Object.entries(replacements)) {
+      code = code.replace(from, to);
+    }
+    return `data:text/javascript;base64,${Buffer.from(code, 'utf8').toString('base64')}`;
+  };
+  const formulaUrl = pathToFileURL(path.resolve('src/features/kpi/formulaEngine.js')).href;
+  const authUrl = pathToFileURL(path.resolve('src/features/auth/authAccounts.js')).href;
+  const schemaDataUrl = toDataModule('src/features/kpi/kpiSchema.js', {
+    "'./formulaEngine'": JSON.stringify(formulaUrl),
+  });
+  const workflowDataUrl = toDataModule('src/features/kpi/kpiWorkflowStore.js', {
+    "'../auth/authAccounts'": JSON.stringify(authUrl),
+    "'./kpiSchema'": JSON.stringify(schemaDataUrl),
+  });
+  const {
+    syncPeriodMasterTable,
+    addUnitEvidence,
+    submitUnitKpi,
+    reviewUnitEvidence,
+    readUnitEvidence,
+    readKpiWorkflow,
+    saveUnitKpiByAdmin,
+    listKpiPeriodsWithStatus,
+  } = await import(workflowDataUrl);
+
+  ['prp_kpi_distribution_v1', 'prp_periods', 'prp_kpi_config', 'prp_kpi_validation_rules', 'prp_system_config', 'prp_notifications_v1', 'prp_email_outbox_v1'].forEach((k) => {
+    localStorage.setItem(k, 'null');
+  });
+
+  const adminActor = {
+    email: 'prp@itpln.ac.id',
+    name: 'Admin PRP',
+    role: 'superadmin_prp',
+    status: 'Aktif',
+  };
+  const unitBpti = {
+    email: 'bpti@itpln.ac.id',
+    name: 'BPTI',
+    unit: 'Biro Pengembangan Teknologi Informasi (BPTI)',
+    role: 'kpi_only',
+    status: 'Aktif',
+    picCodes: ['BPTI'],
+  };
+  const unitBkan = {
+    email: 'bkan@itpln.ac.id',
+    name: 'BKAN',
+    unit: 'Biro Kerja Sama Akademik Nasional (BKAN)',
+    role: 'kpi_only',
+    status: 'Aktif',
+    picCodes: ['BKAN'],
+  };
+
+  const sections = [
+    {
+      code: 'A',
+      title: 'Bagian A',
+      totalWeight: 100,
+      items: [
+        {
+          id: 'item-bpti',
+          no: 1,
+          indikator: 'Indikator BPTI',
+          bobot: 50,
+          targetNum: 100,
+          pics: ['BPTI'],
+          picDisplay: 'BPTI',
+          calcType: 'custom',
+          formulaExpr: 'I1',
+          subrows: [{ key: 'a1_bpti', label: 'Capaian BPTI', value: '' }],
+        },
+        {
+          id: 'item-bkan',
+          no: 2,
+          indikator: 'Indikator BKAN Lintas Unit',
+          bobot: 50,
+          targetNum: 100,
+          pics: ['BKAN'],
+          picDisplay: 'BKAN',
+          calcType: 'custom',
+          formulaExpr: 'A1_I1 + I1',
+          subrows: [{ key: 'a2_bkan', label: 'Capaian BKAN', value: '' }],
+        },
+      ],
+    },
+  ];
+
+  const form = syncPeriodMasterTable(sections, { period: '2026', actor: adminActor, openPeriod: true });
+
+  const evVerified = addUnitEvidence(form.id, unitBpti, {
+    indicatorId: 'item-bpti',
+    kind: 'link',
+    label: 'Dokumen Bukti 1 Valid',
+    url: 'https://itpln.ac.id/bukti-valid-1',
+  });
+  const evRejected = addUnitEvidence(form.id, unitBpti, {
+    indicatorId: 'item-bpti',
+    kind: 'link',
+    label: 'Dokumen Bukti 2 Salah',
+    url: 'https://itpln.ac.id/bukti-salah-2',
+  });
+
+  submitUnitKpi(form.id, unitBpti, { a1_bpti: '60' }, { 'item-bpti': 'Catatan awal BPTI' });
+
+  reviewUnitEvidence(form.id, unitBpti.email, evVerified.id, 'VERIFIED', 'Bukti 1 sah', adminActor);
+  reviewUnitEvidence(form.id, unitBpti.email, evRejected.id, 'REJECTED', 'Bukti 2 tidak sesuai periode', adminActor);
+
+  const stateAfterReject = readKpiWorkflow();
+  const subKeyBpti = `${form.id}:${unitBpti.email}`;
+  assert.equal(stateAfterReject.submissions[subKeyBpti].status, 'NEEDS_REVISION');
+  assert.ok(stateAfterReject.drafts[subKeyBpti], 'Draft unit harus disiapkan saat bukti ditolak');
+
+  const evReplacement = addUnitEvidence(form.id, unitBpti, {
+    indicatorId: 'item-bpti',
+    kind: 'link',
+    label: 'Dokumen Bukti 2 Perbaikan',
+    url: 'https://itpln.ac.id/bukti-perbaikan-2',
+  });
+
+  submitUnitKpi(form.id, unitBpti, { a1_bpti: '60' }, { 'item-bpti': 'Kirim ulang setelah perbaikan bukti' });
+
+  const evListAfterResubmit = readUnitEvidence(form.id, unitBpti.email);
+  const afterVerified = evListAfterResubmit.find((e) => e.id === evVerified.id);
+  const afterRejected = evListAfterResubmit.find((e) => e.id === evRejected.id);
+  const afterReplacement = evListAfterResubmit.find((e) => e.id === evReplacement.id);
+
+  assert.equal(afterVerified.status, 'VERIFIED', 'Bukti yang sudah VERIFIED tidak boleh di-reset ke PENDING saat kirim ulang');
+  assert.equal(afterVerified.note, 'Bukti 1 sah');
+  assert.equal(afterRejected.status, 'PENDING');
+  assert.equal(afterReplacement.status, 'PENDING');
+
+  // Uji perhitungan rumus lintas-unit pada saveUnitKpiByAdmin (A1_1 dari BPTI = 60, A2_1 dari BKAN = 40 -> total 100 -> skor penuh 50)
+  const adminSaveResult = saveUnitKpiByAdmin(form.id, unitBkan.email, adminActor, {
+    values: { a2_bkan: '40' },
+    notes: { 'item-bkan': 'Diisi Admin PRP' },
+    statusTransition: 'SUBMITTED',
+  });
+  assert.equal(adminSaveResult.totalScore, 50, 'saveUnitKpiByAdmin harus menyertakan nilai lintas-unit dari papan integrasi');
+
+  // Uji periode kustom Periode-* dan penguncian input saat dinonaktifkan
+  localStorage.setItem(
+    'prp_periods',
+    JSON.stringify([
+      {
+        id: 'Periode-1790000000',
+        name: 'Periode Evaluasi Khusus 2026',
+        start: '2026-01-01',
+        end: '2026-12-31',
+        status: 'Inactive',
+        inputOpen: false,
+      },
+    ]),
+  );
+
+  const periodsMeta = listKpiPeriodsWithStatus();
+  const customPeriodMeta = periodsMeta.find((p) => p.id === 'Periode-1790000000');
+  assert.ok(customPeriodMeta, 'listKpiPeriodsWithStatus harus mengenali ID Periode-* kustom');
+  assert.equal(customPeriodMeta.name, 'Periode Evaluasi Khusus 2026');
+  assert.equal(customPeriodMeta.inputOpen, false);
+
+  assert.throws(
+    () => submitUnitKpi(form.id, unitBkan, { a2_bkan: '45' }),
+    /Periode pengisian ditutup/,
+    'inputAllowed harus memblokir submit saat periode kustom tahun terkait berstatus Inactive',
+  );
+});

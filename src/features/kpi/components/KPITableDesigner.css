@@ -282,7 +282,7 @@
 .kpi-designer-page .pic-popover-search,
 .kpi-designer-page .pic-popover-display {
   width: 100%;
-  min-height: 34px;
+  min-height: 44px;
   padding: .35rem .5rem;
   border: 1px solid var(--line-strong);
   border-radius: 5px;
@@ -300,8 +300,8 @@
   padding: .15rem 0;
 }
 .kpi-designer-page .pic-option {
-  min-height: 30px;
-  padding: .2rem .5rem;
+  min-height: 44px;
+  padding: .25rem .6rem;
   border-radius: 5px;
   font: 700 .68rem/1.2 'JetBrains Mono', ui-monospace, Consolas, monospace;
 }
@@ -339,13 +339,21 @@
 
 .kpi-designer-page .sub-wrap { position: relative; }
 .kpi-designer-page .sub-actions {
-  position: absolute; top: 2px; right: 2px; z-index: 2; display: none; gap: 1px; padding: 1px;
+  position: absolute; top: 2px; right: 2px; z-index: 2; display: none; gap: 2px; padding: 2px;
   border: 1px solid var(--line-strong); border-radius: 5px; background: #FFFFFF; box-shadow: 0 4px 12px rgba(7, 37, 52, .1);
 }
 .kpi-designer-page .sub-cell:hover .sub-actions,
-.kpi-designer-page .sub-cell:focus-within .sub-actions { display: inline-flex; }
-.kpi-designer-page .sub-actions button { min-height: 28px; padding: .2rem .35rem; border: 0; border-radius: 4px; font-size: .66rem; }
+.kpi-designer-page .sub-cell:focus-within .sub-actions,
+.kpi-designer-page tr.selected .sub-actions { display: inline-flex; }
+.kpi-designer-page .sub-actions button { min-height: 44px; min-width: 44px; padding: .25rem .45rem; border: 0; border-radius: 4px; font-size: .66rem; }
 .kpi-designer-page .sub-actions button.on { background: var(--accent-soft); color: var(--accent); }
+@media (hover: none), (pointer: coarse) {
+  .kpi-designer-page .sub-actions {
+    display: inline-flex;
+    position: static;
+    margin-top: 4px;
+  }
+}
 
 .kpi-designer-page .ref-cell { position: relative; }
 .kpi-designer-page .ref-tag {
@@ -405,7 +413,7 @@
 .kpi-designer-page .rule-field { display: grid; gap: .22rem; font-size: .71rem; font-weight: 700; color: #334155; }
 .kpi-designer-page .rule-field input[type='number'],
 .kpi-designer-page .rule-field select {
-  width: 100%; min-height: 36px; padding: .35rem .5rem; border: 1px solid var(--line-strong); border-radius: 6px;
+  width: 100%; min-height: 44px; padding: .35rem .5rem; border: 1px solid var(--line-strong); border-radius: 6px;
   background: #FFFFFF; color: #072534; font: inherit; font-size: .74rem;
 }
 .kpi-designer-page .rule-guide {
@@ -460,7 +468,7 @@
     width: min(290px, calc(100vw - 2.25rem));
   }
   .kpi-designer-page .pic-option {
-    min-height: 40px;
+    min-height: 44px;
     padding: .3rem .65rem;
   }
   .kpi-designer-page .designer-panel {

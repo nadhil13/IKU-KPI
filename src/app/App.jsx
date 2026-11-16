@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '../features/auth/context/AuthContext';
 import { useAuth } from '../features/auth/hooks/useAuth';
@@ -69,6 +69,19 @@ function InternalIndex() {
   return <Dashboard />;
 }
 
+function KpiWorkspaceRoute() {
+  const { currentUser, activeWorkspace, switchWorkspace } = useAuth();
+  useEffect(() => {
+    if (['dual', 'superadmin_prp'].includes(currentUser?.role) && activeWorkspace !== 'kpi') {
+      switchWorkspace('kpi');
+    }
+  }, [currentUser?.role, activeWorkspace, switchWorkspace]);
+  if (currentUser?.role === 'iku_only') {
+    return <Navigate to="/internal" replace />;
+  }
+  return <Dashboard />;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -92,6 +105,7 @@ function App() {
             {/* Internal Routes */}
             <Route path="/internal" element={<InternalLayout />}>
               <Route index element={<InternalIndex />} />
+              <Route path="kpi" element={<KpiWorkspaceRoute />} />
               <Route path="iku-submissions" element={<IkuSubmissionOnly />} />
               <Route path="admin" element={<SuperadminOnly><AdminPRPDashboard /></SuperadminOnly>} />
               <Route path="admin/governance" element={<SuperadminOnly><PRPGovernance /></SuperadminOnly>} />

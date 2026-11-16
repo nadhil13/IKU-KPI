@@ -730,7 +730,7 @@ export default function Users() {
                             minHeight: '44px',
                             padding: '0.35rem 0.72rem',
                             borderRadius: '6px',
-                            border: active ? '1px solid #094E68' : '1px solid #CBD5E1',
+                            border: active ? '1px solid #094E68' : '1px solid #64748B',
                             background: active ? '#094E68' : '#FFFFFF',
                             color: active ? '#FFFFFF' : '#072534',
                             fontFamily: 'var(--ent-mono)',
@@ -752,7 +752,7 @@ export default function Users() {
                       placeholder="Kode Bagian Baru (mis. BBTI)"
                       value={newPicCodeInput}
                       onChange={(e) => setNewPicCodeInput(e.target.value)}
-                      style={{ flex: '1 1 130px', minHeight: '38px', fontSize: '0.74rem' }}
+                      style={{ flex: '1 1 130px', minHeight: '44px', fontSize: '0.74rem' }}
                     />
                     <input
                       type="text"
@@ -760,12 +760,12 @@ export default function Users() {
                       placeholder="Nama Unit/Bagian Baru"
                       value={newPicNameInput}
                       onChange={(e) => setNewPicNameInput(e.target.value)}
-                      style={{ flex: '2 1 180px', minHeight: '38px', fontSize: '0.74rem' }}
+                      style={{ flex: '2 1 180px', minHeight: '44px', fontSize: '0.74rem' }}
                     />
                     <button
                       type="button"
                       className="ent-btn"
-                      style={{ minHeight: '38px', fontSize: '0.72rem', fontWeight: 700 }}
+                      style={{ minHeight: '44px', fontSize: '0.72rem', fontWeight: 700 }}
                       onClick={() => {
                         const code = newPicCodeInput.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
                         if (!code) return;

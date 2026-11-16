@@ -1,7 +1,26 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-const DEFAULT_SECRET = 'performa-itpln-hmac-root-key-2026-institutional-grade-v1';
-const TOKEN_SECRET = process.env.APP_SECRET || process.env.JWT_SECRET || DEFAULT_SECRET;
+function resolveTokenSecret() {
+  const envSecret = (process.env.APP_SECRET || process.env.JWT_SECRET || '').trim();
+  if (envSecret.length >= 16) return envSecret;
+  const keyFile = path.join(os.tmpdir(), '.performa_itpln_hmac.key');
+  try {
+    if (fs.existsSync(keyFile)) {
+      const saved = fs.readFileSync(keyFile, 'utf8').trim();
+      if (saved.length >= 32) return saved;
+    }
+    const generated = crypto.randomBytes(48).toString('hex');
+    fs.writeFileSync(keyFile, generated, { encoding: 'utf8', mode: 0o600 });
+    return generated;
+  } catch {
+    return crypto.createHash('sha256').update(`${os.hostname()}:${process.cwd()}:performa-itpln`).digest('hex');
+  }
+}
+
+const TOKEN_SECRET = resolveTokenSecret();
 const PBKDF2_ITERATIONS = 120000;
 const PBKDF2_KEYLEN = 64;
 const PBKDF2_DIGEST = 'sha512';
@@ -134,12 +153,36 @@ export function applySecurityHeaders(req, res) {
   res.setHeader('X-XSS-Protection', '0');
 
   const origin = req.headers?.origin;
-  if (origin && (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) || /\.vercel\.app$/i.test(origin))) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Client-Id, X-CSRF-Token');
-    res.setHeader('Vary', 'Origin');
+  if (origin) {
+    const reqHost = String(req.headers?.host || '').toLowerCase();
+    const configuredOrigins = String(process.env.ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const vercelProdHost = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim().toLowerCase();
+    const vercelBranchHost = String(process.env.VERCEL_URL || '').trim().toLowerCase();
+    let originAllowed = false;
+    try {
+      const parsedOrigin = new URL(origin);
+      const originHost = parsedOrigin.host.toLowerCase();
+      originAllowed =
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ||
+        (reqHost && originHost === reqHost) ||
+        configuredOrigins.includes(origin.toLowerCase()) ||
+        configuredOrigins.includes(originHost) ||
+        (vercelProdHost && originHost === vercelProdHost) ||
+        (vercelBranchHost && originHost === vercelBranchHost) ||
+        /^https:\/\/iku-kpi(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin);
+    } catch {
+      originAllowed = false;
+    }
+    if (originAllowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Client-Id, X-CSRF-Token');
+      res.setHeader('Vary', 'Origin');
+    }
   }
 }
 

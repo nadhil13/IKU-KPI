@@ -43,6 +43,7 @@ export default function Documents({ embedded = false }) {
       .fromTo('.doc-title', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.85 }, '-=0.45')
       .fromTo('.doc-desc', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.7 }, '-=0.5');
 
+    const scrollerEl = mainRef.current?.closest('.internal-main-scroll') || undefined;
     gsap.utils.toArray('.doc-row-container').forEach((row) => {
       gsap.fromTo(
         row,
@@ -56,6 +57,7 @@ export default function Documents({ embedded = false }) {
             trigger: row,
             start: 'top 90%',
             once: true,
+            ...(scrollerEl ? { scroller: scrollerEl } : {}),
           },
         }
       );

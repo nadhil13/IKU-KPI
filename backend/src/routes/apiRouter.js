@@ -52,6 +52,12 @@ import {
 import {
   validateAndMergeIkuSubmissionsForUnit,
 } from '../modules/iku/ikuAccessPolicy.js';
+import {
+  getVapidPublicKey,
+  savePushSubscription,
+  removePushSubscription,
+  dispatchWebPushToTargets,
+} from '../services/webPushService.js';
 
 const SUPERADMIN_ONLY_KEYS = new Set([
   'prp_kpi_config',
@@ -142,6 +148,10 @@ export async function handleApiRequest(req, res) {
   // Endpoint SSE Stream ditangani dengan batas koneksi per IP sendiri
   if (pathname === '/api/v1/realtime/stream' && req.method === 'GET') {
     const caller = resolveAuthenticatedUser(req, urlObj);
+    if (!caller) {
+      sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk membuka aliran realtime.' });
+      return true;
+    }
     registerSseClient(req, res, caller, ip);
     return true;
   }
@@ -314,12 +324,14 @@ export async function handleApiRequest(req, res) {
         sendJson(res, 400, { ok: false, error: `Kata sandi baru minimal ${minLen} karakter.` });
         return true;
       }
-      if (currentPassword) {
-        const verified = verifyUserCredentials(caller.email, currentPassword);
-        if (!verified.ok) {
-          sendJson(res, 403, { ok: false, error: 'Kata sandi saat ini tidak sesuai.' });
-          return true;
-        }
+      if (!currentPassword) {
+        sendJson(res, 400, { ok: false, error: 'Kata sandi saat ini wajib diisi.' });
+        return true;
+      }
+      const verified = verifyUserCredentials(caller.email, currentPassword);
+      if (!verified.ok) {
+        sendJson(res, 403, { ok: false, error: 'Kata sandi saat ini tidak sesuai.' });
+        return true;
       }
       const updatedUser = changeUserPasswordByEmail(caller.email, newPassword);
       sendJson(res, 200, { ok: true, user: updatedUser });
@@ -329,6 +341,10 @@ export async function handleApiRequest(req, res) {
     // 5. GET /api/v1/bootstrap
     if (pathname === '/api/v1/bootstrap' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk memuat data sistem.' });
+        return true;
+      }
       const { stores, meta } = readAllKvStores();
       const users = listAllUsers();
       const safeStores = { ...stores };
@@ -339,10 +355,13 @@ export async function handleApiRequest(req, res) {
         safeStores.prp_kpi_distribution_v1 = filterKpiWorkflowForCaller(safeStores.prp_kpi_distribution_v1, caller);
       }
       const broadcasts = listBroadcastsForUser(caller);
-      const audit = listAuditLogs(200);
+      const rawAudit = listAuditLogs(200);
+      const audit = ['superadmin_prp', 'spi'].includes(caller.role)
+        ? rawAudit
+        : rawAudit.filter((entry) => String(entry.actor || '').toLowerCase() === caller.email.toLowerCase());
       sendJson(res, 200, {
         ok: true,
-        authenticatedAs: caller ? { email: caller.email, role: caller.role, picCodes: caller.picCodes } : null,
+        authenticatedAs: { email: caller.email, role: caller.role, picCodes: caller.picCodes },
         stores: safeStores,
         meta,
         users,
@@ -374,27 +393,95 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 5c. POST /api/v1/notifications/email (Catat audit pengiriman pemberitahuan email resmi)
+    // 5c. POST /api/v1/notifications/email (Pengiriman gateway email resmi + rekam jejak audit)
     if (pathname === '/api/v1/notifications/email' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
         sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk mencatat pengiriman email.' });
         return true;
       }
+      if (caller.role === 'spi') {
+        sendJson(res, 403, { ok: false, error: 'Akun Auditor SPI bersifat Hanya Lihat (Read-Only).' });
+        return true;
+      }
       const body = sanitizePayload((await readJsonBody(req)) || {});
       const recipients = Array.isArray(body.toEmails) ? body.toEmails.filter(Boolean).slice(0, 30) : [];
       const subject = String(body.subject || '[PERFORMA ITPLN] Pemberitahuan Sistem Kinerja').slice(0, 200);
+      const textBody = String(body.body || '').slice(0, 4000);
+      const mailId = String(body.id || `mail_${Date.now()}`);
+      const recordedAt = new Date().toISOString();
+
+      let deliveryStatus = 'QUEUED_OUTBOX_LOCAL';
+      const resendKey = String(process.env.RESEND_API_KEY || '').trim();
+      const webhookUrl = String(process.env.SMTP_WEBHOOK_URL || '').trim();
+      const fromAddress = String(process.env.SMTP_FROM_EMAIL || 'performa-prp@itpln.ac.id').trim();
+
+      if (recipients.length > 0 && typeof fetch === 'function') {
+        if (resendKey) {
+          try {
+            const gwRes = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${resendKey}`,
+              },
+              body: JSON.stringify({
+                from: fromAddress,
+                to: recipients,
+                subject,
+                text: textBody || subject,
+              }),
+            });
+            deliveryStatus = gwRes.ok ? 'SENT_GATEWAY' : 'FAILED_GATEWAY';
+          } catch {
+            deliveryStatus = 'FAILED_GATEWAY';
+          }
+        } else if (webhookUrl) {
+          try {
+            const gwRes = await fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: mailId, from: fromAddress, to: recipients, subject, body: textBody, recordedAt }),
+            });
+            deliveryStatus = gwRes.ok ? 'SENT_GATEWAY' : 'FAILED_GATEWAY';
+          } catch {
+            deliveryStatus = 'FAILED_GATEWAY';
+          }
+        }
+      }
+
+      const existingOutbox = readKvStore('prp_email_outbox_v1', []).value;
+      const outboxEntry = {
+        id: mailId,
+        kind: String(body.kind || 'SYSTEM'),
+        toEmails: recipients,
+        recipientLabel: String(body.recipientLabel || recipients.join(', ') || 'Unit Terkait'),
+        subject,
+        body: textBody,
+        actionUrl: String(body.actionUrl || '/internal'),
+        actorEmail: caller.email,
+        status: deliveryStatus === 'SENT_GATEWAY' ? 'TERKIRIM_GATEWAY' : 'TERCATAT_OUTBOX_AUDIT',
+        deliveryStatus,
+        sentAt: recordedAt,
+      };
+      const nextOutbox = [
+        outboxEntry,
+        ...(Array.isArray(existingOutbox) ? existingOutbox.filter((item) => item?.id !== mailId) : []),
+      ].slice(0, 250);
+      writeKvStore('prp_email_outbox_v1', nextOutbox, caller.email);
+
       appendAuditLog(
         'EMAIL_AUDIT_DISPATCH',
-        `Email "${subject}" dicatat untuk ${recipients.join(', ') || body.recipientLabel || 'unit terkait'}`,
+        `Email "${subject}" (${deliveryStatus}) untuk ${recipients.join(', ') || body.recipientLabel || 'unit terkait'}`,
         caller.email,
         ip,
       );
       sendJson(res, 200, {
         ok: true,
-        id: String(body.id || `mail_${Date.now()}`),
+        id: mailId,
         recipients,
-        recordedAt: new Date().toISOString(),
+        deliveryStatus,
+        recordedAt,
       });
       return true;
     }
@@ -412,6 +499,21 @@ export async function handleApiRequest(req, res) {
       const clientId = String(req.headers?.['x-client-id'] || body.clientId || '');
       const updatedKeys = [];
 
+      if (caller.role === 'spi') {
+        const attemptedKeys = Object.keys(incomingStores).join(', ') || 'state';
+        appendAuditLog(
+          'SECURITY_VIOLATION',
+          `Percobaan ubah data ${attemptedKeys} oleh akun Auditor SPI (${caller.email})`,
+          caller.email,
+          ip,
+        );
+        sendJson(res, 403, {
+          ok: false,
+          error: 'Akun Auditor SPI bersifat Hanya Lihat (Read-Only) dan tidak diizinkan mengubah data kinerja.',
+        });
+        return true;
+      }
+
       for (const [storeKey, incomingVal] of Object.entries(incomingStores)) {
         if (!ALLOWED_SYNC_KEYS.has(storeKey)) continue;
 
@@ -422,11 +524,15 @@ export async function handleApiRequest(req, res) {
             (Array.isArray(existingList) ? existingList : []).forEach((item) => {
               if (item?.id) mergedMap.set(item.id, item);
             });
+            const newNotificationItems = [];
             incomingVal.forEach((item) => {
               if (!item?.id) return;
               const prev = mergedMap.get(item.id);
               if (!prev) {
                 mergedMap.set(item.id, item);
+                if (storeKey === 'prp_notifications_v1') {
+                  newNotificationItems.push(item);
+                }
               } else {
                 const readBy = Array.from(new Set([
                   ...(Array.isArray(prev.readBy) ? prev.readBy : []),
@@ -442,22 +548,27 @@ export async function handleApiRequest(req, res) {
             if (result.changed) {
               updatedKeys.push(storeKey);
             }
+            if (newNotificationItems.length > 0) {
+              newNotificationItems.slice(0, 5).forEach((notif) => {
+                dispatchWebPushToTargets(
+                  {
+                    id: notif.id,
+                    title: notif.title || 'Notifikasi PERFORMA ITPLN',
+                    body: notif.message || 'Terdapat pembaruan status pada portal kinerja.',
+                    actionUrl: notif.actionUrl || '/internal',
+                    actionLabel: 'Buka Portal',
+                    tag: `prp-notif-${notif.id}`,
+                  },
+                  {
+                    targetEmails: Array.isArray(notif.targetEmails) ? notif.targetEmails : [],
+                    targetRoles: Array.isArray(notif.targetRoles) ? notif.targetRoles : [],
+                    targetPicCodes: Array.isArray(notif.targetPicCodes) ? notif.targetPicCodes : [],
+                  },
+                ).catch(() => {});
+              });
+            }
           }
           continue;
-        }
-
-        if (caller.role === 'spi') {
-          appendAuditLog(
-            'SECURITY_VIOLATION',
-            `Percobaan ubah data ${storeKey} oleh akun Auditor SPI (${caller.email})`,
-            caller.email,
-            ip,
-          );
-          sendJson(res, 403, {
-            ok: false,
-            error: 'Akun Auditor SPI bersifat Hanya Lihat (Read-Only) dan tidak diizinkan mengubah data kinerja.',
-          });
-          return true;
         }
 
         if (SUPERADMIN_ONLY_KEYS.has(storeKey)) {
@@ -614,6 +725,22 @@ export async function handleApiRequest(req, res) {
       });
 
       const deliveredCount = publishTargetedBroadcastEvent('broadcast:published', created);
+      dispatchWebPushToTargets(
+        {
+          id: created.id,
+          title: `[${created.priority || 'INFO'}] ${created.title}`,
+          body: created.message,
+          priority: created.priority,
+          actionUrl: created.actionUrl || '/internal',
+          actionLabel: created.actionLabel || 'Buka Lembar Kerja',
+          tag: `prp-broadcast-${created.id}`,
+        },
+        {
+          targetType: created.targetType || 'ALL',
+          targetValue: created.targetValue || '',
+        },
+      ).catch(() => {});
+
       sendJson(res, 201, {
         ok: true,
         broadcast: created,
@@ -690,6 +817,50 @@ export async function handleApiRequest(req, res) {
           at: new Date().toISOString(),
         });
       }
+      sendJson(res, 200, { ok: true, removed });
+      return true;
+    }
+
+    // 12. GET /api/v1/push/vapid-public-key
+    if (pathname === '/api/v1/push/vapid-public-key' && req.method === 'GET') {
+      const publicKey = getVapidPublicKey();
+      sendJson(res, 200, { ok: true, publicKey });
+      return true;
+    }
+
+    // 13. POST /api/v1/push/subscribe
+    if (pathname === '/api/v1/push/subscribe' && req.method === 'POST') {
+      const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk mendaftarkan langganan Web Push.' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const subPayload = body?.subscription || body;
+      const saved = savePushSubscription(
+        {
+          ...subPayload,
+          userAgent: req.headers['user-agent'] || '',
+        },
+        caller,
+      );
+      sendJson(res, 201, {
+        ok: true,
+        subscription: {
+          endpoint: saved.endpoint,
+          email: saved.email,
+          updatedAt: saved.updatedAt,
+        },
+      });
+      return true;
+    }
+
+    // 14. POST /api/v1/push/unsubscribe
+    if (pathname === '/api/v1/push/unsubscribe' && req.method === 'POST') {
+      const caller = resolveAuthenticatedUser(req, urlObj);
+      const body = await readJsonBody(req);
+      const endpoint = String(body?.endpoint || body?.subscription?.endpoint || '').trim();
+      const removed = removePushSubscription(endpoint, caller?.email || 'client_unsubscribe');
       sendJson(res, 200, { ok: true, removed });
       return true;
     }

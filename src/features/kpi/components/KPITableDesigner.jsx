@@ -180,7 +180,17 @@ export default function KPITableDesigner() {
 
   const selectedPeriodMeta = useMemo(() => {
     const clean = String(periodString || '').trim();
-    return periodsList.find((p) => String(p.id) === clean || String(p.name || '').includes(clean)) || null;
+    if (!clean) return null;
+    return (
+      periodsList.find(
+        (p) =>
+          String(p.id) === clean ||
+          String(p.year || '') === clean ||
+          String(p.label || '') === clean ||
+          String(p.label || p.name || '').includes(clean) ||
+          String(p.id || '').includes(clean)
+      ) || null
+    );
   }, [periodsList, periodString]);
 
   const normalized = useMemo(() => normalizeKpiSections(sections), [sections]);
@@ -244,12 +254,17 @@ export default function KPITableDesigner() {
       setPicCatalog(readMasterPicCatalog());
       setValidationRules(readKpiValidationRules());
       setPeriodsList(listKpiPeriodsWithStatus());
+      setHistory(readKpiHistory());
     };
     window.addEventListener('prp-admin-updated', syncMaster);
+    window.addEventListener('prp-kpi-workflow-updated', syncMaster);
+    window.addEventListener('prp-kpi-config-updated', syncMaster);
     window.addEventListener('kpi-workflow-updated', syncMaster);
     window.addEventListener('storage', syncMaster);
     return () => {
       window.removeEventListener('prp-admin-updated', syncMaster);
+      window.removeEventListener('prp-kpi-workflow-updated', syncMaster);
+      window.removeEventListener('prp-kpi-config-updated', syncMaster);
       window.removeEventListener('kpi-workflow-updated', syncMaster);
       window.removeEventListener('storage', syncMaster);
     };
@@ -652,7 +667,7 @@ export default function KPITableDesigner() {
             <span>Periode</span>
             <select
               aria-label="Pilih periode tersedia"
-              value={periodsList.some((p) => String(p.id) === String(periodString).trim()) ? String(periodString).trim() : ''}
+              value={selectedPeriodMeta ? selectedPeriodMeta.id : ''}
               onChange={(event) => {
                 if (event.target.value) handleLoadPeriodStructure(event.target.value);
               }}
@@ -661,7 +676,7 @@ export default function KPITableDesigner() {
               <option value="">Kustom...</option>
               {periodsList.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.id} ({p.isOpenForInput ? 'AKTIF - Terbuka' : 'TERKUNCI - Nonaktif'})
+                  {p.label && p.label !== p.id ? `${p.id} - ${p.label}` : p.id} ({p.isOpenForInput ? 'AKTIF - Terbuka' : 'TERKUNCI - Nonaktif'})
                 </option>
               ))}
             </select>
@@ -1153,7 +1168,7 @@ export default function KPITableDesigner() {
                         const span = item.subrows.length;
                         const isSelected = item.id === selectedId;
                         const rowClass = `${isSelected ? 'selected' : ''} ${hasError ? 'row-error' : ''}`;
-                        const select = () => { if (!pickingRef.current) setSelectedId(item.id); };
+                        const select = () => { if (!pickMode) setSelectedId(item.id); };
 
                         return item.subrows.map((sub, subi) => {
                           const gutter = (gutterStart.get(item.id) || 0) + subi;

@@ -275,7 +275,17 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
  */
 export function filterKpiWorkflowForCaller(workflow, callerUser) {
   if (!workflow || typeof workflow !== 'object') return workflow;
-  if (!callerUser || ['superadmin_prp', 'spi', 'dual'].includes(callerUser.role)) {
+  if (!callerUser) {
+    return {
+      ...workflow,
+      submissions: {},
+      evidence: {},
+      drafts: {},
+      adminOverrides: {},
+      revisions: {},
+    };
+  }
+  if (['superadmin_prp', 'spi'].includes(callerUser.role)) {
     return workflow;
   }
   const callerEmail = String(callerUser.email || '').toLowerCase();

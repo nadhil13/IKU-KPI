@@ -12,9 +12,8 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { getStoredUsers } from '../../auth/authAccounts';
-import { minimumPasswordLength, notifyAdminUpdated, writeAudit } from '../adminStore';
-import { changeOwnPasswordViaBackend, getRealtimeStatus, subscribeRealtimeStatus } from '../../../lib/realtimeSync';
+import { minimumPasswordLength } from '../adminStore';
+import { getRealtimeStatus, subscribeRealtimeStatus } from '../../../lib/realtimeSync';
 import './Profile.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -26,7 +25,7 @@ const accessRows = [
 ];
 
 export default function Profile() {
-  const { currentUser, updateProfile } = useAuth();
+  const { currentUser, updateProfile, updateOwnPassword, canAccess: authCanAccess } = useAuth();
   const pageRef = useRef(null);
   const [nameDraft, setNameDraft] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -38,7 +37,10 @@ export default function Profile() {
 
   const displayName = nameDraft ?? (currentUser?.name || '');
   const isSuperadmin = currentUser?.role === 'superadmin_prp';
-  const canAccess = (key) => (key === 'admin' ? isSuperadmin : currentUser?.allowedPortals?.includes(key));
+  const canAccess = (key) => {
+    if (typeof authCanAccess === 'function' && authCanAccess(key)) return true;
+    return key === 'admin' ? isSuperadmin : Boolean(currentUser?.allowedPortals?.includes(key));
+  };
 
   useEffect(() => subscribeRealtimeStatus((next) => setRtStatus({ ...next })), []);
 
@@ -91,8 +93,8 @@ export default function Profile() {
     event.preventDefault();
     const minLen = minimumPasswordLength();
     if (!currentUser) return;
-    if (currentUser.password && currentPasswordInput !== currentUser.password) {
-      setPasswordStatus({ type: 'error', text: 'Kata sandi saat ini tidak sesuai.' });
+    if (!currentPasswordInput) {
+      setPasswordStatus({ type: 'error', text: 'Kata sandi saat ini wajib diisi.' });
       return;
     }
     if (newPasswordInput.length < minLen) {
@@ -103,23 +105,17 @@ export default function Profile() {
       setPasswordStatus({ type: 'error', text: 'Konfirmasi kata sandi tidak cocok.' });
       return;
     }
-    if (currentPasswordInput && newPasswordInput === currentPasswordInput) {
+    if (newPasswordInput === currentPasswordInput) {
       setPasswordStatus({ type: 'error', text: 'Kata sandi baru harus berbeda dari kata sandi sebelumnya.' });
       return;
     }
 
-    const res = await changeOwnPasswordViaBackend(currentPasswordInput, newPasswordInput);
-    if (res.handled && !res.ok) {
-      setPasswordStatus({ type: 'error', text: res.error || 'Gagal memperbarui kata sandi pada server.' });
+    const res = await updateOwnPassword(currentPasswordInput, newPasswordInput);
+    if (!res?.ok) {
+      setPasswordStatus({ type: 'error', text: res?.error || 'Gagal memperbarui kata sandi.' });
       return;
     }
 
-    const nextUser = { ...currentUser, password: newPasswordInput, mustChangePassword: false };
-    const storedUsers = getStoredUsers().filter((u) => u.email?.toLowerCase() !== nextUser.email.toLowerCase());
-    localStorage.setItem('prp_users', JSON.stringify([...storedUsers, nextUser]));
-    localStorage.setItem('performa_user', JSON.stringify(nextUser));
-    writeAudit('PASSWORD_DIUBAH', 'Kata sandi diubah melalui halaman profil', nextUser.email);
-    notifyAdminUpdated();
     setCurrentPasswordInput('');
     setNewPasswordInput('');
     setConfirmPasswordInput('');
@@ -130,6 +126,7 @@ export default function Profile() {
   const portalText = currentUser?.allowedPortals?.length
     ? currentUser.allowedPortals.map((p) => p.toUpperCase()).join(' & ')
     : '-';
+  const isServerSynced = rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest';
 
   return (
     <section ref={pageRef} className="profile-page">
@@ -144,7 +141,7 @@ export default function Profile() {
           </p>
         </div>
         <div className="profile-live-state profile-hero-item">
-          <i /> {rtStatus.mode === 'server-sse' ? 'Sesi Terhubung Server' : 'Sesi Lokal Aktif'}
+          <i /> {isServerSynced ? 'Sesi Terhubung Server' : 'Sesi Lokal Aktif'}
         </div>
       </header>
 
@@ -238,7 +235,13 @@ export default function Profile() {
           <div className="profile-metrics">
             <div>
               <Activity size={17} />
-              <strong>{rtStatus.mode === 'server-sse' ? 'SERVER SSE' : 'LOKAL TAB'}</strong>
+              <strong>
+                {rtStatus.mode === 'server-sse'
+                  ? 'SERVER SSE'
+                  : rtStatus.mode === 'server-digest'
+                    ? 'SERVER DIGEST'
+                    : 'LOKAL TAB'}
+              </strong>
               <span>Mode Sinkronisasi</span>
             </div>
             <div>

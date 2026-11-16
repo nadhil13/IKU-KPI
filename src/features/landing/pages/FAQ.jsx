@@ -22,7 +22,7 @@ const FAQS = [
   },
   {
     q: 'Bagaimana penyimpanan dan pencadangan data kerja dilakukan pada portal ini?',
-    a: 'Pada lingkungan operasional peramban saat ini, perubahan lembar kerja, pengajuan bukti, dan log audit disimpan di penyimpanan lokal peramban (localStorage). Untuk pencadangan atau pemindahan data antarperangkat, Superadmin PRP dapat mengunduh dan mengimpor arsip konfigurasi berformat JSON pada menu Tata Kelola.',
+    a: 'Perubahan lembar kerja, pengajuan bukti, dan log audit disinkronkan secara real-time ke basis data server pusat melalui jalur Server-Sent Events (SSE) dan digest HTTP dilengkapi notifikasi perangkat Web Push VAPID, dengan cadangan penyimpanan lokal peramban (localStorage) agar tetap aman saat koneksi terputus sementara. Superadmin PRP juga dapat mengunduh dan mengimpor arsip konfigurasi berformat JSON pada menu Tata Kelola.',
   },
   {
     q: 'Apa yang harus dilakukan jika batas waktu (deadline) periode pelaporan telah terkunci?',

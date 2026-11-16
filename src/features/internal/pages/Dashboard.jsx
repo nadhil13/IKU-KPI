@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, ArrowUpRight, Info, Lock, LockOpen } from 'lucide-react';
+import { Calendar, Info, Lock, LockOpen } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -327,11 +327,11 @@ export default function Dashboard() {
           text-transform: uppercase;
         }
         .dash-period-select {
-          min-height: 38px;
+          min-height: 44px;
           padding: 0.35rem 0.65rem;
           border-radius: 6px;
           background: #F7FAFB;
-          border: 1px solid #D8E4EA;
+          border: 1px solid #64748B;
           color: #072534;
           font-family: var(--ent-mono);
           font-size: 0.7rem;
@@ -640,129 +640,9 @@ export default function Dashboard() {
       {/* Keyline */}
       <div className="dash-keyline" />
 
-      {/* Connected Metric Ledger */}
+      {/* Main Content First: Immediate Operational Workspace before Summary Cards */}
       {currentView === 'iku' ? (
-        <div className="dash-ledger-strip">
-          {[
-            {
-              code: 'CAKUPAN',
-              label: 'Indikator Terisi',
-              val: `${String(ikuOverview.filledCount).padStart(2, '0')}/08`,
-              sub: ikuOverview.activeRecord
-                ? `Status: ${STATUS_LABELS[ikuOverview.activeRecord.status] || ikuOverview.activeRecord.status}`
-                : 'Belum ada submission pada periode ini',
-            },
-            {
-              code: 'CAPAIAN',
-              label: 'Memenuhi Target (≥100%)',
-              val: `${String(ikuOverview.onTargetCount).padStart(2, '0')}/08`,
-              sub:
-                ikuOverview.avgPct !== null
-                  ? `Rata-rata indikator terisi: ${ikuOverview.avgPct.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`
-                  : 'Menunggu input realisasi aktual unit',
-            },
-            {
-              code: 'BUKTI HTTPS',
-              label: 'Tautan Bukti Tercatat',
-              val: `${String(ikuOverview.withEvidenceCount).padStart(2, '0')}/08`,
-              sub: ikuOverview.activeRecord
-                ? `Unit: ${ikuOverview.activeRecord.unit}`
-                : 'Lengkapi bukti pada menu Submission IKU',
-            },
-            {
-              code: 'SIKLUS',
-              label: 'Status Periode Evaluasi',
-              val: isPeriodOpen ? 'AKTIF' : 'KUNCI',
-              sub: selectedPeriod?.label || effectiveYear,
-            },
-          ].map((stat) => (
-            <div key={stat.code} className="dash-stat-cell">
-              <span
-                style={{
-                  fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.62rem',
-                  fontWeight: 700,
-                  color: '#0E7480',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                {stat.code}
-              </span>
-              <div
-                style={{
-                  fontFamily: 'Outfit, sans-serif',
-                  fontSize: 'clamp(2rem, 3vw, 2.75rem)',
-                  fontWeight: 800,
-                  color: '#072534',
-                  letterSpacing: '-0.04em',
-                  lineHeight: 1,
-                  margin: '0.55rem 0 0.35rem',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {stat.val}
-              </div>
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#072534' }}>{stat.label}</div>
-                <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '3px', lineHeight: 1.4 }}>{stat.sub}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="dash-ledger-strip" style={{ marginBottom: '2rem' }}>
-          {[
-            ...(kpiLiveMetrics.sectionScores || []).map((sec) => ({
-              code: isKpiOnly ? `BAGIAN ${sec.code} (PIC ANDA)` : `BAGIAN ${sec.code}`,
-              label: sec.isPenaltySection ? `Maks ${sec.weightDisplay}` : `Bobot ${sec.weightDisplay}`,
-              val: `${(Number(sec.score) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              sub: `${sec.title} · ${sec.completed}/${sec.total} butir`,
-            })),
-            {
-              code: isKpiOnly ? 'SKOR UNIT PIC' : 'SKOR BERSIH',
-              label: isKpiOnly ? 'Total Skor Unit Anda' : 'Total Capaian / 100',
-              val: kpiLiveMetrics.totalScore.toFixed(2).replace('.', ','),
-              sub: `Terisi ${kpiLiveMetrics.filledCount}/${kpiLiveMetrics.totalCount} butir (${kpiLiveMetrics.filledInputsCount}/${kpiLiveMetrics.totalInputsCount} sel)`,
-            },
-          ].map((stat) => (
-            <div key={stat.code} className="dash-stat-cell">
-              <span
-                style={{
-                  fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.62rem',
-                  fontWeight: 700,
-                  color: '#0E7480',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                {stat.code}
-              </span>
-              <div
-                style={{
-                  fontFamily: 'Outfit, sans-serif',
-                  fontSize: 'clamp(1.85rem, 2.6vw, 2.4rem)',
-                  fontWeight: 800,
-                  color: '#072534',
-                  letterSpacing: '-0.04em',
-                  lineHeight: 1,
-                  margin: '0.5rem 0 0.3rem',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {stat.val}
-              </div>
-              <div>
-                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#072534' }}>{stat.label}</div>
-                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '3px', lineHeight: 1.4 }}>{stat.sub}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Main Content: 8 IKU Ledger Grid OR KPI Data Entry Sheet */}
-      {currentView === 'iku' ? (
-        <div style={{ marginTop: '2.25rem' }}>
+        <div style={{ marginTop: '1.5rem' }}>
           {/* Honest Data Source Notice when no submission exists yet */}
           {!ikuOverview.activeRecord && (
             <div
@@ -775,7 +655,7 @@ export default function Dashboard() {
                 marginBottom: '1.35rem',
                 borderRadius: '8px',
                 background: '#F7FAFB',
-                border: '1px solid #D8E4EA',
+                border: '1px solid #64748B',
                 borderLeft: '3px solid #094E68',
                 fontSize: '0.82rem',
                 color: '#334155',
@@ -820,7 +700,7 @@ export default function Dashboard() {
                   textTransform: 'uppercase',
                 }}
               >
-                INDEKS 01–08
+                INDEKS 01 S.D. 08
               </span>
               <h2
                 style={{
@@ -838,12 +718,11 @@ export default function Dashboard() {
 
             {['iku_only', 'dual', 'superadmin_prp'].includes(currentUser?.role) ? (
               <Link to="/internal/iku-submissions" className="ent-btn ent-btn-primary" style={{ minHeight: '44px' }}>
-                {ikuOverview.activeRecord ? 'Buka Submission & Bukti IKU' : 'Isi Capaian & Bukti IKU'}{' '}
-                <ArrowUpRight size={14} />
+                {ikuOverview.activeRecord ? 'Buka Submission & Bukti IKU' : 'Isi Capaian & Bukti IKU'}
               </Link>
             ) : (
               <Link to="/iku-list" className="ent-btn" style={{ minHeight: '44px' }}>
-                Katalog Standar 8 IKU <ArrowUpRight size={14} />
+                Katalog Standar 8 IKU
               </Link>
             )}
           </div>
@@ -961,7 +840,8 @@ export default function Dashboard() {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '3px',
-                          minHeight: '32px',
+                          minHeight: '44px',
+                          padding: '0 0.4rem',
                           color: '#094E68',
                           fontFamily: 'var(--ent-mono)',
                           fontSize: '0.68rem',
@@ -970,8 +850,7 @@ export default function Dashboard() {
                           textDecoration: 'none',
                         }}
                       >
-                        {['iku_only', 'superadmin_prp'].includes(currentUser?.role) ? 'INPUT' : 'DETAIL'}{' '}
-                        <ArrowUpRight size={13} />
+                        {['iku_only', 'superadmin_prp'].includes(currentUser?.role) ? 'INPUT' : 'DETAIL'}
                       </Link>
                     </div>
                   </div>
@@ -981,11 +860,133 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        <KPIDataEntrySheet
-          period={effectiveYear}
-          onMetricsUpdate={setKpiLiveMetrics}
-          readOnly={isSpiAuditor || (!isPeriodOpen && currentUser?.role !== 'superadmin_prp')}
-        />
+        <div style={{ marginTop: '1.25rem' }}>
+          <KPIDataEntrySheet
+            period={effectiveYear}
+            onMetricsUpdate={setKpiLiveMetrics}
+            readOnly={isSpiAuditor || (!isPeriodOpen && currentUser?.role !== 'superadmin_prp')}
+          />
+        </div>
+      )}
+
+      {/* Connected Metric Ledger Summary Strip */}
+      {currentView === 'iku' ? (
+        <div className="dash-ledger-strip" style={{ marginTop: '2rem', borderTop: '1px solid #D8E4EA' }}>
+          {[
+            {
+              code: 'CAKUPAN',
+              label: 'Indikator Terisi',
+              val: `${String(ikuOverview.filledCount).padStart(2, '0')}/08`,
+              sub: ikuOverview.activeRecord
+                ? `Status: ${STATUS_LABELS[ikuOverview.activeRecord.status] || ikuOverview.activeRecord.status}`
+                : 'Belum ada submission pada periode ini',
+            },
+            {
+              code: 'CAPAIAN',
+              label: 'Memenuhi Target (≥100%)',
+              val: `${String(ikuOverview.onTargetCount).padStart(2, '0')}/08`,
+              sub:
+                ikuOverview.avgPct !== null
+                  ? `Rata-rata indikator terisi: ${ikuOverview.avgPct.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`
+                  : 'Menunggu input realisasi aktual unit',
+            },
+            {
+              code: 'BUKTI HTTPS',
+              label: 'Tautan Bukti Tercatat',
+              val: `${String(ikuOverview.withEvidenceCount).padStart(2, '0')}/08`,
+              sub: ikuOverview.activeRecord
+                ? `Unit: ${ikuOverview.activeRecord.unit}`
+                : 'Lengkapi bukti pada menu Submission IKU',
+            },
+            {
+              code: 'SIKLUS',
+              label: 'Status Periode Evaluasi',
+              val: isPeriodOpen ? 'AKTIF' : 'KUNCI',
+              sub: selectedPeriod?.label || effectiveYear,
+            },
+          ].map((stat) => (
+            <div key={stat.code} className="dash-stat-cell">
+              <span
+                style={{
+                  fontFamily: 'var(--ent-mono)',
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  color: '#0E7480',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                {stat.code}
+              </span>
+              <div
+                style={{
+                  fontFamily: 'Outfit, sans-serif',
+                  fontSize: 'clamp(2rem, 3vw, 2.75rem)',
+                  fontWeight: 800,
+                  color: '#072534',
+                  letterSpacing: '-0.04em',
+                  lineHeight: 1,
+                  margin: '0.55rem 0 0.35rem',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {stat.val}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#072534' }}>{stat.label}</div>
+                <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '3px', lineHeight: 1.4 }}>{stat.sub}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="dash-ledger-strip" style={{ marginTop: '1.75rem', borderTop: '1px solid #D8E4EA' }}>
+          {[
+            ...(kpiLiveMetrics.sectionScores || []).map((sec) => ({
+              code: isKpiOnly ? `BAGIAN ${sec.code} (PIC ANDA)` : `BAGIAN ${sec.code}`,
+              label: sec.isPenaltySection ? `Maks ${sec.weightDisplay}` : `Bobot ${sec.weightDisplay}`,
+              val: `${(Number(sec.score) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              sub: `${sec.title} · ${sec.completed}/${sec.total} butir`,
+            })),
+            {
+              code: isKpiOnly ? 'SKOR UNIT PIC' : 'SKOR BERSIH',
+              label: isKpiOnly ? 'Total Skor Unit Anda' : 'Total Capaian / 100',
+              val: kpiLiveMetrics.totalScore.toFixed(2).replace('.', ','),
+              sub: `Terisi ${kpiLiveMetrics.filledCount}/${kpiLiveMetrics.totalCount} butir (${kpiLiveMetrics.filledInputsCount}/${kpiLiveMetrics.totalInputsCount} sel)`,
+            },
+          ].map((stat) => (
+            <div key={stat.code} className="dash-stat-cell">
+              <span
+                style={{
+                  fontFamily: 'var(--ent-mono)',
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  color: '#0E7480',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                {stat.code}
+              </span>
+              <div
+                style={{
+                  fontFamily: 'Outfit, sans-serif',
+                  fontSize: 'clamp(1.85rem, 2.6vw, 2.4rem)',
+                  fontWeight: 800,
+                  color: '#072534',
+                  letterSpacing: '-0.04em',
+                  lineHeight: 1,
+                  margin: '0.5rem 0 0.3rem',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {stat.val}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#072534' }}>{stat.label}</div>
+                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '3px', lineHeight: 1.4 }}>{stat.sub}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

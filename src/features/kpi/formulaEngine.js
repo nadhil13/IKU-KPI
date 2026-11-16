@@ -10,7 +10,7 @@
  * Fungsi   : SUM, AVG, MIN, MAX, ABS, ROUND(x;n), IF(kondisi;benar;salah)
  * Pemisah argumen boleh "," atau ";" (gaya Excel Indonesia). Simbol × dan ÷ juga diterima.
  *
- * Hasil rumus = CAPAIAN dalam persen (0–100). Contoh: I1/I2*100  atau  SUM(I1;I2)/T*100
+ * Hasil rumus = CAPAIAN dalam persen (0 sampai 100). Contoh: I1/I2*100  atau  SUM(I1;I2)/T*100
  */
 
 class FormulaError extends Error {}

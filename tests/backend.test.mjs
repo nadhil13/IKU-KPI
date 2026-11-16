@@ -782,3 +782,123 @@ test('Digest realtime stateless & endpoint audit email merespons instan serta me
   const ppaDispatched = notifyMatchingRemoteNotifications(incomingList, prior, ppaUser);
   assert.deepEqual(ppaDispatched, []);
 });
+
+
+test('Proteksi endpoint /api/v1/bootstrap & SSE tanpa login (401), wajib currentPassword saat ganti sandi (400), serta blokir tulis notifikasi/email bagi Auditor SPI (403)', async () => {
+  const assert = (await import('node:assert/strict')).default;
+  const { Readable } = await import('node:stream');
+  const { handleApiRequest } = await import('../backend/src/routes/apiRouter.js');
+  const { signAccessToken, ACCESS_TOKEN_TTL_SECONDS } = await import('../backend/src/config/security.js');
+
+  async function callApi(method, url, { token = '', body = null } = {}) {
+    const rawBody = body !== null ? Buffer.from(JSON.stringify(body), 'utf8') : null;
+    const req = Readable.from(rawBody ? [rawBody] : []);
+    req.method = method;
+    req.url = url;
+    req.headers = {
+      host: 'localhost:5173',
+      ...(rawBody ? { 'content-type': 'application/json' } : {}),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    };
+    req.socket = { remoteAddress: '127.0.0.1' };
+
+    let statusCode = 200;
+    const chunks = [];
+    const res = {
+      setHeader() {},
+      writeHead(code) {
+        statusCode = code;
+      },
+      write(chunk) {
+        if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+      },
+      end(chunk) {
+        if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+      },
+      on() {},
+    };
+
+    await handleApiRequest(req, res);
+    const text = Buffer.concat(chunks).toString('utf8');
+    let json = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+    return { status: statusCode, json };
+  }
+
+  function mintSessionToken(email, role) {
+    const signed = signAccessToken(
+      { sub: email, email, role },
+      ACCESS_TOKEN_TTL_SECONDS,
+    );
+    return typeof signed === 'string' ? signed : signed.token;
+  }
+
+  const anonBootstrap = await callApi('GET', '/api/v1/bootstrap');
+  assert.equal(anonBootstrap.status, 401);
+
+  const anonStream = await callApi('GET', '/api/v1/realtime/stream');
+  assert.equal(anonStream.status, 401);
+
+  const bptiToken = mintSessionToken('bpti@itpln.ac.id', 'kpi_only');
+  const missingCurrentPass = await callApi('POST', '/api/v1/auth/password', {
+    token: bptiToken,
+    body: {
+      currentPassword: '',
+      newPassword: 'PasswordBaru123!',
+    },
+  });
+  assert.equal(missingCurrentPass.status, 400);
+
+  const spiToken = mintSessionToken('spi@itpln.ac.id', 'spi');
+  const spiPushNotif = await callApi('POST', '/api/v1/sync/push', {
+    token: spiToken,
+    body: {
+      key: 'prp_notifications_v1',
+      value: [{ id: 'notif-illegal', title: 'Illegal SPI write' }],
+    },
+  });
+  assert.equal(spiPushNotif.status, 403);
+
+  const spiSendEmail = await callApi('POST', '/api/v1/notifications/email', {
+    token: spiToken,
+    body: {
+      recipients: ['bpti@itpln.ac.id'],
+      subject: 'Illegal SPI email',
+      body: 'Should be blocked',
+    },
+  });
+  assert.equal(spiSendEmail.status, 403);
+
+  const vapidRes = await callApi('GET', '/api/v1/push/vapid-public-key');
+  assert.equal(vapidRes.status, 200);
+  assert.equal(vapidRes.json?.ok, true);
+  assert.ok(typeof vapidRes.json?.publicKey === 'string' && vapidRes.json.publicKey.length >= 80);
+
+  const { createECDH, randomBytes } = await import('node:crypto');
+  const { encryptWebPushPayload, createVapidAuthHeader } = await import('../backend/src/services/webPushService.js');
+  const uaEcdh = createECDH('prime256v1');
+  uaEcdh.generateKeys();
+  const p256dh = uaEcdh.getPublicKey().toString('base64url');
+  const auth = randomBytes(16).toString('base64url');
+
+  const subRes = await callApi('POST', '/api/v1/push/subscribe', {
+    token: bptiToken,
+    body: {
+      subscription: {
+        endpoint: 'https://fcm.googleapis.com/fcm/send/fake-endpoint-bpti',
+        keys: { p256dh, auth },
+      },
+    },
+  });
+  assert.equal(subRes.status, 201);
+  assert.equal(subRes.json?.ok, true);
+
+  const encrypted = encryptWebPushPayload({ title: 'Uji Push', body: 'Payload terenkripsi RFC 8291' }, { p256dh, auth });
+  assert.ok(Buffer.isBuffer(encrypted.body) && encrypted.body.length > 86);
+  const vapidHeader = createVapidAuthHeader('https://fcm.googleapis.com/fcm/send/fake-endpoint-bpti');
+  assert.ok(vapidHeader.authorization.startsWith('vapid t='));
+});

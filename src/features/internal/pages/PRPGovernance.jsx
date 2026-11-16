@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Settings2, Upload, ArrowUpRight, RotateCcw } from 'lucide-react';
+import { Download, Settings2, Upload, RotateCcw } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -166,7 +166,10 @@ export default function PRPGovernance() {
   const [kpiSelected, setKpiSelected] = useState(null);
 
   useEffect(() => {
-    const refresh = () => setAudit(readAudit());
+    const refresh = () => {
+      setAudit(readAudit());
+      setPeriods(readJSON('prp_periods', DEFAULT_PERIODS));
+    };
     window.addEventListener('prp-admin-updated', refresh);
     window.addEventListener('storage', refresh);
     return () => {
@@ -341,7 +344,7 @@ export default function PRPGovernance() {
         message: `${detail}. Silakan periksa status periode pada filter dashboard KPI Anda.`,
         priority: 'WARNING',
         targetType: 'ALL',
-        actionUrl: '/internal/kpi',
+        actionUrl: '/internal',
         actionLabel: 'Lihat Status Periode',
         actorName: actor,
         actorEmail: currentUser?.email || 'admin@itpln.ac.id',
@@ -562,14 +565,14 @@ export default function PRPGovernance() {
         }
         .gov-button {
           position: relative;
-          min-height: 40px;
+          min-height: 44px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 0.45rem;
           box-sizing: border-box;
           padding: 0.5rem 0.9rem;
-          border: 1px solid #D8E4EA;
+          border: 1px solid #64748B;
           border-radius: 7px;
           background: #ffffff;
           color: #072534;
@@ -643,10 +646,10 @@ export default function PRPGovernance() {
         .gov-field {
           display: block;
           width: 100%;
-          min-height: 40px;
+          min-height: 44px;
           box-sizing: border-box;
           padding: 0.56rem 0.75rem;
-          border: 1px solid #D8E4EA;
+          border: 1px solid #64748B;
           border-radius: 6px;
           background: #ffffff;
           color: #072534;
@@ -696,10 +699,10 @@ export default function PRPGovernance() {
         .gov-period-row select {
           width: 100%;
           min-width: 0;
-          min-height: 40px;
+          min-height: 44px;
           box-sizing: border-box;
           padding: 0.48rem 0.65rem;
-          border: 1px solid #D8E4EA;
+          border: 1px solid #64748B;
           border-radius: 6px;
           font-size: 0.78rem;
           background: #ffffff;
@@ -712,7 +715,7 @@ export default function PRPGovernance() {
           border-color: #094E68;
         }
         .gov-period-row label {
-          min-height: 40px;
+          min-height: 44px;
           display: inline-flex;
           align-items: center;
           gap: 0.5rem;
@@ -914,7 +917,7 @@ export default function PRPGovernance() {
                   </span>
                 </div>
                 <Link to="/internal/iku-submissions" className="gov-button gov-button-primary">
-                  Buka Review Submission IKU <ArrowUpRight size={14} />
+                  Buka Review Submission IKU
                 </Link>
               </div>
               <AllSubmissionsTable onReviewKpi={(target) => setKpiSelected({ ...target })} />

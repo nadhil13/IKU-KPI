@@ -24,7 +24,7 @@ const CAMERA_PRESETS = [
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, completeDualLogin, mockAccounts } = useAuth();
+  const { login, authenticate, completeDualLogin, mockAccounts } = useAuth();
 
   const [usersRevision, setUsersRevision] = useState(0);
   useEffect(() => {
@@ -47,7 +47,7 @@ export default function Login() {
 
   const [selectedIdx, setSelectedIdx] = useState(2);
   const [email, setEmail] = useState(mockAccounts[2].email);
-  const [password, setPassword] = useState(mockAccounts[2].password);
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [focusedField, setFocusedField] = useState(null);
@@ -94,7 +94,7 @@ export default function Login() {
       const mergedAcc = allAccounts.find((acc) => acc.email.toLowerCase() === baseAcc.email.toLowerCase()) || baseAcc;
       setSelectedIdx(tabIdx);
       setEmail(mergedAcc.email);
-      setPassword(mergedAcc.password || '');
+      setPassword('');
       setErrorMessage('');
     },
     [allAccounts, mockAccounts],
@@ -105,7 +105,7 @@ export default function Login() {
     if (!found) return;
     setSelectedIdx(1);
     setEmail(found.email);
-    setPassword(found.password || 'password');
+    setPassword('');
     setErrorMessage('');
   };
 
@@ -129,7 +129,7 @@ export default function Login() {
       if (acc) {
         setSelectedIdx(nextTab);
         setEmail(acc.email);
-        setPassword(acc.password);
+        setPassword('');
         setErrorMessage('');
       }
     };
@@ -263,8 +263,10 @@ export default function Login() {
       gsap.to('.submit-corp-btn', { scale: 0.985, duration: 0.1, yoyo: true, repeat: 1 });
     }
 
-    setTimeout(() => {
-      const result = login(email, password);
+    setTimeout(async () => {
+      const result = typeof authenticate === 'function'
+        ? await authenticate(email, password)
+        : login(email, password);
 
       if (!result.success) {
         setLoading(false);
@@ -980,7 +982,7 @@ export default function Login() {
                       color: '#475569',
                     }}
                   >
-                    Profil Simulasi Otoritas
+                    Pilih Konteks Otoritas
                   </span>
                   <span
                     className="morph-text-item"
