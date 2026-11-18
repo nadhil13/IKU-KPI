@@ -162,6 +162,9 @@ export function canUserEditKpiItem(item, user) {
   if (!user || user.status === 'Nonaktif') return false;
   if (user.role === 'superadmin_prp') return true;
   const rowPics = normalizePicCodes(item?.pics?.length ? item.pics : (item?.picDisplay || []));
+  if (user.role === 'spi') {
+    return item?.id === 'D_5' || rowPics.some((code) => code.toLowerCase() === 'spi');
+  }
   const hasKpiAuthority = !user.role || user.role === 'kpi_only' || user.role === 'dual';
   // Baris tanpa penugasan PIC spesifik tetap dapat diisi akun KPI/Dual untuk menjaga kompatibilitas formulir umum.
   if (rowPics.length === 0) return hasKpiAuthority;

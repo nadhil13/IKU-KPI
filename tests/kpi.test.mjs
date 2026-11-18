@@ -823,28 +823,30 @@ test('penguncian akses tabel audit SPI (<100% Renbang) & pembukaan otomatis 100%
   assert.equal(unlockedVal.isValidated100, true);
   assert.equal(unlockedVal.progressPercent, 100);
 
-  // 3. SPI hanya dapat mengisi bagian/kolom miliknya sendiri secara real-time
-  saveSpiAuditHeader(form.id, spiUser, {
-    auditDocNumber: 'BA-SPI/2026/09',
-    auditDate: '2026-11-18',
-    generalSummary: 'Dokumen bukti telah diperiksa oleh SPI.',
-  });
-  saveSpiIndicatorAudit(form.id, spiUser, 'A_1a', {
+  // 3. SPI hanya dapat mengisi Bagian D No. 5 (Tindaklanjut Rekomendasi Audit & Temuan) secara real-time
+  saveSpiIndicatorAudit(form.id, spiUser, 'D_5', {
+    unfollowedCount: '0',
+    totalRecommendations: '15',
     verificationStatus: 'SESUAI_BUKTI',
-    auditNote: 'SK Kurikulum valid dan lengkap.',
-    recommendation: 'Lanjutkan pemantauan semester depan.',
+    auditNote: 'Seluruh 15 rekomendasi audit & temuan (SPI, PJM, KAP, WBS) selesai ditindaklanjuti.',
     followUpStatus: 'CLOSED',
     evidenceChecked: true,
   });
 
   const savedSpi = readSpiAuditForForm(form.id);
-  assert.equal(savedSpi.header.auditDocNumber, 'BA-SPI/2026/09');
-  assert.equal(savedSpi.items.A_1a.verificationStatus, 'SESUAI_BUKTI');
-  assert.equal(savedSpi.items.A_1a.evidenceChecked, true);
+  assert.equal(savedSpi.items.D_5.unfollowedCount, '0');
+  assert.equal(savedSpi.items.D_5.totalRecommendations, '15');
+  assert.equal(savedSpi.items.D_5.evidenceChecked, true);
 
-  // 4. Akun non-SPI (Admin maupun Unit) dilarang mengisi bagian/kolom milik SPI
+  // 4. SPI dilarang mengisi indikator lain di luar Bagian D.5 (misal A_1a)
   assert.throws(
-    () => saveSpiIndicatorAudit(form.id, adminPrp, 'A_1a', { auditNote: 'Diubah Admin' }),
+    () => saveSpiIndicatorAudit(form.id, spiUser, 'A_1a', { auditNote: 'Bukan bagian SPI' }),
+    /Bagian D No\. 5/,
+  );
+
+  // 5. Akun non-SPI (Admin maupun Unit) dilarang mengisi bagian/kolom milik SPI
+  assert.throws(
+    () => saveSpiIndicatorAudit(form.id, adminPrp, 'D_5', { auditNote: 'Diubah Admin' }),
     /Hanya akun SPI aktif/,
   );
   assert.throws(

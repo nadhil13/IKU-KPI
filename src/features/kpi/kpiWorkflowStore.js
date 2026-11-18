@@ -2517,49 +2517,127 @@ export function saveSpiAuditHeader(formId, user, headerPatch = {}) {
 }
 
 /**
- * Menyimpan catatan audit, status verifikasi bukti, rekomendasi, dan tindak lanjut SPI per indikator secara real-time.
- * Hanya akun SPI aktif yang berhak mengisi kolom audit SPI ini.
+ * Menyimpan isian khusus SPI pada Bagian D No. 5: Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS)
+ * secara real-time ke penyimpanan lokal & database server, sekaligus menyinkronkan ke papan integrasi KPI.
+ * Akun SPI hanya diperbolehkan mengisi indikator D_5 miliknya sendiri.
  */
-export function saveSpiIndicatorAudit(formId, user, indicatorId, itemPatch = {}) {
+export function saveSpiIndicatorAudit(formId, user, indicatorId = 'D_5', itemPatch = {}) {
   maintenance();
   spiActorGuard(user);
-  const cleanId = String(indicatorId || '').trim();
-  if (!cleanId) {
-    throw new Error('ID indikator audit SPI wajib valid.');
+  const cleanId = String(indicatorId || 'D_5').trim();
+  if (cleanId !== 'D_5') {
+    throw new Error('Akun SPI hanya dapat mengisi Bagian D No. 5: Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS).');
   }
   const state = readKpiWorkflow();
-  const current = readSpiAuditForForm(formId, state);
-  const prevItem = current.items?.[cleanId] || {
-    indicatorId: cleanId,
-    verificationStatus: 'BELUM_DIPERIKSA',
-    auditNote: '',
+  const form = state?.forms?.find((entry) => entry.id === formId)
+    || getFormForPeriod(formId, state, { fallbackToLatest: true })
+    || null;
+  const current = readSpiAuditForForm(form?.id || formId, state);
+  const spiSubKey = form ? submissionKey(form.id, user.email) : null;
+  const existingSub = spiSubKey ? state.submissions?.[spiSubKey] : null;
+  const existingEv = spiSubKey ? (state.evidence?.[spiSubKey] || []) : [];
+
+  const d5ItemDef = form?.sections
+    ?.flatMap((s) => s.items || [])
+    ?.find((it) => it.id === 'D_5' || (String(it.no) === '5' && /tindak\s*lanjut\s+rekomendasi\s+audit/i.test(String(it.indikator || ''))));
+  const subKeyUn = d5ItemDef?.subrows?.[0]?.key || 'd_5_un';
+  const subKeyTot = d5ItemDef?.subrows?.[1]?.key || 'd_5_tot';
+
+  const prevItem = current.items?.D_5 || {
+    indicatorId: 'D_5',
+    unfollowedCount: existingSub?.values?.[subKeyUn] ?? '',
+    totalRecommendations: existingSub?.values?.[subKeyTot] ?? '',
+    verificationStatus: 'SESUAI_BUKTI',
+    auditNote: existingSub?.notes?.D_5 ?? '',
     recommendation: '',
     followUpStatus: 'OPEN',
-    evidenceChecked: false,
+    evidenceChecked: true,
+    evidenceList: existingEv,
   };
+
   const now = new Date().toISOString();
+  const nextUnfollowed = itemPatch.unfollowedCount !== undefined
+    ? String(itemPatch.unfollowedCount ?? '')
+    : String(prevItem.unfollowedCount ?? '');
+  const nextTotalRec = itemPatch.totalRecommendations !== undefined
+    ? String(itemPatch.totalRecommendations ?? '')
+    : String(prevItem.totalRecommendations ?? '');
+  const nextAuditNote = itemPatch.auditNote !== undefined
+    ? String(itemPatch.auditNote ?? '')
+    : String(prevItem.auditNote ?? '');
+  const nextEvList = Array.isArray(itemPatch.evidenceList)
+    ? itemPatch.evidenceList.filter((ev) => ev && ev.indicatorId === 'D_5')
+    : (Array.isArray(prevItem.evidenceList) ? prevItem.evidenceList : existingEv);
+
   const nextItem = {
     ...prevItem,
-    indicatorId: cleanId,
+    indicatorId: 'D_5',
+    unfollowedCount: nextUnfollowed,
+    totalRecommendations: nextTotalRec,
     verificationStatus: itemPatch.verificationStatus && SPI_VERIFICATION_STATUSES.includes(itemPatch.verificationStatus)
       ? itemPatch.verificationStatus
       : prevItem.verificationStatus,
-    auditNote: itemPatch.auditNote !== undefined ? String(itemPatch.auditNote ?? '') : prevItem.auditNote,
+    auditNote: nextAuditNote,
     recommendation: itemPatch.recommendation !== undefined ? String(itemPatch.recommendation ?? '') : prevItem.recommendation,
     followUpStatus: itemPatch.followUpStatus && SPI_FOLLOWUP_STATUSES.includes(itemPatch.followUpStatus)
       ? itemPatch.followUpStatus
       : prevItem.followUpStatus,
     evidenceChecked: itemPatch.evidenceChecked !== undefined ? Boolean(itemPatch.evidenceChecked) : Boolean(prevItem.evidenceChecked),
+    evidenceList: nextEvList,
     updatedBy: user.email.toLowerCase(),
     updatedByName: user.name || user.unit || 'SPI ITPLN',
     updatedAt: now,
   };
 
+  // Sinkronkan langsung ke prp_kpi_distribution_v1 khusus indikator D_5 milik SPI
+  if (form && spiSubKey) {
+    const d5Values = {
+      [subKeyUn]: nextUnfollowed,
+      [subKeyTot]: nextTotalRec,
+    };
+    const computedD5 = d5ItemDef
+      ? computeKpiItem(d5ItemDef, d5Values, true, form.sections)
+      : { ratioPercent: null, weightedScore: 0 };
+    const nextSpiSubmission = {
+      ...(existingSub || {}),
+      formId: form.id,
+      email: user.email.toLowerCase(),
+      unit: user.unit || user.name || 'Satuan Pengawasan Intern (SPI)',
+      picCodes: ['SPI'],
+      assignedIndicatorIds: ['D_5'],
+      values: d5Values,
+      notes: nextAuditNote.trim() ? { D_5: nextAuditNote.trim() } : {},
+      status: existingSub?.status || 'SUBMITTED',
+      submittedAt: now,
+      sectionScores: [
+        {
+          code: 'D',
+          title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)',
+          score: computedD5.weightedScore || 0,
+        },
+      ],
+      totalScore: Math.max(0, computedD5.weightedScore || 0),
+    };
+    write(
+      {
+        ...state,
+        submissions: {
+          ...(state.submissions || {}),
+          [spiSubKey]: nextSpiSubmission,
+        },
+        evidence: {
+          ...(state.evidence || {}),
+          [spiSubKey]: nextEvList,
+        },
+      },
+      { skipAudit: true },
+    );
+  }
+
   const nextRecord = {
     ...current,
     items: {
-      ...(current.items || {}),
-      [cleanId]: nextItem,
+      D_5: nextItem,
     },
     updatedBy: user.email.toLowerCase(),
     updatedByName: user.name || user.unit || 'SPI ITPLN',
@@ -2569,7 +2647,7 @@ export function saveSpiIndicatorAudit(formId, user, indicatorId, itemPatch = {})
   return writeSpiAuditRecord(
     nextRecord,
     user,
-    `Catatan audit SPI indikator ${cleanId} diperbarui (${nextItem.verificationStatus})`,
+    `Input real-time SPI Bagian D.5 (Tindaklanjut Rekomendasi Audit & Temuan) diperbarui: Belum ditindaklanjuti=${nextUnfollowed || '0'}, Total rekomendasi=${nextTotalRec || '0'}`,
   );
 }
 

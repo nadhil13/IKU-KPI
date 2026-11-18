@@ -23,8 +23,11 @@ export function normalizePicList(raw) {
 export function canCallerEditKpiRow(item, callerUser) {
   if (!callerUser || callerUser.status === 'Nonaktif') return false;
   if (callerUser.role === 'superadmin_prp') return true;
-  if (callerUser.role !== 'kpi_only' && callerUser.role !== 'dual') return false;
   const rowPics = normalizePicList(item?.pics ?? item?.picDisplay ?? []);
+  if (callerUser.role === 'spi') {
+    return item?.id === 'D_5' || rowPics.includes('SPI');
+  }
+  if (callerUser.role !== 'kpi_only' && callerUser.role !== 'dual') return false;
   if (rowPics.length === 0) return true;
   const userPics = new Set(normalizePicList(callerUser.picCodes || []));
   return rowPics.some((code) => userPics.has(code));
@@ -404,14 +407,30 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
       };
     });
 
+    const spiOwnEmail = String(callerUser.email || 'spi@itpln.ac.id').toLowerCase();
     const filterUnlockedMap = (mapObj, onlyApprovedSubmissions = false) => {
       const out = {};
       for (const [entryKey, val] of Object.entries(mapObj || {})) {
-        const [fId] = String(entryKey).split(':');
+        const [fId, keyEmail] = String(entryKey).split(':');
+        if (keyEmail && keyEmail.toLowerCase() === spiOwnEmail) {
+          out[entryKey] = val;
+          continue;
+        }
         if (fId && unlockedFormIds.has(fId)) {
           if (onlyApprovedSubmissions && val && !['APPROVED', 'LOCKED'].includes(val.status) && !annotatedForms.find((f) => f.id === fId)?.renbangValidatedFinal) {
             continue;
           }
+          out[entryKey] = val;
+        }
+      }
+      return out;
+    };
+
+    const filterOwnDrafts = (mapObj) => {
+      const out = {};
+      for (const [entryKey, val] of Object.entries(mapObj || {})) {
+        const [, keyEmail] = String(entryKey).split(':');
+        if (keyEmail && keyEmail.toLowerCase() === spiOwnEmail) {
           out[entryKey] = val;
         }
       }
@@ -431,7 +450,7 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
       validationByFormId,
       submissions: filterUnlockedMap(workflow.submissions, true),
       evidence: filterUnlockedMap(workflow.evidence, false),
-      drafts: {},
+      drafts: filterOwnDrafts(workflow.drafts),
       adminOverrides: filteredOverrides,
       revisions: {},
     };

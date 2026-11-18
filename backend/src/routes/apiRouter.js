@@ -533,13 +533,84 @@ export async function handleApiRequest(req, res) {
         return true;
       }
       const body = await readJsonBody(req);
+      const itemKeys = Object.keys(body.items || {});
+      const invalidKeys = itemKeys.filter((k) => k !== 'D_5');
+      if (invalidKeys.length > 0) {
+        appendAuditLog(
+          'SECURITY_VIOLATION',
+          `Percobaan pengisian indikator ${invalidKeys.join(', ')} di luar Bagian D.5 oleh SPI (${caller.email}) ditolak.`,
+          caller.email,
+          ip,
+        );
+        sendJson(res, 403, {
+          ok: false,
+          error: 'Akses ditolak: Akun SPI hanya dapat mengisi Bagian D No. 5: Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS).',
+        });
+        return true;
+      }
+
       const clientId = String(req.headers?.['x-client-id'] || body.clientId || '');
       const formId = String(body.formId || 'global').trim();
       const savedEntry = upsertSpiAuditRecord(formId, body, caller.email, ip);
       const fullSpiAudit = readSpiAuditRecords();
 
+      // Sinkronkan juga isian Bagian D.5 milik SPI ke prp_kpi_distribution_v1 secara real-time (terisolasi khusus D_5)
+      const d5Item = savedEntry?.items?.D_5 || null;
+      if (d5Item && formId && formId !== 'global') {
+        const currentDist = readKvStore('prp_kpi_distribution_v1', {
+          forms: [],
+          submissions: {},
+          evidence: {},
+          drafts: {},
+          adminOverrides: {},
+          revisions: {},
+        }).value;
+        const spiSubKey = `${formId}:${caller.email.toLowerCase()}`;
+        const prevSub = currentDist.submissions?.[spiSubKey] || null;
+        const unVal = d5Item.unfollowedCount !== undefined ? String(d5Item.unfollowedCount) : (prevSub?.values?.d_5_un ?? '');
+        const totVal = d5Item.totalRecommendations !== undefined ? String(d5Item.totalRecommendations) : (prevSub?.values?.d_5_tot ?? '');
+        const noteText = d5Item.auditNote !== undefined ? String(d5Item.auditNote) : (prevSub?.notes?.D_5 ?? '');
+        const unNum = Number(unVal);
+        const totNum = Number(totVal);
+        const hasValidNums = String(unVal).trim() !== '' && String(totVal).trim() !== '' && Number.isFinite(unNum) && Number.isFinite(totNum) && totNum > 0;
+        const unRatio = hasValidNums ? Math.min(1, Math.max(0, unNum / totNum)) : 0;
+        const weightedD5 = hasValidNums ? unRatio * -2.5 : 0;
+
+        const nextSpiSub = {
+          ...(prevSub || {}),
+          formId,
+          email: caller.email.toLowerCase(),
+          unit: caller.unit || 'Satuan Pengawasan Intern (SPI)',
+          picCodes: ['SPI'],
+          assignedIndicatorIds: ['D_5'],
+          values: {
+            d_5_un: unVal,
+            d_5_tot: totVal,
+          },
+          notes: noteText ? { D_5: noteText } : {},
+          status: prevSub?.status || 'SUBMITTED',
+          submittedAt: new Date().toISOString(),
+          sectionScores: [{ code: 'D', title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)', score: weightedD5 }],
+          totalScore: Math.max(0, weightedD5),
+        };
+        const nextDist = {
+          ...currentDist,
+          submissions: {
+            ...(currentDist.submissions || {}),
+            [spiSubKey]: nextSpiSub,
+          },
+        };
+        if (Array.isArray(d5Item.evidenceList)) {
+          nextDist.evidence = {
+            ...(currentDist.evidence || {}),
+            [spiSubKey]: d5Item.evidenceList.filter((ev) => ev && ev.indicatorId === 'D_5'),
+          };
+        }
+        writeKvStore('prp_kpi_distribution_v1', nextDist, caller.email);
+      }
+
       publishRealtimeEvent('state:updated', {
-        updatedKeys: ['prp_spi_audit_v1'],
+        updatedKeys: ['prp_spi_audit_v1', 'prp_kpi_distribution_v1'],
         actor: { email: caller.email, name: caller.name, role: caller.role, picCodes: caller.picCodes },
         originClientId: clientId,
         stores: { prp_spi_audit_v1: fullSpiAudit },

@@ -378,9 +378,6 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
           {(() => {
             const renbangStatus = evaluateRenbangValidationStatus(latestForm.id, state);
             const spiRecord = readSpiAuditForForm(latestForm.id, state);
-            const spiCheckedItems = Object.values(spiRecord.items || {}).filter(
-              (it) => it && (it.verificationStatus !== 'BELUM_DIPERIKSA' || String(it.auditNote || '').trim() !== '')
-            );
             return (
               <div
                 style={{
@@ -489,7 +486,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                   )}
                 </div>
 
-                {(spiRecord.updatedAt || spiCheckedItems.length > 0) && (
+                {spiRecord.items?.D_5 && (
                   <div
                     style={{
                       padding: '0.6rem 0.85rem',
@@ -506,10 +503,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     }}
                   >
                     <div>
-                      <strong>Pantauan Real-Time Inputan Akun SPI:</strong>{' '}
-                      No. Dokumen: <strong>{spiRecord.header?.auditDocNumber || '-'}</strong> ·{' '}
-                      Indikator Diperiksa SPI: <strong>{spiCheckedItems.length} butir</strong>
-                      {spiRecord.header?.generalSummary ? ` · Ringkasan SPI: "${spiRecord.header.generalSummary}"` : ''}
+                      <strong>Pantauan Real-Time Inputan SPI (Bagian D.5 · Tindaklanjut Rekomendasi Audit &amp; Temuan):</strong>{' '}
+                      Belum Ditindaklanjuti: <strong>{spiRecord.items.D_5.unfollowedCount || '0'}</strong> ·{' '}
+                      Jumlah Rekomendasi: <strong>{spiRecord.items.D_5.totalRecommendations || '0'}</strong>
+                      {spiRecord.items.D_5.auditNote ? ` · Keterangan SPI: "${spiRecord.items.D_5.auditNote}"` : ''}
                     </div>
                     <span style={{ fontSize: '0.7rem', color: '#15803D', fontWeight: 800 }}>
                       Diperbarui SPI: {spiRecord.updatedAt ? new Date(spiRecord.updatedAt).toLocaleString('id-ID') : '-'}

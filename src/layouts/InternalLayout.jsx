@@ -1451,7 +1451,7 @@ export default function InternalLayout() {
                           }`}
                         >
                           <FileText size={15} strokeWidth={1.85} className="corp-item-icon" />
-                          <span style={{ flex: 1, textAlign: 'left' }}>Form Inputan Khusus SPI</span>
+                          <span style={{ flex: 1, textAlign: 'left' }}>Inputan SPI (Bagian D.5)</span>
                           <span
                             style={{
                               padding: '2px 7px',

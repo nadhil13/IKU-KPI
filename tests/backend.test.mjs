@@ -689,23 +689,19 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   });
   assert.equal(spiMutateAttempt.status, 403);
 
-  // 4e. SPI dapat mengisi Form / Bagian Inputan Khusus SPI secara real-time ke database
+  // 4e. SPI hanya dapat mengisi Bagian D No. 5 (Tindaklanjut Rekomendasi Audit & Temuan) secara real-time ke database
   const spiAuditSave = await invokeApi('POST', '/api/v1/spi/audit', {
     token: spiToken,
     body: {
       formId: 'form_privacy_2026',
       period: '2026 / 2027',
-      header: {
-        auditDocNumber: 'BA-SPI/ITPLN/2026/001',
-        auditorName: 'Tim Auditor SPI ITPLN',
-        generalSummary: 'Seluruh bukti capaian PPA dan BPKA telah sesuai dengan hasil akhir validasi Renbang.',
-      },
       items: {
-        A_1a: {
-          indicatorId: 'A_1a',
+        D_5: {
+          indicatorId: 'D_5',
+          unfollowedCount: '0',
+          totalRecommendations: '12',
           verificationStatus: 'SESUAI_BUKTI',
-          auditNote: 'Dokumen SK Kurikulum telah diperiksa dan valid.',
-          recommendation: 'Pertahankan dokumentasi berkala.',
+          auditNote: 'Seluruh 12 rekomendasi audit & temuan (SPI, PJM, KAP, WBS) telah ditindaklanjuti 100%.',
           followUpStatus: 'CLOSED',
           evidenceChecked: true,
         },
@@ -714,15 +710,27 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   });
   assert.equal(spiAuditSave.status, 200);
   assert.equal(spiAuditSave.json.ok, true);
-  assert.equal(spiAuditSave.json.record.header.auditDocNumber, 'BA-SPI/ITPLN/2026/001');
-  assert.equal(spiAuditSave.json.record.items.A_1a.verificationStatus, 'SESUAI_BUKTI');
+  assert.equal(spiAuditSave.json.record.items.D_5.unfollowedCount, '0');
+  assert.equal(spiAuditSave.json.record.items.D_5.totalRecommendations, '12');
+
+  // SPI ditolak 403 bila mencoba mengisi indikator di luar Bagian D.5 (misal A_1a)
+  const spiInvalidIndicatorAttempt = await invokeApi('POST', '/api/v1/spi/audit', {
+    token: spiToken,
+    body: {
+      formId: 'form_privacy_2026',
+      items: {
+        A_1a: { indicatorId: 'A_1a', auditNote: 'Bukan bagian SPI' },
+      },
+    },
+  });
+  assert.equal(spiInvalidIndicatorAttempt.status, 403);
 
   // Non-SPI (Admin maupun Unit) ditolak 403 bila mencoba mengisi kolom/bagian milik SPI
   const adminWriteSpiAttempt = await invokeApi('POST', '/api/v1/spi/audit', {
     token: adminToken,
     body: {
       formId: 'form_privacy_2026',
-      header: { auditDocNumber: 'HACK-BY-ADMIN' },
+      items: { D_5: { indicatorId: 'D_5', unfollowedCount: '2' } },
     },
   });
   assert.equal(adminWriteSpiAttempt.status, 403);
