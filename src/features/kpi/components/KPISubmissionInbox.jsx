@@ -397,10 +397,11 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '0.35rem',
-                          padding: '0.3rem 0.65rem',
+                          padding: '0.32rem 0.7rem',
                           borderRadius: '6px',
-                          fontSize: '0.7rem',
-                          fontWeight: 800,
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.015em',
                           background: renbangStatus.isValidated100 ? '#15803D' : '#B91C1C',
                           color: '#FFFFFF',
                           border: renbangStatus.isValidated100 ? '1.5px solid #14532D' : '1.5px solid #7F1D1D',
@@ -415,9 +416,9 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         Progres Validasi Renbang: {renbangStatus.validatedUnits}/{renbangStatus.totalUnits} Unit ({renbangStatus.progressPercent}%)
                       </span>
                     </div>
-                    <span style={{ fontSize: '0.74rem', color: '#334155' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#334155' }}>
                       {renbangStatus.isValidated100
-                        ? 'Seluruh data KPI periode ini telah berstatus tervalidasi final 100% oleh Renbang. Akun SPI kini dapat melihat Tabel Audit KPI (Read-Only) dan mengisi catatan audit.'
+                        ? 'Seluruh data KPI periode ini telah berstatus tervalidasi final 100% oleh Renbang. Akun SPI kini dapat melihat Tabel Audit KPI (Read-Only).'
                         : 'Selama validasi Renbang belum mencapai 100%, akun SPI tidak dapat memantau data unit yang baru terisi sebagian. Setujui seluruh unit atau klik tombol pengesahan final di kanan untuk membuka akses SPI.'}
                     </span>
                   </div>
@@ -436,22 +437,23 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             setSavedNotice('Validasi Final 100% Renbang disahkan. Tabel Audit KPI pada akun SPI kini terbuka otomatis.');
                           })}
                           style={{
-                            minHeight: '40px',
-                            padding: '0.45rem 0.95rem',
+                            minHeight: '44px',
+                            padding: '0.5rem 1rem',
                             borderRadius: '8px',
                             border: '1.5px solid #14532D',
                             background: '#15803D',
                             color: '#FFFFFF',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            letterSpacing: '0.01em',
                             cursor: 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '0.45rem',
                           }}
                         >
-                          <CheckCircle2 size={14} />
-                          <span>Sahkan Validasi Final 100% Renbang (Buka Akses Audit SPI)</span>
+                          <CheckCircle2 size={15} />
+                          <span style={{ color: '#FFFFFF' }}>Sahkan Validasi Final 100% Renbang (Buka Akses Audit SPI)</span>
                         </button>
                       ) : (
                         <button
@@ -464,22 +466,23 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             setSavedNotice('Akses Tabel Audit KPI pada akun SPI dikunci kembali ("Akses masih tertutup").');
                           })}
                           style={{
-                            minHeight: '40px',
-                            padding: '0.45rem 0.95rem',
+                            minHeight: '44px',
+                            padding: '0.5rem 1rem',
                             borderRadius: '8px',
                             border: '1.5px solid #7F1D1D',
                             background: '#B91C1C',
                             color: '#FFFFFF',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            letterSpacing: '0.01em',
                             cursor: 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '0.45rem',
                           }}
                         >
-                          <Lock size={14} />
-                          <span>Kunci Kembali Akses Audit SPI</span>
+                          <Lock size={15} />
+                          <span style={{ color: '#FFFFFF' }}>Kunci Kembali Akses Audit SPI</span>
                         </button>
                       )}
                     </div>

@@ -1018,30 +1018,50 @@ img {
   cursor: not-allowed;
 }
 
-.ent-btn-primary {
+.ent-btn-primary,
+a.ent-btn-primary,
+button.ent-btn-primary {
   background: #094E68;
   border-color: #094E68;
-  color: #ffffff;
+  color: #ffffff !important;
+  font-weight: 600;
   box-shadow: none;
 }
 
-.ent-btn-primary:hover:not(:disabled) {
+.ent-btn-primary *,
+.ent-btn-primary:hover:not(:disabled) * {
+  color: #ffffff !important;
+}
+
+.ent-btn-primary:hover:not(:disabled),
+a.ent-btn-primary:hover:not(:disabled),
+button.ent-btn-primary:hover:not(:disabled) {
   background: #072534;
   border-color: #072534;
-  color: #ffffff;
+  color: #ffffff !important;
 }
 
-.ent-btn-teal {
+.ent-btn-teal,
+a.ent-btn-teal,
+button.ent-btn-teal {
   background: #0E7480;
   border-color: #0E7480;
-  color: #ffffff;
+  color: #ffffff !important;
+  font-weight: 600;
   box-shadow: none;
 }
 
-.ent-btn-teal:hover:not(:disabled) {
+.ent-btn-teal *,
+.ent-btn-teal:hover:not(:disabled) * {
+  color: #ffffff !important;
+}
+
+.ent-btn-teal:hover:not(:disabled),
+a.ent-btn-teal:hover:not(:disabled),
+button.ent-btn-teal:hover:not(:disabled) {
   background: #094E68;
   border-color: #094E68;
-  color: #ffffff;
+  color: #ffffff !important;
 }
 
 .ent-input,
@@ -1116,7 +1136,7 @@ img {
   background: #15803D;
   border: 1.5px solid #14532D;
   color: #FFFFFF;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .ent-badge-revision {
@@ -1130,7 +1150,7 @@ img {
   background: #B91C1C;
   border: 1.5px solid #7F1D1D;
   color: #FFFFFF;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .ent-badge-locked {

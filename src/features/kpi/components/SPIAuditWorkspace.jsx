@@ -8,51 +8,40 @@ import {
   Eye,
   FileCheck2,
   FileSpreadsheet,
-  Link2,
   Lock,
-  Plus,
   Printer,
   ShieldAlert,
   ShieldCheck,
-  Trash2,
   Unlock,
-  Upload,
 } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { computeKpiItem, normalizeKpiSections, readPublishedKpiConfig } from '../kpiSchema';
 import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
 import {
-  ALLOWED_EVIDENCE_MIME_TYPES,
-  MAX_EVIDENCE_FILE_BYTES,
   ensureDefaultKpiDistribution,
   evaluateRenbangValidationStatus,
   getFormForPeriod,
   readIntegratedKpiBoard,
   readKpiWorkflow,
-  readSpiAuditForForm,
-  saveSpiIndicatorAudit,
-  submissionKey,
   subscribeKpiWorkflow,
   subscribeSpiAudit,
 } from '../kpiWorkflowStore';
-import { EvidencePreviewModal } from './KPIDataEntrySheet';
+import KPIDataEntrySheet, { EvidencePreviewModal } from './KPIDataEntrySheet';
 
 const SOLID_GREEN_BADGE = {
   background: '#15803D',
   color: '#FFFFFF',
   border: '1.5px solid #14532D',
-  fontWeight: 800,
+  fontWeight: 700,
   letterSpacing: '0.02em',
-  boxShadow: '0 1px 3px rgba(21, 128, 61, 0.28)',
 };
 
 const SOLID_RED_BADGE = {
   background: '#B91C1C',
   color: '#FFFFFF',
   border: '1.5px solid #7F1D1D',
-  fontWeight: 800,
+  fontWeight: 700,
   letterSpacing: '0.02em',
-  boxShadow: '0 1px 3px rgba(185, 28, 28, 0.28)',
 };
 
 function fmtNum(value, digits = 2) {
@@ -94,15 +83,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
   const [searchQuery, setSearchQuery] = useState('');
   const [picFilter, setPicFilter] = useState('ALL');
   const [previewEvidence, setPreviewEvidence] = useState(null);
-  const [lastSavedToast, setLastSavedToast] = useState('');
   const [displayFormat, setDisplayFormat] = useState('RINGKAS');
-
-  // State khusus penambahan bukti pada Bagian D.5 (Tindaklanjut Rekomendasi Audit & Temuan)
-  const [evMode, setEvMode] = useState('link');
-  const [evLabel, setEvLabel] = useState('');
-  const [evUrl, setEvUrl] = useState('');
-  const [evFileMeta, setEvFileMeta] = useState(null);
-  const [evError, setEvError] = useState('');
 
   const activeSpiTab = searchParams.get('spiView') === 'spi-form' ? 'spi-form' : 'audit-table';
 
@@ -148,89 +129,6 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
       confirmedOnly: !periodForm.renbangValidatedFinal,
     });
   }, [periodForm, isAuditUnlocked, workflow]);
-
-  const spiAudit = useMemo(
-    () => readSpiAuditForForm(periodForm?.id || period, workflow),
-    [periodForm?.id, period, workflow],
-  );
-
-  // Resolusi Indikator Khusus SPI: Bagian D No. 5 - Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS)
-  const d5Definition = useMemo(() => {
-    const sections = periodForm?.sections || readPublishedKpiConfig()?.sections || normalizeKpiSections(KPI_SECTIONS_CONFIG);
-    for (const sec of sections) {
-      for (const item of sec.items || []) {
-        if (
-          item.id === 'D_5'
-          || (sec.code === 'D' && String(item.no) === '5')
-          || /tindak\s*lanjut\s+rekomendasi\s+audit/i.test(String(item.indikator || ''))
-        ) {
-          return { section: sec, item };
-        }
-      }
-    }
-    return {
-      section: { code: 'D', title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)', isPenaltySection: true },
-      item: {
-        id: 'D_5',
-        no: '5',
-        indikator: 'Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS)',
-        formula: 'Jumlah Rekomendasi Audit atau Temuan yg belum Ditindaklanjuti / Jumlah Rekomendasi * Bobot',
-        pics: ['SPI', 'PJM', 'Akuntansi', 'WBS'],
-        picDisplay: 'SPI, PJM, Akuntansi, WBS',
-        bobot: -2.5,
-        bobotDisplay: '-2,5',
-        targetDisplay: '0',
-        targetNum: 0,
-        satuan: '%',
-        calcType: 'compliance_audit_ratio',
-        subrows: [
-          { key: 'd_5_un', label: 'Jumlah Rekomendasi Audit atau Temuan yg belum Ditindaklanjuti', placeholder: '0' },
-          { key: 'd_5_tot', label: 'Jumlah Rekomendasi', placeholder: '0', isDenominator: true },
-        ],
-      },
-    };
-  }, [periodForm]);
-
-  const d5CurrentData = useMemo(() => {
-    const subKeyUn = d5Definition.item.subrows?.[0]?.key || 'd_5_un';
-    const subKeyTot = d5Definition.item.subrows?.[1]?.key || 'd_5_tot';
-    const spiSubKey = periodForm && user?.email ? submissionKey(periodForm.id, user.email) : null;
-    const spiSub = spiSubKey ? workflow.submissions?.[spiSubKey] : null;
-    const spiEv = spiSubKey ? (workflow.evidence?.[spiSubKey] || []) : [];
-    const savedD5 = spiAudit.items?.D_5 || {};
-
-    const unfollowedCount = savedD5.unfollowedCount !== undefined
-      ? String(savedD5.unfollowedCount)
-      : String(spiSub?.values?.[subKeyUn] ?? '');
-    const totalRecommendations = savedD5.totalRecommendations !== undefined
-      ? String(savedD5.totalRecommendations)
-      : String(spiSub?.values?.[subKeyTot] ?? '');
-    const auditNote = savedD5.auditNote !== undefined
-      ? String(savedD5.auditNote)
-      : String(spiSub?.notes?.D_5 ?? '');
-    const evidenceList = Array.isArray(savedD5.evidenceList) && savedD5.evidenceList.length > 0
-      ? savedD5.evidenceList
-      : spiEv.filter((e) => e.indicatorId === 'D_5');
-
-    const computed = computeKpiItem(
-      d5Definition.item,
-      {
-        [subKeyUn]: unfollowedCount,
-        [subKeyTot]: totalRecommendations,
-      },
-      true,
-      periodForm?.sections,
-    );
-
-    return {
-      unfollowedCount,
-      totalRecommendations,
-      auditNote,
-      evidenceList,
-      computed,
-      updatedAt: savedD5.updatedAt || spiAudit.updatedAt || spiSub?.submittedAt || null,
-    };
-  }, [d5Definition, periodForm, user?.email, workflow, spiAudit]);
 
   const allAuditRows = useMemo(() => {
     const sections = periodForm?.sections || readPublishedKpiConfig()?.sections || normalizeKpiSections(KPI_SECTIONS_CONFIG);
@@ -291,112 +189,6 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
     setSearchParams(next, { replace: true });
   };
 
-  const handleD5Change = (patch) => {
-    if (!user || user.role !== 'spi') return;
-    const saved = saveSpiIndicatorAudit(periodForm?.id || period, user, 'D_5', patch);
-    setLastSavedToast(`Tersimpan real-time ke database · ${new Date(saved.updatedAt).toLocaleTimeString('id-ID')}`);
-    setTick((t) => t + 1);
-  };
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    setEvError('');
-    if (!file) {
-      setEvFileMeta(null);
-      return;
-    }
-    if (!ALLOWED_EVIDENCE_MIME_TYPES.includes(file.type)) {
-      setEvError('Format berkas wajib berupa PDF atau gambar (PNG, JPG, WEBP).');
-      return;
-    }
-    if (file.size > MAX_EVIDENCE_FILE_BYTES) {
-      setEvError('Ukuran berkas maksimal 2,5 MB. Gunakan tautan HTTPS untuk dokumen berukuran besar.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setEvFileMeta({
-        fileName: file.name,
-        mimeType: file.type,
-        fileSize: file.size,
-        dataUrl: String(reader.result || ''),
-      });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleAddD5Evidence = (e) => {
-    e.preventDefault();
-    setEvError('');
-    const label = evLabel.trim();
-    if (!label) {
-      setEvError('Judul dokumen bukti tindak lanjut wajib diisi.');
-      return;
-    }
-    let newEv;
-    if (evMode === 'file') {
-      if (!evFileMeta?.dataUrl) {
-        setEvError('Pilih berkas PDF atau gambar terlebih dahulu.');
-        return;
-      }
-      newEv = {
-        id: `ev_d5_${Date.now()}`,
-        indicatorId: 'D_5',
-        kind: 'file',
-        label,
-        url: '',
-        fileName: evFileMeta.fileName,
-        mimeType: evFileMeta.mimeType,
-        fileSize: evFileMeta.fileSize,
-        dataUrl: evFileMeta.dataUrl,
-        status: 'VERIFIED',
-        owner: user?.email || 'spi@itpln.ac.id',
-        ownerUnit: user?.unit || 'Satuan Pengawasan Intern (SPI)',
-        picCodes: ['SPI'],
-        createdAt: new Date().toISOString(),
-      };
-    } else {
-      let parsedUrl;
-      try {
-        parsedUrl = new URL(evUrl.trim());
-      } catch {
-        setEvError('Format tautan URL tidak valid.');
-        return;
-      }
-      if (parsedUrl.protocol !== 'https:') {
-        setEvError('Gunakan tautan HTTPS yang valid.');
-        return;
-      }
-      newEv = {
-        id: `ev_d5_${Date.now()}`,
-        indicatorId: 'D_5',
-        kind: 'link',
-        label,
-        url: parsedUrl.href,
-        fileName: '',
-        mimeType: '',
-        fileSize: 0,
-        dataUrl: '',
-        status: 'VERIFIED',
-        owner: user?.email || 'spi@itpln.ac.id',
-        ownerUnit: user?.unit || 'Satuan Pengawasan Intern (SPI)',
-        picCodes: ['SPI'],
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    const nextList = [...d5CurrentData.evidenceList, newEv];
-    handleD5Change({ evidenceList: nextList });
-    setEvLabel('');
-    setEvUrl('');
-    setEvFileMeta(null);
-  };
-
-  const handleRemoveD5Evidence = (evId) => {
-    const nextList = d5CurrentData.evidenceList.filter((ev) => ev.id !== evId);
-    handleD5Change({ evidenceList: nextList });
-  };
-
   const handlePrintValidatedReport = () => {
     if (!isAuditUnlocked) return;
     const rowsHtml = allAuditRows.map((row, idx) => {
@@ -412,7 +204,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
           <td style="text-align:center;"><strong>${escapeHtml(row.picDisplay)}</strong><br/><span style="font-size:10px;color:#475569;">${escapeHtml(row.contributor?.unit || 'Tervalidasi Renbang')}</span></td>
           <td style="text-align:right;font-variant-numeric:tabular-nums;">${escapeHtml(row.item.bobotDisplay || row.item.bobot)}</td>
           <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;">${ratioStr}</td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:800;">${scoreStr}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;">${scoreStr}</td>
           <td style="font-size:11px;">${evNames}</td>
           <td style="font-size:11px;">${escapeHtml(row.unitNote || '-')}</td>
         </tr>`;
@@ -440,8 +232,6 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
         <div class="sub">Institut Teknologi Perusahaan Listrik Negara (ITPLN) · Periode Evaluasi ${escapeHtml(period)} · Status Validasi Renbang: 100% Tervalidasi Final</div>
         <div class="meta-box">
           <div><strong>Total Skor Akhir KPI Tervalidasi Renbang:</strong> ${fmtNum(integratedBoard.totalScore, 2)} &nbsp;|&nbsp; <strong>Indikator Terisi:</strong> ${integratedBoard.filledIndicatorCount}/${integratedBoard.totalIndicatorCount}</div>
-          <div style="margin-top:4px;"><strong>Isian Khusus SPI (Bagian D.5 · Tindaklanjut Rekomendasi Audit &amp; Temuan):</strong> Belum Ditindaklanjuti = <strong>${escapeHtml(d5CurrentData.unfollowedCount || '0')}</strong> dari Total Rekomendasi = <strong>${escapeHtml(d5CurrentData.totalRecommendations || '0')}</strong> (Skor D.5: <strong>${fmtNum(d5CurrentData.computed.weightedScore, 2)}</strong>)</div>
-          <div style="margin-top:4px;"><strong>Keterangan D.5 (SPI):</strong> ${escapeHtml(d5CurrentData.auditNote || '-')}</div>
         </div>
         <table>
           <thead>
@@ -536,491 +326,107 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
   };
 
   /**
-   * Form Pengisian Khusus SPI: HANYA Bagian D No. 5
-   * "5. Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS)"
+   * Bagian Pengisian Khusus SPI yang tampil persis menggunakan tabel standar unit (KPIDataEntrySheet)
+   * khusus untuk 1 indikator PIC SPI: Bagian D No. 5 (Tindaklanjut Rekomendasi Audit & Temuan).
    */
-  const renderSpiD5ExclusiveForm = (placementId = 'top') => {
-    const ratioVal = d5CurrentData.computed.ratioPercent;
-    const scoreVal = d5CurrentData.computed.weightedScore;
-    const extraNote = d5CurrentData.computed.extraNote;
-
-    return (
-      <section
-        aria-label={`Form Inputan Khusus SPI Bagian D No. 5 (${placementId})`}
+  const renderStandardUnitTableForSpi = (sectionTitle = 'Lembar Kerja Pengisian KPI Unit SPI (Khusus Bagian D No. 5)') => (
+    <section
+      aria-label={sectionTitle}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.85rem',
+        minWidth: 0,
+        width: '100%',
+      }}
+    >
+      <div
         style={{
           background: '#FFFFFF',
-          border: '2px solid #0C2340',
-          borderRadius: 12,
-          padding: '20px 22px',
-          boxShadow: '0 4px 14px rgba(12, 35, 64, 0.06)',
+          border: '1px solid #D8E4EA',
+          borderLeft: '4px solid #094E68',
+          borderRadius: '8px',
+          padding: '0.9rem 1.15rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap',
-            gap: 12,
-            paddingBottom: 14,
-            borderBottom: '1px solid #E2E8F0',
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  background: '#0C2340',
-                  color: '#FFFFFF',
-                  fontSize: 11,
-                  fontWeight: 800,
-                }}
-              >
-                <ClipboardCheck size={13} /> BAGIAN D · PERSPEKTIF KEPATUHAN (COMPLIANCE) · NO. 5
-              </span>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  ...SOLID_GREEN_BADGE,
-                  fontSize: 11,
-                }}
-              >
-                <CheckCircle2 size={13} /> HAK INPUT KHUSUS SPI (PIC: SPI, PJM, KAP, WBS) · REAL-TIME DATABASE
-              </span>
-            </div>
-            <h3 style={{ margin: '8px 0 4px', fontSize: 16.5, fontWeight: 800, color: '#0F172A' }}>
-              5. Tindaklanjut Rekomendasi Audit &amp; Temuan (SPI, PJM, KAP, WBS)
-            </h3>
-            <p style={{ margin: 0, fontSize: 12.5, color: '#475569', maxWidth: '75ch' }}>
-              Formula: <strong>{d5Definition.item.formula}</strong> · Bobot Maksimal: <strong>{d5Definition.item.bobotDisplay || '-2,5'}</strong> · Target: <strong>{d5Definition.item.targetDisplay || '0'}%</strong>.
-              Akun SPI hanya dapat mengisi bagian D.5 miliknya ini dan tidak mencampuri isian unit lain maupun Renbang.
-            </p>
-          </div>
-
-          <div
-            style={{
-              background: '#F8FAFC',
-              border: '1px solid #CBD5E1',
-              borderRadius: 8,
-              padding: '8px 12px',
-              fontSize: 11.5,
-              color: '#1E293B',
-              fontWeight: 600,
-            }}
-          >
-            <div>Status Penyimpanan Database (Real-Time):</div>
-            <div style={{ color: '#15803D', fontWeight: 800, marginTop: 2 }}>
-              {lastSavedToast || (d5CurrentData.updatedAt
-                ? `Tersimpan di Database · ${new Date(d5CurrentData.updatedAt).toLocaleString('id-ID')}`
-                : 'Tersimpan otomatis ke database saat angka diketik')}
-            </div>
-          </div>
-        </div>
-
-        {/* Grid Input 2 Sub-Baris Bagian D.5 + Kalkulasi Skor Otomatis */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: 16,
-            marginBottom: 16,
-          }}
-        >
-          <div
-            style={{
-              background: '#F8FAFC',
-              border: '1px solid #CBD5E1',
-              borderRadius: 10,
-              padding: '14px',
-            }}
-          >
-            <label
-              htmlFor={`d5-unfollowed-${placementId}`}
-              style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}
-            >
-              Sub-Baris 1: Jumlah Rekomendasi Audit atau Temuan yg belum Ditindaklanjuti
-            </label>
-            <input
-              id={`d5-unfollowed-${placementId}`}
-              type="number"
-              min="0"
-              step="any"
-              value={d5CurrentData.unfollowedCount}
-              onChange={(e) => handleD5Change({ unfollowedCount: e.target.value })}
-              placeholder="0"
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.2rem' }}>
+            <span
               style={{
-                width: '100%',
-                minHeight: 42,
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1.5px solid #0C2340',
-                fontSize: 14,
-                fontWeight: 800,
-                color: '#0F172A',
-                background: '#FFFFFF',
-                fontVariantNumeric: 'tabular-nums',
+                fontFamily: 'var(--ent-mono)',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                color: '#094E68',
+                letterSpacing: '0.04em',
               }}
-            />
-            <span style={{ display: 'block', fontSize: 11, color: '#475569', marginTop: 5 }}>
-              Masukkan jumlah temuan/rekomendasi yang masih berstatus belum selesai ditindaklanjuti (target ideal: 0).
+            >
+              LEMBAR KERJA PIC SPI · BAGIAN D (PERSPEKTIF KEPATUHAN) · BUTIR NO. 5
+            </span>
+            <span
+              style={{
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontSize: '0.66rem',
+                ...SOLID_GREEN_BADGE,
+              }}
+            >
+              SAMA SEPERTI TABEL UNIT LAINNYA
             </span>
           </div>
-
-          <div
-            style={{
-              background: '#F8FAFC',
-              border: '1px solid #CBD5E1',
-              borderRadius: 10,
-              padding: '14px',
-            }}
-          >
-            <label
-              htmlFor={`d5-total-rec-${placementId}`}
-              style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}
-            >
-              Sub-Baris 2: Jumlah Rekomendasi (Total Rekomendasi Audit &amp; Temuan)
-            </label>
-            <input
-              id={`d5-total-rec-${placementId}`}
-              type="number"
-              min="0"
-              step="any"
-              value={d5CurrentData.totalRecommendations}
-              onChange={(e) => handleD5Change({ totalRecommendations: e.target.value })}
-              placeholder="0"
-              style={{
-                width: '100%',
-                minHeight: 42,
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: '1.5px solid #0C2340',
-                fontSize: 14,
-                fontWeight: 800,
-                color: '#0F172A',
-                background: '#FFFFFF',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            />
-            <span style={{ display: 'block', fontSize: 11, color: '#475569', marginTop: 5 }}>
-              Masukkan total seluruh rekomendasi audit/temuan (SPI, PJM, KAP, WBS) sebagai penyebut rumus.
-            </span>
+          <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#072534' }}>
+            5. Tindaklanjut Rekomendasi Audit &amp; Temuan (SPI, PJM, KAP, WBS)
           </div>
-
-          {/* Kartu Hasil Kalkulasi Otomatis Bagian D.5 */}
-          <div
-            style={{
-              background: '#0C2340',
-              color: '#FFFFFF',
-              borderRadius: 10,
-              padding: '14px 16px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', opacity: 0.9 }}>
-              HASIL PERHITUNGAN OTOMATIS BAGIAN D.5 (BOBOT -2,5)
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginTop: 8 }}>
-              <div>
-                <div style={{ fontSize: 11, opacity: 0.85 }}>Capaian Kepatuhan:</div>
-                <div style={{ fontSize: 20, fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
-                  {ratioVal !== null ? `${fmtNum(ratioVal, 2)}%` : 'Belum Terisi'}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 11, opacity: 0.85 }}>Skor Penalti D.5:</div>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 900,
-                    color: scoreVal !== null && scoreVal < 0 ? '#FCA5A5' : '#86EFAC',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {scoreVal !== null ? fmtNum(scoreVal, 2) : '-'}
-                </div>
-              </div>
-            </div>
-            <div style={{ fontSize: 11, marginTop: 8, opacity: 0.9 }}>
-              {extraNote || 'Rumus: (Belum Ditindaklanjuti / Jumlah Rekomendasi) × (-2,5)'}
-            </div>
+          <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: '2px' }}>
+            Isi angka pada kolom <strong>ISIAN</strong> (tersimpan otomatis sebagai <strong>Draft</strong> saat diketik), lampirkan bukti PDF/tautan, lalu klik <strong>Kirim Capaian Unit</strong> apabila sudah siap dikirim ke pusat.
           </div>
         </div>
+      </div>
 
-        {/* Kolom Keterangan & Dokumen Bukti Pendukung Khusus Bagian D.5 */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
-            gap: 16,
-          }}
-        >
-          <div>
-            <label
-              htmlFor={`d5-note-${placementId}`}
-              style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: '#1E293B', marginBottom: 6 }}
-            >
-              Keterangan / Catatan Tindak Lanjut Audit &amp; Temuan (Bagian D.5)
-            </label>
-            <textarea
-              id={`d5-note-${placementId}`}
-              rows={4}
-              value={d5CurrentData.auditNote}
-              onChange={(e) => handleD5Change({ auditNote: e.target.value })}
-              placeholder="Tuliskan rincian tindak lanjut rekomendasi audit & temuan (SPI, PJM, KAP, WBS)... Tersimpan otomatis secara real-time."
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid #CBD5E1',
-                fontSize: 13,
-                color: '#0F172A',
-                resize: 'vertical',
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              background: '#F8FAFC',
-              border: '1px solid #CBD5E1',
-              borderRadius: 10,
-              padding: '12px 14px',
-            }}
-          >
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0F172A', marginBottom: 8 }}>
-              Dokumen Bukti Pendukung Bagian D.5 ({d5CurrentData.evidenceList.length} Dokumen)
-            </div>
-
-            {d5CurrentData.evidenceList.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-                {d5CurrentData.evidenceList.map((ev) => (
-                  <div
-                    key={ev.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 10px',
-                      borderRadius: 6,
-                      background: '#FFFFFF',
-                      border: '1px solid #CBD5E1',
-                      fontSize: 12,
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ev.label}
-                    </span>
-                    <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        onClick={() => setPreviewEvidence(ev)}
-                        style={{
-                          minHeight: 30,
-                          padding: '3px 8px',
-                          borderRadius: 5,
-                          border: '1px solid #0C2340',
-                          background: '#FFFFFF',
-                          color: '#0C2340',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                      >
-                        <Eye size={12} /> Lihat
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveD5Evidence(ev.id)}
-                        style={{
-                          minHeight: 30,
-                          padding: '3px 8px',
-                          borderRadius: 5,
-                          border: '1px solid #FCA5A5',
-                          background: '#FEF2F2',
-                          color: '#B91C1C',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                      >
-                        <Trash2 size={12} /> Hapus
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <form onSubmit={handleAddD5Evidence} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  type="button"
-                  onClick={() => setEvMode('link')}
-                  style={{
-                    minHeight: 32,
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    border: evMode === 'link' ? '1.5px solid #0C2340' : '1px solid #CBD5E1',
-                    background: evMode === 'link' ? '#0C2340' : '#FFFFFF',
-                    color: evMode === 'link' ? '#FFFFFF' : '#334155',
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}
-                >
-                  <Link2 size={12} /> Tautan HTTPS
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEvMode('file')}
-                  style={{
-                    minHeight: 32,
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    border: evMode === 'file' ? '1.5px solid #0C2340' : '1px solid #CBD5E1',
-                    background: evMode === 'file' ? '#0C2340' : '#FFFFFF',
-                    color: evMode === 'file' ? '#FFFFFF' : '#334155',
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}
-                >
-                  <Upload size={12} /> Unggah PDF / Gambar
-                </button>
-              </div>
-
-              <input
-                type="text"
-                aria-label="Judul bukti tindak lanjut audit Bagian D.5"
-                value={evLabel}
-                onChange={(e) => setEvLabel(e.target.value)}
-                placeholder="Judul dokumen bukti (mis. Berita Acara Tindak Lanjut Audit SPI)..."
-                style={{
-                  minHeight: 36,
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  border: '1px solid #CBD5E1',
-                  fontSize: 12,
-                  background: '#FFFFFF',
-                }}
-              />
-
-              {evMode === 'link' ? (
-                <input
-                  type="url"
-                  aria-label="URL HTTPS bukti tindak lanjut audit Bagian D.5"
-                  value={evUrl}
-                  onChange={(e) => setEvUrl(e.target.value)}
-                  placeholder="https://drive.google.com/..."
-                  style={{
-                    minHeight: 36,
-                    padding: '6px 10px',
-                    borderRadius: 6,
-                    border: '1px solid #CBD5E1',
-                    fontSize: 12,
-                    background: '#FFFFFF',
-                  }}
-                />
-              ) : (
-                <input
-                  type="file"
-                  aria-label="Pilih berkas PDF atau gambar bukti Bagian D.5"
-                  accept=".pdf,image/png,image/jpeg,image/webp"
-                  onChange={handleFileSelect}
-                  style={{ fontSize: 11.5 }}
-                />
-              )}
-
-              {evError && (
-                <div style={{ fontSize: 11.5, color: '#B91C1C', fontWeight: 700 }}>{evError}</div>
-              )}
-
-              <button
-                type="submit"
-                style={{
-                  alignSelf: 'flex-start',
-                  minHeight: 36,
-                  padding: '6px 12px',
-                  borderRadius: 6,
-                  border: 'none',
-                  background: '#15803D',
-                  color: '#FFFFFF',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                }}
-              >
-                <Plus size={13} /> Tambah Bukti Bagian D.5
-              </button>
-            </form>
-          </div>
-        </div>
-      </section>
-    );
-  };
+      <KPIDataEntrySheet
+        period={period}
+        spiUnitInputMode
+      />
+    </section>
+  );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem', minWidth: 0, width: '100%' }}>
       {/* Bar Navigasi Atas Khusus SPI + Indikator Status Kunci/Terbuka */}
       <div
         style={{
           background: '#FFFFFF',
-          border: '1px solid #CBD5E1',
-          borderRadius: 12,
-          padding: '16px 20px',
+          border: '1px solid #D8E4EA',
+          borderRadius: '10px',
+          padding: '0.9rem 1.15rem',
           display: 'flex',
           flexWrap: 'wrap',
           justifyContent: 'space-between',
           alignItems: 'center',
-          gap: 14,
-          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
+          gap: '0.85rem',
         }}
       >
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.6rem' }}>
           <button
             type="button"
             onClick={() => switchSpiTab('audit-table')}
             style={{
-              minHeight: 42,
-              padding: '9px 16px',
-              borderRadius: 8,
-              border: activeSpiTab === 'audit-table' ? '2px solid #0C2340' : '1px solid #CBD5E1',
-              background: activeSpiTab === 'audit-table' ? '#0C2340' : '#F8FAFC',
-              color: activeSpiTab === 'audit-table' ? '#FFFFFF' : '#1E293B',
-              fontSize: 13,
-              fontWeight: 800,
+              minHeight: '44px',
+              padding: '0.5rem 1rem',
+              borderRadius: '8px',
+              border: activeSpiTab === 'audit-table' ? '1.5px solid #094E68' : '1px solid #CBD5E1',
+              background: activeSpiTab === 'audit-table' ? '#094E68' : '#FFFFFF',
+              color: activeSpiTab === 'audit-table' ? '#FFFFFF' : '#072534',
+              fontSize: '0.8rem',
+              fontWeight: 600,
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 8,
+              gap: '0.5rem',
             }}
           >
             {isAuditUnlocked ? <Unlock size={15} /> : <Lock size={15} />}
@@ -1028,8 +434,8 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
             <span
               style={{
                 padding: '2px 8px',
-                borderRadius: 999,
-                fontSize: 10.5,
+                borderRadius: '5px',
+                fontSize: '0.68rem',
                 ...(isAuditUnlocked ? SOLID_GREEN_BADGE : SOLID_RED_BADGE),
               }}
             >
@@ -1041,73 +447,73 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
             type="button"
             onClick={() => switchSpiTab('spi-form')}
             style={{
-              minHeight: 42,
-              padding: '9px 16px',
-              borderRadius: 8,
-              border: activeSpiTab === 'spi-form' ? '2px solid #0C2340' : '1px solid #CBD5E1',
-              background: activeSpiTab === 'spi-form' ? '#0C2340' : '#F8FAFC',
-              color: activeSpiTab === 'spi-form' ? '#FFFFFF' : '#1E293B',
-              fontSize: 13,
-              fontWeight: 800,
+              minHeight: '44px',
+              padding: '0.5rem 1rem',
+              borderRadius: '8px',
+              border: activeSpiTab === 'spi-form' ? '1.5px solid #094E68' : '1px solid #CBD5E1',
+              background: activeSpiTab === 'spi-form' ? '#094E68' : '#FFFFFF',
+              color: activeSpiTab === 'spi-form' ? '#FFFFFF' : '#072534',
+              fontSize: '0.8rem',
+              fontWeight: 600,
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 8,
+              gap: '0.5rem',
             }}
           >
             <ClipboardCheck size={15} />
-            <span>Inputan Khusus SPI: Bagian D.5 (Tindaklanjut Audit)</span>
+            <span>Lembar Kerja Input SPI (Bagian D.5)</span>
             <span
               style={{
                 padding: '2px 8px',
-                borderRadius: 999,
-                fontSize: 10.5,
+                borderRadius: '5px',
+                fontSize: '0.68rem',
                 ...SOLID_GREEN_BADGE,
               }}
             >
-              REAL-TIME
+              1 BUTIR PIC
             </span>
           </button>
         </div>
 
         {/* Status Badge Validasi Renbang & Periode */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.55rem' }}>
           <span
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              borderRadius: 8,
-              fontSize: 12,
+              gap: '0.4rem',
+              padding: '0.4rem 0.75rem',
+              borderRadius: '6px',
+              fontSize: '0.72rem',
               ...(isPeriodOpen ? SOLID_GREEN_BADGE : SOLID_RED_BADGE),
             }}
           >
-            {isPeriodOpen ? <CheckCircle2 size={14} /> : <Lock size={14} />}
-            PERIODE {period}: {isPeriodOpen ? 'AKTIF (TERBUKA)' : 'TIDAK AKTIF (TERTUTUP)'}
+            {isPeriodOpen ? <CheckCircle2 size={13} /> : <Lock size={13} />}
+            <span>PERIODE {period}: {isPeriodOpen ? 'AKTIF (TERBUKA)' : 'TIDAK AKTIF (TERTUTUP)'}</span>
           </span>
 
           <span
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              borderRadius: 8,
-              fontSize: 12,
+              gap: '0.4rem',
+              padding: '0.4rem 0.75rem',
+              borderRadius: '6px',
+              fontSize: '0.72rem',
               ...(isAuditUnlocked ? SOLID_GREEN_BADGE : SOLID_RED_BADGE),
             }}
           >
-            {isAuditUnlocked ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
-            STATUS TABEL AUDIT SPI: {isAuditUnlocked ? 'TERBUKA (VALIDASI RENBANG 100%)' : 'AKSES MASIH TERTUTUP'}
+            {isAuditUnlocked ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
+            <span>TABEL AUDIT: {isAuditUnlocked ? 'TERBUKA (VALIDASI 100%)' : 'AKSES MASIH TERTUTUP'}</span>
           </span>
         </div>
       </div>
 
-      {/* Tab Menu Inputan Khusus SPI (Hanya Bagian D No. 5) */}
-      {activeSpiTab === 'spi-form' && renderSpiD5ExclusiveForm('menu-top')}
+      {/* Tab Menu Inputan Khusus SPI: Menampilkan Tabel Unit Standar KPIDataEntrySheet (Persis Seperti Unit Lain) */}
+      {activeSpiTab === 'spi-form' && renderStandardUnitTableForSpi('Menu Inputan Khusus SPI (Bagian D No. 5)')}
 
-      {/* Tab Tabel Audit KPI (Read-Only) + Form Bagian D.5 di Bawah Tabel */}
+      {/* Tab Tabel Audit KPI (Read-Only) + Tabel Input Bagian D.5 di Bawahnya */}
       {activeSpiTab === 'audit-table' && (
         <>
           {!isAuditUnlocked ? (
@@ -1116,18 +522,17 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
               aria-label="Tabel Audit KPI Terkunci - Akses Masih Tertutup"
               style={{
                 background: '#FFFFFF',
-                border: '2px solid #B91C1C',
-                borderRadius: 12,
-                padding: '28px 26px',
-                boxShadow: '0 6px 20px rgba(185, 28, 28, 0.08)',
+                border: '1.5px solid #B91C1C',
+                borderRadius: '10px',
+                padding: 'clamp(1.1rem, 2.5vw, 1.5rem)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
                 <div
                   style={{
-                    width: 54,
-                    height: 54,
-                    borderRadius: 12,
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '10px',
                     background: '#B91C1C',
                     color: '#FFFFFF',
                     display: 'flex',
@@ -1136,16 +541,16 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                     flexShrink: 0,
                   }}
                 >
-                  <Lock size={28} />
+                  <Lock size={24} />
                 </div>
 
-                <div style={{ flex: 1, minWidth: 260 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                <div style={{ flex: 1, minWidth: 'min(100%, 260px)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
                     <span
                       style={{
-                        padding: '4px 12px',
-                        borderRadius: 6,
-                        fontSize: 12,
+                        padding: '3px 10px',
+                        borderRadius: '5px',
+                        fontSize: '0.72rem',
                         ...SOLID_RED_BADGE,
                       }}
                     >
@@ -1153,10 +558,10 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                     </span>
                     <span
                       style={{
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        fontSize: 11.5,
-                        fontWeight: 700,
+                        padding: '3px 10px',
+                        borderRadius: '5px',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
                         background: '#FEF2F2',
                         color: '#991B1B',
                         border: '1px solid #FCA5A5',
@@ -1166,32 +571,32 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                     </span>
                   </div>
 
-                  <h2 style={{ margin: '4px 0 8px', fontSize: 20, fontWeight: 800, color: '#0F172A' }}>
+                  <h2 style={{ margin: '0.2rem 0 0.45rem', fontSize: '1.15rem', fontWeight: 700, color: '#072534' }}>
                     Akses masih tertutup · Tabel Audit KPI (Read-Only) Belum Dapat Dibuka
                   </h2>
 
-                  <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#334155', lineHeight: 1.6, maxWidth: '75ch' }}>
+                  <p style={{ margin: '0 0 0.9rem', fontSize: '0.84rem', color: '#334155', lineHeight: 1.6, maxWidth: '75ch' }}>
                     Selama pihak Renbang belum selesai memvalidasi seluruh data KPI unit, Tabel Audit KPI (Read-Only)
                     wajib dalam keadaan terkunci. SPI tidak diperbolehkan memantau data unit yang baru terisi sebagian.
-                    Tabel ini akan <strong>terbuka otomatis</strong> segera setelah validasi Renbang mencapai <strong>100%</strong>.
+                    Tabel audit akan <strong>terbuka otomatis</strong> segera setelah validasi Renbang mencapai <strong>100%</strong>.
                   </p>
 
                   <div
                     style={{
                       background: '#F8FAFC',
                       border: '1px solid #CBD5E1',
-                      borderRadius: 10,
-                      padding: '14px 16px',
+                      borderRadius: '8px',
+                      padding: '0.8rem 1rem',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 800, color: '#0F172A' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
                         Progres Validasi Akhir Renbang (Periode {period}): {renbangValidation.validatedUnits} dari {renbangValidation.totalUnits} Unit Tervalidasi Final
                       </span>
                       <span
                         style={{
-                          fontSize: 13,
-                          fontWeight: 800,
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
                           color: '#B91C1C',
                           fontVariantNumeric: 'tabular-nums',
                         }}
@@ -1202,9 +607,9 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                     <div
                       style={{
                         width: '100%',
-                        height: 10,
+                        height: '8px',
                         background: '#E2E8F0',
-                        borderRadius: 999,
+                        borderRadius: '999px',
                         overflow: 'hidden',
                       }}
                     >
@@ -1229,19 +634,18 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                 style={{
                   background: '#FFFFFF',
                   border: '1.5px solid #15803D',
-                  borderRadius: 12,
-                  padding: '18px 20px',
-                  boxShadow: '0 4px 12px rgba(21, 128, 61, 0.06)',
+                  borderRadius: '10px',
+                  padding: '1.1rem 1.25rem',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.85rem' }}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
                       <span
                         style={{
-                          padding: '4px 10px',
-                          borderRadius: 6,
-                          fontSize: 11.5,
+                          padding: '3px 10px',
+                          borderRadius: '5px',
+                          fontSize: '0.72rem',
                           ...SOLID_GREEN_BADGE,
                         }}
                       >
@@ -1249,10 +653,10 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       </span>
                       <span
                         style={{
-                          padding: '4px 10px',
-                          borderRadius: 6,
-                          fontSize: 11.5,
-                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: '5px',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
                           background: '#EFF6FF',
                           color: '#1E3A8A',
                           border: '1px solid #BFDBFE',
@@ -1261,103 +665,104 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                         Tampilan Ringkas Khusus SPI (Read-Only)
                       </span>
                     </div>
-                    <h2 style={{ margin: '4px 0', fontSize: 17, fontWeight: 800, color: '#0F172A' }}>
+                    <h2 style={{ margin: '0.2rem 0', fontSize: '1.08rem', fontWeight: 700, color: '#072534' }}>
                       Tabel Audit KPI (Read-Only) · Hasil Akhir Tervalidasi Renbang &amp; Dokumen Pendukung
                     </h2>
-                    <p style={{ margin: 0, fontSize: 12.5, color: '#475569', maxWidth: '76ch' }}>
-                      Kolom teknis/mentah milik Admin/Renbang telah dihilangkan. Tabel di bawah ini bersifat murni Read-Only
-                      untuk pengecekan dokumen bukti pendukung dan hasil akhir KPI yang telah divalidasi Renbang beserta PIC terkait.
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', maxWidth: '76ch' }}>
+                      Kolom teknis/mentah milik Admin/Renbang telah disederhanakan. Tabel ini menampilkan hasil akhir KPI yang telah divalidasi Renbang beserta PIC dan dokumen pendukungnya.
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                       <button
                         type="button"
                         onClick={() => setDisplayFormat('RINGKAS')}
                         style={{
-                          minHeight: 40,
-                          padding: '8px 14px',
-                          borderRadius: 8,
-                          border: displayFormat === 'RINGKAS' ? '2px solid #0C2340' : '1px solid #CBD5E1',
-                          background: displayFormat === 'RINGKAS' ? '#0C2340' : '#FFFFFF',
-                          color: displayFormat === 'RINGKAS' ? '#FFFFFF' : '#1E293B',
-                          fontSize: 12.5,
-                          fontWeight: 800,
+                          minHeight: '42px',
+                          padding: '0.45rem 0.9rem',
+                          borderRadius: '7px',
+                          border: displayFormat === 'RINGKAS' ? '1.5px solid #094E68' : '1px solid #CBD5E1',
+                          background: displayFormat === 'RINGKAS' ? '#094E68' : '#FFFFFF',
+                          color: displayFormat === 'RINGKAS' ? '#FFFFFF' : '#072534',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
                           cursor: 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 6,
+                          gap: '0.4rem',
                         }}
                       >
-                        <FileCheck2 size={15} />
-                        Opsi 1: Tabel Ringkas Audit SPI (PIC, Hasil Akhir &amp; Unduh Dokumen)
+                        <FileCheck2 size={14} />
+                        <span>Opsi 1: Tabel Ringkas Audit SPI</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setDisplayFormat('CETAK_LAPORAN')}
                         style={{
-                          minHeight: 40,
-                          padding: '8px 14px',
-                          borderRadius: 8,
-                          border: displayFormat === 'CETAK_LAPORAN' ? '2px solid #0C2340' : '1px solid #CBD5E1',
-                          background: displayFormat === 'CETAK_LAPORAN' ? '#0C2340' : '#FFFFFF',
-                          color: displayFormat === 'CETAK_LAPORAN' ? '#FFFFFF' : '#1E293B',
-                          fontSize: 12.5,
-                          fontWeight: 800,
+                          minHeight: '42px',
+                          padding: '0.45rem 0.9rem',
+                          borderRadius: '7px',
+                          border: displayFormat === 'CETAK_LAPORAN' ? '1.5px solid #094E68' : '1px solid #CBD5E1',
+                          background: displayFormat === 'CETAK_LAPORAN' ? '#094E68' : '#FFFFFF',
+                          color: displayFormat === 'CETAK_LAPORAN' ? '#FFFFFF' : '#072534',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
                           cursor: 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 6,
+                          gap: '0.4rem',
                         }}
                       >
-                        <Printer size={15} />
-                        Opsi 2: Cetak Laporan Keseluruhan Tervalidasi
+                        <Printer size={14} />
+                        <span>Opsi 2: Cetak Laporan Keseluruhan</span>
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                       <button
                         type="button"
                         onClick={handlePrintValidatedReport}
                         style={{
-                          minHeight: 38,
-                          padding: '6px 12px',
-                          borderRadius: 8,
-                          border: '1px solid #0C2340',
+                          minHeight: '40px',
+                          padding: '0.4rem 0.85rem',
+                          borderRadius: '7px',
+                          border: '1px solid #094E68',
                           background: '#F8FAFC',
-                          color: '#0C2340',
-                          fontSize: 12,
-                          fontWeight: 800,
+                          color: '#094E68',
+                          fontSize: '0.76rem',
+                          fontWeight: 600,
                           cursor: 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 6,
+                          gap: '0.4rem',
                         }}
                       >
-                        <Printer size={14} /> Cetak / Export PDF Laporan Keseluruhan
+                        <Printer size={14} />
+                        <span>Cetak / Export PDF Laporan</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={handleExportExcelSpi}
                         style={{
-                          minHeight: 38,
-                          padding: '6px 12px',
-                          borderRadius: 8,
+                          minHeight: '40px',
+                          padding: '0.4rem 0.85rem',
+                          borderRadius: '7px',
                           border: '1px solid #15803D',
-                          background: '#F0FDF4',
-                          color: '#14532D',
-                          fontSize: 12,
-                          fontWeight: 800,
+                          background: '#15803D',
+                          color: '#FFFFFF',
+                          fontSize: '0.76rem',
+                          fontWeight: 600,
                           cursor: 'pointer',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: 6,
+                          gap: '0.4rem',
                         }}
                       >
-                        <FileSpreadsheet size={14} /> Unduh Excel Audit SPI (.xls)
+                        <FileSpreadsheet size={14} />
+                        <span>Unduh Excel Audit SPI (.xls)</span>
                       </button>
                     </div>
                   </div>
@@ -1366,17 +771,17 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                 {/* Filter Bar */}
                 <div
                   style={{
-                    marginTop: 14,
-                    paddingTop: 12,
+                    marginTop: '0.85rem',
+                    paddingTop: '0.75rem',
                     borderTop: '1px solid #E2E8F0',
                     display: 'flex',
                     flexWrap: 'wrap',
-                    gap: 10,
+                    gap: '0.6rem',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
                     <input
                       type="search"
                       aria-label="Cari indikator atau PIC pada tabel audit SPI"
@@ -1384,12 +789,12 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Cari kode, indikator, atau PIC..."
                       style={{
-                        minHeight: 38,
-                        padding: '6px 12px',
-                        borderRadius: 8,
+                        minHeight: '40px',
+                        padding: '0.4rem 0.75rem',
+                        borderRadius: '7px',
                         border: '1px solid #CBD5E1',
-                        fontSize: 12.5,
-                        minWidth: 240,
+                        fontSize: '0.78rem',
+                        minWidth: 'min(100%, 230px)',
                       }}
                     />
 
@@ -1398,12 +803,12 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       value={picFilter}
                       onChange={(e) => setPicFilter(e.target.value)}
                       style={{
-                        minHeight: 38,
-                        padding: '6px 10px',
-                        borderRadius: 8,
+                        minHeight: '40px',
+                        padding: '0.4rem 0.7rem',
+                        borderRadius: '7px',
                         border: '1px solid #CBD5E1',
-                        fontSize: 12.5,
-                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
                       }}
                     >
                       <option value="ALL">Semua PIC ({availablePics.length})</option>
@@ -1413,52 +818,51 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                     </select>
                   </div>
 
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12.5, fontWeight: 800, color: '#0C2340' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.78rem', fontWeight: 700, color: '#072534' }}>
                     <span>
                       Indikator Tervalidasi: <strong>{integratedBoard.filledIndicatorCount}/{integratedBoard.totalIndicatorCount}</strong>
                     </span>
                     <span
                       style={{
-                        padding: '5px 12px',
-                        borderRadius: 8,
-                        background: '#0C2340',
+                        padding: '0.35rem 0.75rem',
+                        borderRadius: '6px',
+                        background: '#094E68',
                         color: '#FFFFFF',
                         fontVariantNumeric: 'tabular-nums',
                       }}
                     >
-                      Total Skor Akhir Tervalidasi Renbang: {fmtNum(integratedBoard.totalScore, 2)}
+                      Total Skor Akhir Tervalidasi: {fmtNum(integratedBoard.totalScore, 2)}
                     </span>
                   </div>
                 </div>
               </section>
 
               {displayFormat === 'RINGKAS' ? (
-                /* OPSI 1: TABEL AUDIT RINGKAS SPI (Murni Read-Only: Kode, Indikator, PIC, Hasil Akhir, Unduh Dokumen) */
+                /* OPSI 1: TABEL AUDIT RINGKAS SPI */
                 <section
                   aria-label="Tabel Ringkas Audit KPI SPI (Read-Only)"
                   style={{
                     background: '#FFFFFF',
-                    border: '1px solid #CBD5E1',
-                    borderRadius: 12,
+                    border: '1px solid #D8E4EA',
+                    borderRadius: '10px',
                     overflow: 'hidden',
-                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
                   }}
                 >
                   <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                       <thead>
-                        <tr style={{ background: '#0C2340', color: '#FFFFFF' }}>
-                          <th scope="col" style={{ padding: '11px 12px', textAlign: 'center', width: 64 }}>Kode</th>
-                          <th scope="col" style={{ padding: '11px 12px', textAlign: 'left', minWidth: 260 }}>
+                        <tr style={{ background: '#094E68', color: '#FFFFFF' }}>
+                          <th scope="col" style={{ padding: '10px 12px', textAlign: 'center', width: 64 }}>Kode</th>
+                          <th scope="col" style={{ padding: '10px 12px', textAlign: 'left', minWidth: 240 }}>
                             Indikator Kinerja Utama (KPI) &amp; Keterangan Tervalidasi
                           </th>
-                          <th scope="col" style={{ padding: '11px 12px', textAlign: 'left', width: 175 }}>
+                          <th scope="col" style={{ padding: '10px 12px', textAlign: 'left', width: 170 }}>
                             PIC &amp; Unit Terkait
                           </th>
-                          <th scope="col" style={{ padding: '11px 12px', textAlign: 'right', width: 185 }}>
+                          <th scope="col" style={{ padding: '10px 12px', textAlign: 'right', width: 175 }}>
                             Hasil Akhir Tervalidasi Renbang
                           </th>
-                          <th scope="col" style={{ padding: '11px 12px', textAlign: 'left', minWidth: 270 }}>
+                          <th scope="col" style={{ padding: '10px 12px', textAlign: 'left', minWidth: 250 }}>
                             Dokumen Pendukung (Pratinjau &amp; Unduh Bukti)
                           </th>
                         </tr>
@@ -1471,10 +875,10 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                             <tr key={row.item.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
                               <td
                                 style={{
-                                  padding: '12px',
+                                  padding: '11px 12px',
                                   textAlign: 'center',
-                                  fontWeight: 800,
-                                  color: '#0C2340',
+                                  fontWeight: 700,
+                                  color: '#072534',
                                   verticalAlign: 'top',
                                   fontVariantNumeric: 'tabular-nums',
                                 }}
@@ -1482,11 +886,11 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                 {row.codeLabel}
                               </td>
 
-                              <td style={{ padding: '12px', verticalAlign: 'top' }}>
-                                <div style={{ fontWeight: 700, color: '#0F172A', lineHeight: 1.45 }}>
+                              <td style={{ padding: '11px 12px', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 700, color: '#072534', lineHeight: 1.45 }}>
                                   {row.item.indikator}
                                 </div>
-                                <div style={{ fontSize: 11.5, color: '#475569', marginTop: 4 }}>
+                                <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: 4 }}>
                                   Bagian {row.sectionCode}: {row.sectionTitle} · Satuan: <strong>{row.item.satuan || '%'}</strong> · Bobot: <strong>{row.item.bobotDisplay || row.item.bobot}</strong>
                                 </div>
                                 {row.unitNote && (
@@ -1497,7 +901,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                       borderRadius: 6,
                                       background: '#F8FAFC',
                                       border: '1px solid #E2E8F0',
-                                      fontSize: 11.5,
+                                      fontSize: '0.73rem',
                                       color: '#334155',
                                     }}
                                   >
@@ -1506,74 +910,71 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                 )}
                               </td>
 
-                              <td style={{ padding: '12px', verticalAlign: 'top' }}>
+                              <td style={{ padding: '11px 12px', verticalAlign: 'top' }}>
                                 <div
                                   style={{
                                     display: 'inline-block',
                                     padding: '3px 8px',
-                                    borderRadius: 6,
+                                    borderRadius: 5,
                                     background: '#EFF6FF',
                                     color: '#1E3A8A',
                                     border: '1px solid #BFDBFE',
-                                    fontWeight: 800,
-                                    fontSize: 11.5,
+                                    fontWeight: 700,
+                                    fontSize: '0.73rem',
                                   }}
                                 >
                                   PIC: {row.picDisplay}
                                 </div>
-                                <div style={{ fontSize: 11.5, color: '#334155', marginTop: 6, fontWeight: 600 }}>
+                                <div style={{ fontSize: '0.73rem', color: '#334155', marginTop: 5, fontWeight: 600 }}>
                                   {row.contributor?.unit || 'Tervalidasi Renbang'}
-                                </div>
-                                <div style={{ fontSize: 10.5, color: '#15803D', fontWeight: 800, marginTop: 2 }}>
-                                  ✓ Tervalidasi Renbang
                                 </div>
                               </td>
 
                               <td
                                 style={{
-                                  padding: '12px',
+                                  padding: '11px 12px',
                                   textAlign: 'right',
                                   verticalAlign: 'top',
                                   fontVariantNumeric: 'tabular-nums',
                                 }}
                               >
-                                <div style={{ fontSize: 11, color: '#475569' }}>Capaian Akhir:</div>
-                                <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#475569' }}>Capaian Akhir:</div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#072534' }}>
                                   {ratioVal !== null ? `${fmtNum(ratioVal, 2)}%` : '-'}
                                 </div>
-                                <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>Skor Akhir Tertimbang:</div>
+                                <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: 5 }}>Skor Akhir:</div>
                                 <div
                                   style={{
                                     display: 'inline-block',
                                     marginTop: 2,
-                                    padding: '3px 9px',
-                                    borderRadius: 6,
+                                    padding: '2px 8px',
+                                    borderRadius: 5,
                                     ...(row.isPenaltySection && scoreVal < 0 ? SOLID_RED_BADGE : SOLID_GREEN_BADGE),
-                                    fontSize: 12.5,
+                                    fontSize: '0.76rem',
                                   }}
                                 >
                                   {scoreVal !== null ? fmtNum(scoreVal, 2) : '-'}
                                 </div>
                               </td>
 
-                              <td style={{ padding: '12px', verticalAlign: 'top' }}>
+                              <td style={{ padding: '11px 12px', verticalAlign: 'top' }}>
                                 {row.evidences.length === 0 ? (
-                                  <span style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic' }}>
+                                  <span style={{ fontSize: '0.75rem', color: '#64748B', fontStyle: 'italic' }}>
                                     Tidak ada dokumen bukti terlampir
                                   </span>
                                 ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                                     {row.evidences.map((ev) => (
                                       <div
                                         key={ev.id}
                                         style={{
-                                          padding: '8px 10px',
-                                          borderRadius: 8,
+                                          padding: '7px 9px',
+                                          borderRadius: 7,
                                           border: '1px solid #CBD5E1',
                                           background: '#F8FAFC',
                                         }}
                                       >
-                                        <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A', marginBottom: 4 }}>
+                                        <div style={{ fontWeight: 600, fontSize: '0.76rem', color: '#072534', marginBottom: 4 }}>
                                           {ev.label}
                                         </div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -1581,34 +982,35 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                             type="button"
                                             onClick={() => setPreviewEvidence(ev)}
                                             style={{
-                                              minHeight: 32,
-                                              padding: '4px 9px',
+                                              minHeight: '34px',
+                                              padding: '4px 10px',
                                               borderRadius: 6,
-                                              border: '1px solid #0C2340',
+                                              border: '1px solid #094E68',
                                               background: '#FFFFFF',
-                                              color: '#0C2340',
-                                              fontSize: 11.5,
-                                              fontWeight: 700,
+                                              color: '#094E68',
+                                              fontSize: '0.73rem',
+                                              fontWeight: 600,
                                               cursor: 'pointer',
                                               display: 'inline-flex',
                                               alignItems: 'center',
                                               gap: 5,
                                             }}
                                           >
-                                            <Eye size={13} /> Pratinjau
+                                            <Eye size={13} />
+                                            <span>Pratinjau</span>
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => triggerEvidenceDownload(ev)}
                                             style={{
-                                              minHeight: 32,
-                                              padding: '4px 9px',
+                                              minHeight: '34px',
+                                              padding: '4px 10px',
                                               borderRadius: 6,
                                               border: 'none',
-                                              background: '#0C2340',
+                                              background: '#094E68',
                                               color: '#FFFFFF',
-                                              fontSize: 11.5,
-                                              fontWeight: 700,
+                                              fontSize: '0.73rem',
+                                              fontWeight: 600,
                                               cursor: 'pointer',
                                               display: 'inline-flex',
                                               alignItems: 'center',
@@ -1616,7 +1018,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                             }}
                                           >
                                             {ev.kind === 'file' ? <Download size={13} /> : <ExternalLink size={13} />}
-                                            {ev.kind === 'file' ? 'Unduh Dokumen' : 'Buka Tautan'}
+                                            <span>{ev.kind === 'file' ? 'Unduh Dokumen' : 'Buka Tautan'}</span>
                                           </button>
                                         </div>
                                       </div>
@@ -1637,10 +1039,9 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                   aria-label="Cetak Laporan Keseluruhan KPI Tervalidasi Renbang"
                   style={{
                     background: '#FFFFFF',
-                    border: '2px solid #0C2340',
-                    borderRadius: 12,
-                    padding: '24px',
-                    boxShadow: '0 4px 16px rgba(12, 35, 64, 0.08)',
+                    border: '1.5px solid #094E68',
+                    borderRadius: '10px',
+                    padding: 'clamp(1rem, 2.5vw, 1.4rem)',
                   }}
                 >
                   <div
@@ -1649,97 +1050,48 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       justifyContent: 'space-between',
                       alignItems: 'flex-start',
                       flexWrap: 'wrap',
-                      gap: 14,
-                      borderBottom: '2px solid #0C2340',
-                      paddingBottom: 14,
-                      marginBottom: 16,
+                      gap: '0.85rem',
+                      borderBottom: '1.5px solid #094E68',
+                      paddingBottom: '0.85rem',
+                      marginBottom: '1rem',
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 11.5, fontWeight: 800, color: '#15803D', letterSpacing: '0.04em' }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803D', letterSpacing: '0.03em' }}>
                         DOKUMEN RESMI LAPORAN EVALUASI KINERJA TERVALIDASI 100% RENBANG
                       </div>
-                      <h3 style={{ margin: '4px 0', fontSize: 18, fontWeight: 800, color: '#0C2340' }}>
+                      <h3 style={{ margin: '4px 0', fontSize: '1.08rem', fontWeight: 700, color: '#072534' }}>
                         LAPORAN KESELURUHAN HASIL AKHIR KPI TERVALIDASI · PERIODE {period}
                       </h3>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={handlePrintValidatedReport}
-                        style={{
-                          minHeight: 40,
-                          padding: '8px 16px',
-                          borderRadius: 8,
-                          border: 'none',
-                          background: '#0C2340',
-                          color: '#FFFFFF',
-                          fontSize: 12.5,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 8,
-                        }}
-                      >
-                        <Printer size={15} /> Cetak Laporan Keseluruhan (PDF / Printer)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                      gap: 12,
-                      marginBottom: 18,
-                    }}
-                  >
-                    {(integratedBoard.sectionScores || []).map((sec) => (
-                      <div
-                        key={sec.code}
-                        style={{
-                          padding: '12px 14px',
-                          borderRadius: 8,
-                          border: '1px solid #CBD5E1',
-                          background: '#F8FAFC',
-                        }}
-                      >
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: '#475569' }}>
-                          Bagian {sec.code} · {sec.title}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 800,
-                            color: sec.isPenaltySection ? '#B91C1C' : '#0C2340',
-                            marginTop: 4,
-                            fontVariantNumeric: 'tabular-nums',
-                          }}
-                        >
-                          {fmtNum(sec.score, 2)}
-                        </div>
-                      </div>
-                    ))}
-                    <div
+                    <button
+                      type="button"
+                      onClick={handlePrintValidatedReport}
                       style={{
-                        padding: '12px 14px',
-                        borderRadius: 8,
-                        ...SOLID_GREEN_BADGE,
+                        minHeight: '42px',
+                        padding: '0.45rem 0.95rem',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: '#094E68',
+                        color: '#FFFFFF',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
                       }}
                     >
-                      <div style={{ fontSize: 11.5, opacity: 0.92 }}>TOTAL SKOR AKHIR TERVALIDASI</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
-                        {fmtNum(integratedBoard.totalScore, 2)}
-                      </div>
-                    </div>
+                      <Printer size={15} />
+                      <span>Cetak Laporan Keseluruhan (PDF / Printer)</span>
+                    </button>
                   </div>
 
                   <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                       <thead>
-                        <tr style={{ background: '#0C2340', color: '#FFFFFF' }}>
+                        <tr style={{ background: '#094E68', color: '#FFFFFF' }}>
                           <th scope="col" style={{ padding: '9px 10px', textAlign: 'center', width: 54 }}>Kode</th>
                           <th scope="col" style={{ padding: '9px 10px', textAlign: 'left' }}>Indikator KPI</th>
                           <th scope="col" style={{ padding: '9px 10px', textAlign: 'left', width: 130 }}>PIC</th>
@@ -1753,16 +1105,16 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       <tbody>
                         {filteredRows.map((row) => (
                           <tr key={row.item.id} style={{ borderBottom: '1px solid #CBD5E1' }}>
-                            <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>{row.codeLabel}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700 }}>{row.codeLabel}</td>
                             <td style={{ padding: '8px 10px', fontWeight: 600 }}>{row.item.indikator}</td>
-                            <td style={{ padding: '8px 10px', fontWeight: 700 }}>{row.picDisplay}</td>
+                            <td style={{ padding: '8px 10px', fontWeight: 600 }}>{row.picDisplay}</td>
                             <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                               {row.item.bobotDisplay || row.item.bobot}
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                               {row.computed.ratioPercent !== null ? `${fmtNum(row.computed.ratioPercent, 2)}%` : '-'}
                             </td>
-                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                               {row.computed.weightedScore !== null ? fmtNum(row.computed.weightedScore, 2) : '-'}
                             </td>
                             <td style={{ padding: '8px 10px' }}>
@@ -1780,22 +1132,23 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                       gap: 4,
                                       marginRight: 4,
                                       marginBottom: 4,
-                                      padding: '3px 7px',
-                                      borderRadius: 4,
-                                      border: '1px solid #0C2340',
+                                      padding: '3px 8px',
+                                      borderRadius: 5,
+                                      border: '1px solid #094E68',
                                       background: '#F8FAFC',
-                                      color: '#0C2340',
-                                      fontSize: 11,
-                                      fontWeight: 700,
+                                      color: '#094E68',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
                                       cursor: 'pointer',
                                     }}
                                   >
-                                    <Download size={11} /> {ev.label}
+                                    <Download size={11} />
+                                    <span>{ev.label}</span>
                                   </button>
                                 ))
                               )}
                             </td>
-                            <td style={{ padding: '8px 10px', fontSize: 11.5, color: '#334155' }}>
+                            <td style={{ padding: '8px 10px', fontSize: '0.74rem', color: '#334155' }}>
                               {row.unitNote || '-'}
                             </td>
                           </tr>
@@ -1808,8 +1161,8 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
             </>
           )}
 
-          {/* Form Pengisian Khusus SPI (Hanya Bagian D No. 5) di Bawah Tabel Audit Read-Only */}
-          {renderSpiD5ExclusiveForm('below-table')}
+          {/* Tabel Standar Pengisian KPI Unit SPI (Bagian D No. 5) di Bawah Tabel Audit Read-Only */}
+          {renderStandardUnitTableForSpi('Form Pengisian Khusus SPI di Bawah Tabel Audit Read-Only (Bagian D No. 5)')}
         </>
       )}
 

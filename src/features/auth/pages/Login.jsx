@@ -453,38 +453,44 @@ export default function Login() {
           -webkit-box-shadow: 0 0 0 30px #ffffff inset !important;
           -webkit-text-fill-color: #072534 !important;
         }
-        .login-back-pill {
+        a.login-back-pill {
           display: inline-flex;
           align-items: center;
           gap: 0.55rem;
           min-height: 44px;
-          color: #ffffff;
+          color: #ffffff !important;
           text-decoration: none;
-          font-size: 0.74rem;
-          font-weight: 700;
-          letter-spacing: 0.08em;
+          font-size: 0.78rem;
+          font-weight: 600;
+          letter-spacing: 0.04em;
           text-transform: uppercase;
-          padding: 0.55rem 1.05rem;
+          padding: 0.55rem 1.1rem;
           border-radius: 8px;
           background: #062C3D;
-          border: 1px solid rgba(197, 222, 232, 0.35);
+          border: 1.5px solid rgba(197, 222, 232, 0.55);
           transition: background-color 0.2s ease, border-color 0.2s ease;
         }
-        .login-back-pill:hover {
+        a.login-back-pill:hover,
+        a.login-back-pill:focus-visible,
+        a.login-back-pill:active,
+        a.login-back-pill * {
+          color: #ffffff !important;
+        }
+        a.login-back-pill:hover {
           background: #094E68;
-          border-color: #C5DEE8;
+          border-color: #ffffff;
         }
         .submit-corp-btn {
           margin-top: 0.5rem;
           min-height: 48px;
-          padding: 0.95rem 1.5rem;
+          padding: 0.9rem 1.5rem;
           background: #094E68;
-          color: #ffffff;
+          color: #ffffff !important;
           border: 1px solid #094E68;
           border-radius: 8px;
-          font-size: 0.8rem;
-          font-weight: 700;
-          letter-spacing: 0.06em;
+          font-size: 0.82rem;
+          font-weight: 600;
+          letter-spacing: 0.04em;
           text-transform: uppercase;
           display: flex;
           align-items: center;
@@ -495,6 +501,7 @@ export default function Login() {
         .submit-corp-btn:hover:not(:disabled) {
           background: #072534;
           border-color: #072534;
+          color: #ffffff !important;
         }
         .gate-option-card {
           width: 100%;
@@ -514,13 +521,21 @@ export default function Login() {
         @media (hover: hover) {
           .gate-option-card:hover {
             background: #094E68;
-            color: #ffffff;
+            color: #ffffff !important;
             border-color: #094E68;
             transform: translateY(-2px);
           }
+          .gate-option-card:hover * {
+            color: #ffffff !important;
+          }
         }
-        .mobile-back-link {
+        a.mobile-back-link {
           display: none;
+          color: #072534 !important;
+        }
+        a.mobile-back-link:hover {
+          background: #EDF3F6 !important;
+          color: #094E68 !important;
         }
         @media (max-width: 1024px) {
           .login-left-pane {

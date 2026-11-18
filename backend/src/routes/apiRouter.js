@@ -642,8 +642,21 @@ export async function handleApiRequest(req, res) {
 
       if (caller.role === 'spi') {
         const storeKeys = Object.keys(incomingStores);
-        const isOnlySpiAuditStore = storeKeys.length === 1 && storeKeys[0] === 'prp_spi_audit_v1';
-        if (!isOnlySpiAuditStore) {
+        const spiEmailSuffix = `:${caller.email.toLowerCase()}`;
+        const hasValidSpiDist = (() => {
+          const dist = incomingStores.prp_kpi_distribution_v1;
+          if (!dist || typeof dist !== 'object') return false;
+          const allEntryKeys = [
+            ...Object.keys(dist.drafts || {}),
+            ...Object.keys(dist.submissions || {}),
+            ...Object.keys(dist.evidence || {}),
+          ];
+          return allEntryKeys.some((k) => k.toLowerCase().endsWith(spiEmailSuffix));
+        })();
+        const isAllowedForSpi = storeKeys.length > 0 && storeKeys.every(
+          (k) => k === 'prp_spi_audit_v1' || (k === 'prp_kpi_distribution_v1' && hasValidSpiDist),
+        );
+        if (!isAllowedForSpi) {
           const attemptedKeys = storeKeys.join(', ') || 'state';
           appendAuditLog(
             'SECURITY_VIOLATION',
@@ -653,7 +666,7 @@ export async function handleApiRequest(req, res) {
           );
           sendJson(res, 403, {
             ok: false,
-            error: 'Akun Auditor SPI hanya dapat mengisi bagian/kolom audit khusus miliknya sendiri dan dilarang mengubah data Renbang maupun unit.',
+            error: 'Akun Auditor SPI hanya dapat mengisi bagian/kolom audit khusus miliknya sendiri (Bagian D.5) dan dilarang mengubah data Renbang maupun unit lain.',
           });
           return true;
         }
@@ -676,7 +689,9 @@ export async function handleApiRequest(req, res) {
             });
             return true;
           }
-          const byForm = incomingVal && typeof incomingVal.byForm === 'object' ? incomingVal.byForm : {};
+          const byForm = (incomingVal?.records && typeof incomingVal.records === 'object'
+            ? incomingVal.records
+            : incomingVal?.byForm) || {};
           for (const [fId, formEntry] of Object.entries(byForm)) {
             if (fId && formEntry && typeof formEntry === 'object') {
               upsertSpiAuditRecord(fId, formEntry, caller.email, ip);

@@ -219,6 +219,90 @@ export function notifyMatchingRemoteNotifications(incomingList = [], priorSerial
   return dispatched;
 }
 
+function mergeRemoteStoreWithLocal(key, remoteVal) {
+  if (!remoteVal || typeof remoteVal !== 'object') return remoteVal;
+  try {
+    const rawLocal = localStorage.getItem(key);
+    if (!rawLocal) return remoteVal;
+    const localVal = JSON.parse(rawLocal);
+    if (!localVal || typeof localVal !== 'object') return remoteVal;
+
+    if (key === 'prp_spi_audit_v1') {
+      const localRecords = localVal.records && typeof localVal.records === 'object' ? localVal.records : {};
+      const remoteRecords = remoteVal.records && typeof remoteVal.records === 'object' ? remoteVal.records : {};
+      const mergedRecords = { ...remoteRecords };
+      for (const [fId, locRec] of Object.entries(localRecords)) {
+        const remRec = remoteRecords[fId];
+        const locTime = Date.parse(locRec?.updatedAt || '') || 0;
+        const remTime = Date.parse(remRec?.updatedAt || '') || 0;
+        if (!remRec || locTime >= remTime) {
+          mergedRecords[fId] = locRec;
+        }
+      }
+      return {
+        ...remoteVal,
+        records: mergedRecords,
+        updatedAt: Date.parse(localVal.updatedAt || '') > Date.parse(remoteVal.updatedAt || '')
+          ? localVal.updatedAt
+          : (remoteVal.updatedAt || localVal.updatedAt || null),
+      };
+    }
+
+    if (key === 'prp_kpi_distribution_v1') {
+      if ((!Array.isArray(remoteVal.forms) || remoteVal.forms.length === 0) && Array.isArray(localVal.forms) && localVal.forms.length > 0) {
+        return localVal;
+      }
+      const userEmail = String(getCurrentUserFromStorage()?.email || '').trim().toLowerCase();
+      if (!userEmail) return remoteVal;
+
+      const suffix = `:${userEmail}`;
+      const nextDrafts = { ...(remoteVal.drafts || {}) };
+      const nextSubmissions = { ...(remoteVal.submissions || {}) };
+      const nextEvidence = { ...(remoteVal.evidence || {}) };
+
+      for (const [k, locSub] of Object.entries(localVal.submissions || {})) {
+        if (!k.toLowerCase().endsWith(suffix) || !locSub) continue;
+        const remSub = nextSubmissions[k];
+        const locTime = Date.parse(locSub.reviewedAt || locSub.updatedAt || locSub.submittedAt || '') || 0;
+        const remTime = Date.parse(remSub?.reviewedAt || remSub?.updatedAt || remSub?.submittedAt || '') || 0;
+        if (!remSub || locTime >= remTime) {
+          nextSubmissions[k] = locSub;
+        }
+      }
+
+      for (const [k, locDraft] of Object.entries(localVal.drafts || {})) {
+        if (!k.toLowerCase().endsWith(suffix) || !locDraft) continue;
+        const remDraft = nextDrafts[k];
+        const remSub = nextSubmissions[k];
+        const locTime = Date.parse(locDraft.updatedAt || '') || 0;
+        const remDraftTime = Date.parse(remDraft?.updatedAt || '') || 0;
+        const remSubTime = Date.parse(remSub?.reviewedAt || remSub?.updatedAt || remSub?.submittedAt || '') || 0;
+        if ((!remDraft || locTime >= remDraftTime) && (!remSub || remSub.status === 'NEEDS_REVISION' || locTime > remSubTime)) {
+          nextDrafts[k] = locDraft;
+        }
+      }
+
+      for (const [k, locEvList] of Object.entries(localVal.evidence || {})) {
+        if (!k.toLowerCase().endsWith(suffix) || !Array.isArray(locEvList) || locEvList.length === 0) continue;
+        const remEvList = nextEvidence[k];
+        if (!Array.isArray(remEvList) || remEvList.length < locEvList.length) {
+          nextEvidence[k] = locEvList;
+        }
+      }
+
+      return {
+        ...remoteVal,
+        drafts: nextDrafts,
+        submissions: nextSubmissions,
+        evidence: nextEvidence,
+      };
+    }
+  } catch {
+    return remoteVal;
+  }
+  return remoteVal;
+}
+
 function applyRemoteStoresToLocal(storesMap = {}, remoteUsers = null, remoteAudit = null) {
   if (typeof localStorage === 'undefined') return;
   isApplyingRemote = true;
@@ -227,9 +311,12 @@ function applyRemoteStoresToLocal(storesMap = {}, remoteUsers = null, remoteAudi
   try {
     for (const [key, val] of Object.entries(storesMap || {})) {
       if (val === undefined || val === null) continue;
-      const nextVal = key === 'prp_users' && Array.isArray(val)
+      let nextVal = key === 'prp_users' && Array.isArray(val)
         ? mergeRemoteUsersPreservingLocalSecrets(val)
         : val;
+      if (key === 'prp_kpi_distribution_v1' || key === 'prp_spi_audit_v1') {
+        nextVal = mergeRemoteStoreWithLocal(key, nextVal);
+      }
       const serialized = JSON.stringify(nextVal);
       if (localStorage.getItem(key) !== serialized) {
         localStorage.setItem(key, serialized);
@@ -479,7 +566,7 @@ async function flushPendingStorePush() {
 
   const storesPayload = {};
   for (const key of keysToPush) {
-    if (user.role === 'spi' && key !== 'prp_spi_audit_v1') continue;
+    if (user.role === 'spi' && key !== 'prp_spi_audit_v1' && key !== 'prp_kpi_distribution_v1') continue;
     if (key === 'prp_spi_audit_v1' && user.role !== 'spi') continue;
     if (SUPERADMIN_ONLY_SET.has(key) && user.role !== 'superadmin_prp') continue;
     if (key === 'prp_iku_submissions_v1' && user.role === 'kpi_only') continue;
@@ -487,7 +574,27 @@ async function flushPendingStorePush() {
     try {
       const raw = localStorage.getItem(key);
       if (raw !== null) {
-        storesPayload[key] = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (user.role === 'spi' && key === 'prp_kpi_distribution_v1' && parsed && typeof parsed === 'object') {
+          const ownSuffix = `:${String(user.email || 'spi@itpln.ac.id').toLowerCase()}`;
+          const filterOwn = (mapObj) => Object.fromEntries(
+            Object.entries(mapObj || {}).filter(([k]) => k.toLowerCase().endsWith(ownSuffix)),
+          );
+          const ownDrafts = filterOwn(parsed.drafts);
+          const ownSubs = filterOwn(parsed.submissions);
+          const ownEv = filterOwn(parsed.evidence);
+          if (Object.keys(ownDrafts).length === 0 && Object.keys(ownSubs).length === 0 && Object.keys(ownEv).length === 0) {
+            continue;
+          }
+          storesPayload[key] = {
+            ...parsed,
+            drafts: ownDrafts,
+            submissions: ownSubs,
+            evidence: ownEv,
+          };
+        } else {
+          storesPayload[key] = parsed;
+        }
       }
     } catch {
       // Abaikan JSON tidak valid

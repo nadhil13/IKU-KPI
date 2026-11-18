@@ -611,13 +611,16 @@ export default function PRPGovernance() {
         }
         .gov-button-primary {
           background: #094E68;
-          color: #ffffff;
+          color: #ffffff !important;
           border-color: #094E68;
         }
         .gov-button-primary:hover:not(:disabled) {
           background: #072534;
-          color: #ffffff;
+          color: #ffffff !important;
           border-color: #072534;
+        }
+        .gov-button-primary span {
+          color: #ffffff !important;
         }
         .gov-sr-only {
           position: absolute;
@@ -651,11 +654,11 @@ export default function PRPGovernance() {
         }
         .gov-table-head h2 {
           margin: 0;
-          font: 800 1rem Outfit, sans-serif;
+          font: 700 1rem Outfit, sans-serif;
           color: #072534;
           letter-spacing: -0.015em;
         }
-        .gov-table-head span {
+        .gov-table-head > div:first-child > span {
           display: block;
           margin-top: 0.2rem;
           color: #475569;

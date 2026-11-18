@@ -160,8 +160,8 @@ export default function KPIDataEntrySheet(props) {
     return readKpiWorkflow();
   }, [revision, shouldEnsureDefault]);
 
-  const isUnit = (currentUser?.role === 'kpi_only' || currentUser?.role === 'dual') && !props.sectionsOverride;
-  const isSpiMode = currentUser?.role === 'spi';
+  const isUnit = (currentUser?.role === 'kpi_only' || currentUser?.role === 'dual' || (currentUser?.role === 'spi' && props.spiUnitInputMode)) && !props.sectionsOverride;
+  const isSpiMode = currentUser?.role === 'spi' && !props.spiUnitInputMode;
   const isAdminPrp = currentUser?.role === 'superadmin_prp';
 
   const adminFormId = props.adminUnitContext?.formId;
@@ -1335,7 +1335,7 @@ function KPIEntryContent({
   adminUnitContext = null,
   onAdminUnitDraftChange = null,
 }) {
-  const isUnitMode = Boolean(unitForm && (unitUser?.role === 'kpi_only' || unitUser?.role === 'dual'));
+  const isUnitMode = Boolean(unitForm && (unitUser?.role === 'kpi_only' || unitUser?.role === 'dual' || (unitUser?.role === 'spi' && !isSpiMode)));
   const isAdminUnitReview = Boolean(isAdminPrp && !isUnitMode && adminUnitContext?.email && !readOnly);
   const adminUnitPics = useMemo(
     () => normalizePicCodes(adminUnitContext?.picCodes || highlightPicCodes || []),

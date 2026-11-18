@@ -207,11 +207,13 @@ function inputAllowed(form) {
 
 function owner(form, user) {
   const normalizedEmail = user?.email?.toLowerCase();
+  const isSpiUnit = user?.role === 'spi' || normalizedEmail === 'spi@itpln.ac.id';
   const isRegisteredUnit = Boolean(normalizedEmail) && (
-    form?.units?.some((unit) => unit.email === normalizedEmail)
+    isSpiUnit
+    || form?.units?.some((unit) => unit.email === normalizedEmail)
     || getKpiUnits().some((unit) => unit.email === normalizedEmail)
   );
-  if (!normalizedEmail || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only' && user.role !== 'dual') || !form || !isRegisteredUnit) {
+  if (!normalizedEmail || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only' && user.role !== 'dual' && user.role !== 'spi') || !form || !isRegisteredUnit) {
     throw new Error('Formulir tidak ditujukan ke akun ini.');
   }
   inputAllowed(form);
@@ -1153,12 +1155,14 @@ export function distributeKpiForm(sections, { period = String(new Date().getFull
 export function getUnitKpiForm(email, state = readKpiWorkflow(), period = null) {
   const normalizedEmail = email?.toLowerCase();
   if (!normalizedEmail || !state.forms?.length) return null;
+  const isSpiAccount = normalizedEmail === 'spi@itpln.ac.id'
+    || [...MOCK_ACCOUNTS, ...read('prp_users', [])].some((u) => u?.email?.toLowerCase() === normalizedEmail && u?.role === 'spi');
   if (period) {
     const periodMatch = [...state.forms].reverse().find(
-      (form) => doesFormMatchPeriod(form, period) && form.units?.some((unit) => unit.email === normalizedEmail),
+      (form) => doesFormMatchPeriod(form, period) && (isSpiAccount || form.units?.some((unit) => unit.email === normalizedEmail)),
     );
     if (periodMatch) return periodMatch;
-    const isActiveKpiUnitForPeriod = getKpiUnits().some((unit) => unit.email === normalizedEmail);
+    const isActiveKpiUnitForPeriod = isSpiAccount || getKpiUnits().some((unit) => unit.email === normalizedEmail);
     if (isActiveKpiUnitForPeriod) {
       const anyPeriodForm = [...state.forms].reverse().find((form) => doesFormMatchPeriod(form, period));
       if (anyPeriodForm) return anyPeriodForm;
@@ -1166,7 +1170,7 @@ export function getUnitKpiForm(email, state = readKpiWorkflow(), period = null) 
   }
   const directMatch = [...state.forms].reverse().find((form) => form.units?.some((unit) => unit.email === normalizedEmail));
   if (directMatch) return directMatch;
-  const isActiveKpiUnit = getKpiUnits().some((unit) => unit.email === normalizedEmail);
+  const isActiveKpiUnit = isSpiAccount || getKpiUnits().some((unit) => unit.email === normalizedEmail);
   return isActiveKpiUnit ? state.forms[state.forms.length - 1] : null;
 }
 
@@ -1742,6 +1746,36 @@ export function saveUnitKpiDraft(formId, user, { values = {}, notes = {} } = {})
     },
     { skipAudit: true, skipAdminEvent: true },
   );
+
+  if (user.role === 'spi') {
+    const d5Item = form.sections?.flatMap((s) => s.items || []).find((it) => it.id === 'D_5');
+    const subKeyUn = d5Item?.subrows?.[0]?.key || 'd_5_un';
+    const subKeyTot = d5Item?.subrows?.[1]?.key || 'd_5_tot';
+    const currentSpi = readSpiAuditForForm(form.id);
+    writeSpiAuditRecord(
+      {
+        ...currentSpi,
+        items: {
+          D_5: {
+            ...(currentSpi.items?.D_5 || {}),
+            indicatorId: 'D_5',
+            unfollowedCount: String(filteredValues[subKeyUn] ?? ''),
+            totalRecommendations: String(filteredValues[subKeyTot] ?? ''),
+            auditNote: String(filteredNotes.D_5 ?? ''),
+            evidenceList: readUnitEvidence(form.id, user.email),
+            updatedBy: user.email.toLowerCase(),
+            updatedByName: user.name || user.unit || 'SPI ITPLN',
+            updatedAt: draft.updatedAt,
+          },
+        },
+        updatedBy: user.email.toLowerCase(),
+        updatedByName: user.name || user.unit || 'SPI ITPLN',
+        updatedAt: draft.updatedAt,
+      },
+      user,
+      `Draft Bagian D.5 SPI disimpan real-time (${form.period})`,
+    );
+  }
   return draft;
 }
 
@@ -1778,7 +1812,18 @@ export function readIntegratedKpiBoard(formId, state = readKpiWorkflow(), { conf
   const formRevisions = state.revisions?.[form.id] || { items: {}, sections: {} };
 
   const candidates = [];
-  (form.units || []).forEach((unit) => {
+  const boardUnits = [...(form.units || [])];
+  if (!boardUnits.some((u) => u.email?.toLowerCase() === 'spi@itpln.ac.id')) {
+    const spiKey = submissionKey(form.id, 'spi@itpln.ac.id');
+    if (state.submissions?.[spiKey] || state.drafts?.[spiKey] || (state.evidence?.[spiKey]?.length > 0)) {
+      boardUnits.push({
+        email: 'spi@itpln.ac.id',
+        name: 'Satuan Pengawasan Intern (SPI)',
+        picCodes: ['SPI'],
+      });
+    }
+  }
+  boardUnits.forEach((unit) => {
     const key = submissionKey(form.id, unit.email);
     const sub = state.submissions?.[key];
     const draft = state.drafts?.[key];
@@ -2087,6 +2132,36 @@ export function submitUnitKpi(formId, user, values, options = {}) {
     evidence: { ...state.evidence, [key]: evidence },
     submissions: { ...state.submissions, [key]: record },
   });
+
+  if (user.role === 'spi') {
+    const d5Item = form.sections?.flatMap((s) => s.items || []).find((it) => it.id === 'D_5');
+    const subKeyUn = d5Item?.subrows?.[0]?.key || 'd_5_un';
+    const subKeyTot = d5Item?.subrows?.[1]?.key || 'd_5_tot';
+    const currentSpi = readSpiAuditForForm(form.id);
+    writeSpiAuditRecord(
+      {
+        ...currentSpi,
+        items: {
+          D_5: {
+            ...(currentSpi.items?.D_5 || {}),
+            indicatorId: 'D_5',
+            unfollowedCount: String(sanitizedValues[subKeyUn] ?? ''),
+            totalRecommendations: String(sanitizedValues[subKeyTot] ?? ''),
+            auditNote: String(sanitizedNotes.D_5 ?? ''),
+            evidenceList: evidence,
+            updatedBy: user.email.toLowerCase(),
+            updatedByName: user.name || user.unit || 'SPI ITPLN',
+            updatedAt: record.submittedAt,
+          },
+        },
+        updatedBy: user.email.toLowerCase(),
+        updatedByName: user.name || user.unit || 'SPI ITPLN',
+        updatedAt: record.submittedAt,
+      },
+      user,
+      `Capaian Bagian D.5 SPI dikirim ke pusat (${form.period})`,
+    );
+  }
   return record;
 }
 
