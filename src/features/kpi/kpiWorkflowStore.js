@@ -14,6 +14,19 @@ import {
 
 const KEY = 'prp_kpi_distribution_v1';
 const EVENT = 'prp-kpi-workflow-updated';
+export const SPI_AUDIT_KEY = 'prp_spi_audit_v1';
+export const SPI_AUDIT_EVENT = 'prp-spi-audit-updated';
+export const SPI_VERIFICATION_STATUSES = Object.freeze([
+  'BELUM_DIPERIKSA',
+  'SESUAI_BUKTI',
+  'PERLU_KLARIFIKASI',
+  'TEMUAN_AUDIT',
+]);
+export const SPI_FOLLOWUP_STATUSES = Object.freeze([
+  'OPEN',
+  'ON_PROGRESS',
+  'CLOSED',
+]);
 export const MAX_EVIDENCE_FILE_BYTES = Math.round(2.5 * 1024 * 1024);
 export const ALLOWED_EVIDENCE_MIME_TYPES = Object.freeze([
   'application/pdf',
@@ -716,13 +729,15 @@ const write = (state, options = {}) => {
 
 export function subscribeKpiWorkflow(callback) {
   const storage = (event) => {
-    if (!event.key || event.key === KEY || event.key === 'prp_kpi_config') callback();
+    if (!event.key || event.key === KEY || event.key === 'prp_kpi_config' || event.key === SPI_AUDIT_KEY) callback();
   };
   window.addEventListener(EVENT, callback);
+  window.addEventListener(SPI_AUDIT_EVENT, callback);
   window.addEventListener('prp-kpi-config-updated', callback);
   window.addEventListener('storage', storage);
   return () => {
     window.removeEventListener(EVENT, callback);
+    window.removeEventListener(SPI_AUDIT_EVENT, callback);
     window.removeEventListener('prp-kpi-config-updated', callback);
     window.removeEventListener('storage', storage);
   };
@@ -1917,6 +1932,9 @@ export function readIntegratedKpiBoard(formId, state = readKpiWorkflow(), { conf
     };
   });
 
+  const renbangValidation = evaluateRenbangValidationStatus(form.id, state);
+  const spiAudit = readSpiAuditForForm(form.id, state);
+
   return {
     form,
     values: mergedValues,
@@ -1928,6 +1946,8 @@ export function readIntegratedKpiBoard(formId, state = readKpiWorkflow(), { conf
     filledIndicatorCount,
     totalIndicatorCount,
     unitStatuses,
+    renbangValidation,
+    spiAudit,
     revisions: {
       items: formRevisions.items || {},
       sections: formRevisions.sections || {},
@@ -2112,7 +2132,17 @@ export function reviewUnitKpi(formId, email, status, note = '', actor) {
     reviewedAt: new Date().toISOString(),
     history: history(record, status, note.trim(), actor, evidence),
   };
-  write({ ...state, submissions: { ...state.submissions, [key]: next } });
+  const nextForms = (state.forms || []).map((f) => {
+    if (f.id !== formId) return f;
+    if (['NEEDS_REVISION', 'REJECTED'].includes(status)) {
+      return { ...f, renbangValidatedFinal: false };
+    }
+    if (['APPROVED', 'LOCKED'].includes(status)) {
+      return { ...f, renbangExplicitlyLocked: false };
+    }
+    return f;
+  });
+  write({ ...state, forms: nextForms, submissions: { ...state.submissions, [key]: next } });
 
   if (email) {
     const isRev = ['NEEDS_REVISION', 'REJECTED'].includes(status);
@@ -2143,4 +2173,416 @@ export function reviewUnitKpi(formId, email, status, note = '', actor) {
   }
 
   return next;
+}
+
+/**
+ * Mengevaluasi progres validasi akhir dari Renbang (PRP) pada satu formulir periode.
+ * Tabel Audit KPI (Read-Only) di akun SPI otomatis terbuka segera setelah validasi Renbang mencapai 100%,
+ * dan wajib terkunci ("Akses masih tertutup") selama masih ada unit yang belum tervalidasi final.
+ */
+export function evaluateRenbangValidationStatus(formId, state = readKpiWorkflow()) {
+  const form = state?.forms?.find((entry) => entry.id === formId)
+    || getFormForPeriod(formId, state, { fallbackToLatest: true })
+    || null;
+
+  if (!form) {
+    return {
+      formId: null,
+      period: '2026',
+      totalUnits: 0,
+      validatedUnits: 0,
+      submittedUnits: 0,
+      draftUnits: 0,
+      pendingUnits: 0,
+      progressPercent: 0,
+      isValidated100: false,
+      renbangValidatedFinal: false,
+      renbangExplicitlyLocked: false,
+      renbangValidatedAt: null,
+      renbangValidatedBy: null,
+      renbangValidationNote: '',
+      statusLabel: 'Akses masih tertutup',
+      unitBreakdown: [],
+    };
+  }
+
+  const serverSummary = form.renbangValidationSummary || state?.validationByFormId?.[form.id] || null;
+  const rawUnits = Array.isArray(form.units) && form.units.length > 0 ? form.units : getKpiUnits();
+  const scopedUnits = rawUnits.filter((unit) => {
+    const email = String(unit?.email || '').trim().toLowerCase();
+    if (!email || email === 'spi@itpln.ac.id') return false;
+    const assigned = getEditableItemsForUser(form, {
+      role: 'kpi_only',
+      status: 'Aktif',
+      email,
+      picCodes: unit.picCodes || [],
+      unit: unit.name,
+    });
+    return assigned.length > 0;
+  });
+  const effectiveUnits = scopedUnits.length > 0
+    ? scopedUnits
+    : rawUnits.filter((u) => String(u?.email || '').toLowerCase() !== 'spi@itpln.ac.id');
+
+  const unitBreakdown = effectiveUnits.map((unit) => {
+    const key = submissionKey(form.id, unit.email);
+    const sub = state.submissions?.[key] || null;
+    const draft = state.drafts?.[key] || null;
+    const rawStatus = sub?.status || (draft ? 'DRAFT' : 'BELUM_MENGISI');
+    const isValidated = rawStatus === 'APPROVED' || rawStatus === 'LOCKED' || Boolean(form.renbangValidatedFinal && !form.renbangExplicitlyLocked);
+    return {
+      email: unit.email,
+      name: unit.name,
+      picCodes: unit.picCodes || [],
+      status: isValidated && !['APPROVED', 'LOCKED'].includes(rawStatus) ? 'APPROVED' : rawStatus,
+      isValidated,
+      reviewedAt: sub?.reviewedAt || form.renbangValidatedAt || null,
+    };
+  });
+
+  let totalUnits = unitBreakdown.length;
+  let validatedUnits = unitBreakdown.filter((u) => u.isValidated).length;
+  const submittedUnits = unitBreakdown.filter((u) => u.status === 'SUBMITTED').length;
+  const draftUnits = unitBreakdown.filter((u) => u.status === 'DRAFT' || u.status === 'NEEDS_REVISION').length;
+
+  // Jika state.submissions disaring oleh backend karena SPI belum tervalidasi 100%, gunakan ringkasan otoritatif server
+  const hasAnyLocalSub = Object.keys(state.submissions || {}).some((k) => k.startsWith(`${form.id}:`));
+  if (!hasAnyLocalSub && serverSummary && typeof serverSummary === 'object') {
+    totalUnits = Number(serverSummary.totalUnits) || totalUnits;
+    validatedUnits = Number(serverSummary.validatedUnits) || 0;
+  }
+
+  const isExplicitlyLocked = Boolean(form.renbangExplicitlyLocked);
+  const isValidated100 = !isExplicitlyLocked && (
+    Boolean(form.renbangValidatedFinal)
+    || Boolean(serverSummary?.isValidated100 && !hasAnyLocalSub)
+    || (totalUnits > 0 && validatedUnits === totalUnits)
+  );
+
+  if (isValidated100 && validatedUnits < totalUnits) {
+    validatedUnits = totalUnits;
+  }
+
+  const pendingUnits = Math.max(0, totalUnits - validatedUnits);
+  const progressPercent = isValidated100
+    ? 100
+    : (totalUnits > 0 ? Math.min(99, Math.floor((validatedUnits / totalUnits) * 100)) : 0);
+
+  return {
+    formId: form.id,
+    period: String(form.period || '2026'),
+    totalUnits,
+    validatedUnits,
+    submittedUnits,
+    draftUnits,
+    pendingUnits,
+    progressPercent,
+    isValidated100,
+    renbangValidatedFinal: Boolean(form.renbangValidatedFinal && !isExplicitlyLocked),
+    renbangExplicitlyLocked: isExplicitlyLocked,
+    renbangValidatedAt: form.renbangValidatedAt || null,
+    renbangValidatedBy: form.renbangValidatedBy || null,
+    renbangValidationNote: form.renbangValidationNote || '',
+    statusLabel: isValidated100
+      ? 'Terbuka (100% Tervalidasi Renbang)'
+      : 'Akses masih tertutup',
+    unitBreakdown,
+  };
+}
+
+/**
+ * Mengizinkan Admin Renbang (Superadmin PRP) mengesahkan validasi final 100% seluruh data KPI periode
+ * untuk membuka otomatis Tabel Audit KPI (Read-Only) di akun SPI, atau menguncinya kembali bila masih ditinjau.
+ */
+export function setRenbangFinalValidation(formId, isValidated, actor, { approveAllSubmitted = true, note = '' } = {}) {
+  maintenance();
+  reviewer(actor);
+  const state = readKpiWorkflow();
+  const form = state.forms.find((entry) => entry.id === formId)
+    || getFormForPeriod(formId, state, { fallbackToLatest: true })
+    || null;
+  if (!form) {
+    throw new Error('Formulir evaluasi KPI tidak ditemukan.');
+  }
+
+  const now = new Date().toISOString();
+  const trimmedNote = String(note || '').trim();
+  const nextSubmissions = { ...(state.submissions || {}) };
+  const nextEvidence = { ...(state.evidence || {}) };
+
+  if (isValidated) {
+    if (approveAllSubmitted !== false) {
+      (form.units || []).forEach((unit) => {
+        const key = submissionKey(form.id, unit.email);
+        const sub = nextSubmissions[key];
+        const evList = nextEvidence[key] || [];
+        if (evList.length > 0) {
+          nextEvidence[key] = evList.map((ev) => (
+            ev.status === 'PENDING'
+              ? { ...ev, status: 'VERIFIED', reviewedAt: now, reviewedBy: actor?.email || 'prp@itpln.ac.id' }
+              : ev
+          ));
+        }
+        if (sub && sub.status === 'SUBMITTED') {
+          nextSubmissions[key] = {
+            ...sub,
+            status: 'APPROVED',
+            reviewedAt: now,
+            reviewedBy: actor?.email || 'prp@itpln.ac.id',
+            revisionNote: trimmedNote || sub.revisionNote || '',
+            history: history(
+              sub,
+              'APPROVED',
+              trimmedNote || 'Disahkan dalam Validasi Final 100% Renbang (PRP)',
+              actor,
+              nextEvidence[key] || evList,
+            ),
+          };
+        }
+      });
+    }
+  }
+
+  const updatedForm = {
+    ...form,
+    renbangValidatedFinal: Boolean(isValidated),
+    renbangExplicitlyLocked: !isValidated,
+    renbangValidatedAt: isValidated ? now : null,
+    renbangValidatedBy: isValidated ? (actor?.email || 'prp@itpln.ac.id') : null,
+    renbangValidatedByName: isValidated ? (actor?.name || 'Admin Renbang / PRP') : null,
+    renbangValidationNote: trimmedNote,
+  };
+  delete updatedForm.renbangValidationSummary;
+
+  const nextForms = state.forms.map((f) => (f.id === form.id ? updatedForm : f));
+  write({
+    ...state,
+    forms: nextForms,
+    submissions: nextSubmissions,
+    evidence: nextEvidence,
+  });
+
+  dispatchWorkflowNotification({
+    kind: 'WORKFLOW',
+    title: isValidated
+      ? `Validasi Final 100% Renbang Selesai (Periode ${form.period}) · Akses Audit SPI Terbuka`
+      : `Akses Tabel Audit KPI SPI Dikunci Kembali (Periode ${form.period})`,
+    message: isValidated
+      ? `Pihak Renbang (PRP) telah menyelesaikan validasi final 100% data KPI periode ${form.period}. Menu Tabel Audit KPI (Read-Only) pada akun SPI kini terbuka secara otomatis.`
+      : `Pihak Renbang (PRP) membuka kembali proses validasi data KPI periode ${form.period}. Menu Tabel Audit KPI pada akun SPI dikunci sementara ("Akses masih tertutup").`,
+    targetType: 'ROLE',
+    targetRoles: ['spi'],
+    actionUrl: `/internal?period=${encodeURIComponent(form.period || '2026')}&spiView=audit-table`,
+    actionLabel: isValidated ? 'Buka Tabel Audit KPI SPI' : 'Lihat Status Validasi',
+    meta: { formId: form.id, period: form.period, isValidated100: Boolean(isValidated) },
+    actor,
+  });
+
+  return evaluateRenbangValidationStatus(form.id, readKpiWorkflow());
+}
+
+function spiActorGuard(user) {
+  if (!user || user.role !== 'spi' || user.status === 'Nonaktif') {
+    throw new Error('Hanya akun SPI aktif yang berhak mengisi bagian atau kolom audit SPI.');
+  }
+}
+
+export function readSpiAuditStore() {
+  const raw = read(SPI_AUDIT_KEY, { records: {}, updatedAt: null });
+  return {
+    records: raw && typeof raw.records === 'object' ? raw.records : {},
+    updatedAt: raw?.updatedAt || null,
+  };
+}
+
+export function readSpiAuditForForm(formId, state = readKpiWorkflow()) {
+  const form = state?.forms?.find((entry) => entry.id === formId)
+    || getFormForPeriod(formId, state, { fallbackToLatest: true })
+    || null;
+  const resolvedId = form?.id || String(formId || 'default');
+  const store = readSpiAuditStore();
+  let record = store.records?.[resolvedId] || null;
+  if (!record && form?.period) {
+    record = Object.values(store.records || {}).find((r) => String(r?.period) === String(form.period)) || null;
+  }
+  return {
+    formId: resolvedId,
+    period: String(form?.period || record?.period || '2026'),
+    header: {
+      auditDocNumber: '',
+      auditDate: '',
+      auditorName: 'Satuan Pengawasan Internal (SPI) ITPLN',
+      auditFocus: 'Pemeriksaan Dokumen Pendukung & Hasil Akhir KPI Tervalidasi Renbang',
+      generalSummary: '',
+      overallConclusion: 'SESUAI_BUKTI',
+      followUpSummary: '',
+      preferredReportFormat: 'RINGKAS',
+      ...(record?.header || {}),
+    },
+    items: record?.items && typeof record.items === 'object' ? { ...record.items } : {},
+    updatedBy: record?.updatedBy || null,
+    updatedByName: record?.updatedByName || null,
+    updatedAt: record?.updatedAt || null,
+  };
+}
+
+function writeSpiAuditRecord(nextRecord, actor, auditDetail) {
+  if (typeof localStorage === 'undefined') return nextRecord;
+  const store = readSpiAuditStore();
+  const nextStore = {
+    records: {
+      ...(store.records || {}),
+      [nextRecord.formId]: nextRecord,
+    },
+    updatedAt: nextRecord.updatedAt,
+  };
+  localStorage.setItem(SPI_AUDIT_KEY, JSON.stringify(nextStore));
+
+  const entries = read('prp_audit', []);
+  localStorage.setItem(
+    'prp_audit',
+    JSON.stringify([
+      {
+        id: createId('audit'),
+        action: 'SPI_AUDIT_REALTIME',
+        detail: auditDetail,
+        actor: actor?.email || 'spi@itpln.ac.id',
+        at: nextRecord.updatedAt,
+      },
+      ...(Array.isArray(entries) ? entries : []),
+    ].slice(0, 500)),
+  );
+
+  if (typeof fetch === 'function') {
+    const token = localStorage.getItem('performa_access_token') || '';
+    if (token) {
+      fetch('/api/v1/spi/audit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(nextRecord),
+      }).catch(() => {});
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(SPI_AUDIT_EVENT));
+    window.dispatchEvent(new Event(EVENT));
+  }
+
+  return nextRecord;
+}
+
+/**
+ * Menyimpan isian dokumen/ringkasan audit khusus SPI secara real-time ke penyimpanan lokal & database server.
+ * Hanya akun SPI yang dapat memanggil fungsi ini (tidak mencampuri isian Renbang maupun unit).
+ */
+export function saveSpiAuditHeader(formId, user, headerPatch = {}) {
+  maintenance();
+  spiActorGuard(user);
+  const state = readKpiWorkflow();
+  const current = readSpiAuditForForm(formId, state);
+  const now = new Date().toISOString();
+  const cleanHeader = {
+    ...current.header,
+  };
+  if (headerPatch.auditDocNumber !== undefined) cleanHeader.auditDocNumber = String(headerPatch.auditDocNumber ?? '');
+  if (headerPatch.auditDate !== undefined) cleanHeader.auditDate = String(headerPatch.auditDate ?? '');
+  if (headerPatch.auditorName !== undefined) cleanHeader.auditorName = String(headerPatch.auditorName ?? '');
+  if (headerPatch.auditFocus !== undefined) cleanHeader.auditFocus = String(headerPatch.auditFocus ?? '');
+  if (headerPatch.generalSummary !== undefined) cleanHeader.generalSummary = String(headerPatch.generalSummary ?? '');
+  if (headerPatch.followUpSummary !== undefined) cleanHeader.followUpSummary = String(headerPatch.followUpSummary ?? '');
+  if (headerPatch.preferredReportFormat !== undefined && ['RINGKAS', 'CETAK_LAPORAN'].includes(headerPatch.preferredReportFormat)) {
+    cleanHeader.preferredReportFormat = headerPatch.preferredReportFormat;
+  }
+  if (headerPatch.overallConclusion !== undefined && SPI_VERIFICATION_STATUSES.includes(headerPatch.overallConclusion)) {
+    cleanHeader.overallConclusion = headerPatch.overallConclusion;
+  }
+
+  const nextRecord = {
+    ...current,
+    header: cleanHeader,
+    updatedBy: user.email.toLowerCase(),
+    updatedByName: user.name || user.unit || 'SPI ITPLN',
+    updatedAt: now,
+  };
+
+  return writeSpiAuditRecord(
+    nextRecord,
+    user,
+    `Form inputan khusus SPI diperbarui secara real-time untuk periode ${nextRecord.period} (${nextRecord.formId})`,
+  );
+}
+
+/**
+ * Menyimpan catatan audit, status verifikasi bukti, rekomendasi, dan tindak lanjut SPI per indikator secara real-time.
+ * Hanya akun SPI aktif yang berhak mengisi kolom audit SPI ini.
+ */
+export function saveSpiIndicatorAudit(formId, user, indicatorId, itemPatch = {}) {
+  maintenance();
+  spiActorGuard(user);
+  const cleanId = String(indicatorId || '').trim();
+  if (!cleanId) {
+    throw new Error('ID indikator audit SPI wajib valid.');
+  }
+  const state = readKpiWorkflow();
+  const current = readSpiAuditForForm(formId, state);
+  const prevItem = current.items?.[cleanId] || {
+    indicatorId: cleanId,
+    verificationStatus: 'BELUM_DIPERIKSA',
+    auditNote: '',
+    recommendation: '',
+    followUpStatus: 'OPEN',
+    evidenceChecked: false,
+  };
+  const now = new Date().toISOString();
+  const nextItem = {
+    ...prevItem,
+    indicatorId: cleanId,
+    verificationStatus: itemPatch.verificationStatus && SPI_VERIFICATION_STATUSES.includes(itemPatch.verificationStatus)
+      ? itemPatch.verificationStatus
+      : prevItem.verificationStatus,
+    auditNote: itemPatch.auditNote !== undefined ? String(itemPatch.auditNote ?? '') : prevItem.auditNote,
+    recommendation: itemPatch.recommendation !== undefined ? String(itemPatch.recommendation ?? '') : prevItem.recommendation,
+    followUpStatus: itemPatch.followUpStatus && SPI_FOLLOWUP_STATUSES.includes(itemPatch.followUpStatus)
+      ? itemPatch.followUpStatus
+      : prevItem.followUpStatus,
+    evidenceChecked: itemPatch.evidenceChecked !== undefined ? Boolean(itemPatch.evidenceChecked) : Boolean(prevItem.evidenceChecked),
+    updatedBy: user.email.toLowerCase(),
+    updatedByName: user.name || user.unit || 'SPI ITPLN',
+    updatedAt: now,
+  };
+
+  const nextRecord = {
+    ...current,
+    items: {
+      ...(current.items || {}),
+      [cleanId]: nextItem,
+    },
+    updatedBy: user.email.toLowerCase(),
+    updatedByName: user.name || user.unit || 'SPI ITPLN',
+    updatedAt: now,
+  };
+
+  return writeSpiAuditRecord(
+    nextRecord,
+    user,
+    `Catatan audit SPI indikator ${cleanId} diperbarui (${nextItem.verificationStatus})`,
+  );
+}
+
+export function subscribeSpiAudit(callback) {
+  const storage = (event) => {
+    if (!event.key || event.key === SPI_AUDIT_KEY || event.key === KEY) callback();
+  };
+  window.addEventListener(SPI_AUDIT_EVENT, callback);
+  window.addEventListener(EVENT, callback);
+  window.addEventListener('storage', storage);
+  return () => {
+    window.removeEventListener(SPI_AUDIT_EVENT, callback);
+    window.removeEventListener(EVENT, callback);
+    window.removeEventListener('storage', storage);
+  };
 }

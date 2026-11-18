@@ -621,13 +621,64 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   assert.ok(ppaDist.submissions['form_privacy_2026:ppa@itpln.ac.id']);
   assert.equal(ppaDist.submissions['form_privacy_2026:bpka@itpln.ac.id'], undefined);
 
-  // 4. Akun Auditor SPI (role: 'spi') dapat melihat seluruh data terintegrasi (View-Only), namun ditolak 403 jika mencoba mengedit
-  const spiBoot = await invokeApi('GET', '/api/v1/bootstrap', { token: spiToken });
-  assert.equal(spiBoot.status, 200);
-  const spiDist = spiBoot.json.stores.prp_kpi_distribution_v1;
-  assert.ok(spiDist.submissions['form_privacy_2026:ppa@itpln.ac.id']);
-  assert.ok(spiDist.submissions['form_privacy_2026:bpka@itpln.ac.id']);
+  // 4. Penguncian Akses Tabel Audit SPI ("Akses masih tertutup") selama validasi Renbang belum 100%
+  const spiBootLocked = await invokeApi('GET', '/api/v1/bootstrap', { token: spiToken });
+  assert.equal(spiBootLocked.status, 200);
+  const spiDistLocked = spiBootLocked.json.stores.prp_kpi_distribution_v1;
+  assert.equal(spiDistLocked.forms[0].renbangValidationSummary.isValidated100, false);
+  assert.equal(spiDistLocked.forms[0].renbangValidationSummary.statusLabel, 'Akses masih tertutup');
+  assert.equal(spiDistLocked.submissions['form_privacy_2026:ppa@itpln.ac.id'], undefined);
+  assert.equal(spiDistLocked.submissions['form_privacy_2026:bpka@itpln.ac.id'], undefined);
 
+  // 4b. Jika baru 1 dari 2 unit yang divalidasi Renbang (50%), akses SPI tetap terkunci
+  const halfValidatedWorkflow = {
+    ...seedWorkflow,
+    submissions: {
+      ...seedWorkflow.submissions,
+      'form_privacy_2026:ppa@itpln.ac.id': {
+        ...seedWorkflow.submissions['form_privacy_2026:ppa@itpln.ac.id'],
+        status: 'APPROVED',
+      },
+    },
+  };
+  await invokeApi('POST', '/api/v1/sync/push', {
+    token: adminToken,
+    body: { stores: { prp_kpi_distribution_v1: halfValidatedWorkflow } },
+  });
+  const spiBootHalf = await invokeApi('GET', '/api/v1/bootstrap', { token: spiToken });
+  const spiDistHalf = spiBootHalf.json.stores.prp_kpi_distribution_v1;
+  assert.equal(spiDistHalf.forms[0].renbangValidationSummary.isValidated100, false);
+  assert.equal(spiDistHalf.forms[0].renbangValidationSummary.progressPercent, 50);
+  assert.equal(spiDistHalf.submissions['form_privacy_2026:ppa@itpln.ac.id'], undefined);
+
+  // 4c. Begitu Renbang memvalidasi 100% seluruh unit (PPA & BPKA APPROVED), Tabel Audit SPI otomatis terbuka
+  const fullValidatedWorkflow = {
+    ...seedWorkflow,
+    submissions: {
+      'form_privacy_2026:ppa@itpln.ac.id': {
+        ...seedWorkflow.submissions['form_privacy_2026:ppa@itpln.ac.id'],
+        status: 'APPROVED',
+      },
+      'form_privacy_2026:bpka@itpln.ac.id': {
+        ...seedWorkflow.submissions['form_privacy_2026:bpka@itpln.ac.id'],
+        status: 'APPROVED',
+      },
+    },
+  };
+  await invokeApi('POST', '/api/v1/sync/push', {
+    token: adminToken,
+    body: { stores: { prp_kpi_distribution_v1: fullValidatedWorkflow } },
+  });
+
+  const spiBootUnlocked = await invokeApi('GET', '/api/v1/bootstrap', { token: spiToken });
+  assert.equal(spiBootUnlocked.status, 200);
+  const spiDistUnlocked = spiBootUnlocked.json.stores.prp_kpi_distribution_v1;
+  assert.equal(spiDistUnlocked.forms[0].renbangValidationSummary.isValidated100, true);
+  assert.equal(spiDistUnlocked.forms[0].renbangValidationSummary.progressPercent, 100);
+  assert.ok(spiDistUnlocked.submissions['form_privacy_2026:ppa@itpln.ac.id']);
+  assert.ok(spiDistUnlocked.submissions['form_privacy_2026:bpka@itpln.ac.id']);
+
+  // 4d. SPI dilarang mencampuri isian Admin/Renbang maupun unit (403)
   const spiMutateAttempt = await invokeApi('POST', '/api/v1/sync/push', {
     token: spiToken,
     body: {
@@ -637,6 +688,44 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
     },
   });
   assert.equal(spiMutateAttempt.status, 403);
+
+  // 4e. SPI dapat mengisi Form / Bagian Inputan Khusus SPI secara real-time ke database
+  const spiAuditSave = await invokeApi('POST', '/api/v1/spi/audit', {
+    token: spiToken,
+    body: {
+      formId: 'form_privacy_2026',
+      period: '2026 / 2027',
+      header: {
+        auditDocNumber: 'BA-SPI/ITPLN/2026/001',
+        auditorName: 'Tim Auditor SPI ITPLN',
+        generalSummary: 'Seluruh bukti capaian PPA dan BPKA telah sesuai dengan hasil akhir validasi Renbang.',
+      },
+      items: {
+        A_1a: {
+          indicatorId: 'A_1a',
+          verificationStatus: 'SESUAI_BUKTI',
+          auditNote: 'Dokumen SK Kurikulum telah diperiksa dan valid.',
+          recommendation: 'Pertahankan dokumentasi berkala.',
+          followUpStatus: 'CLOSED',
+          evidenceChecked: true,
+        },
+      },
+    },
+  });
+  assert.equal(spiAuditSave.status, 200);
+  assert.equal(spiAuditSave.json.ok, true);
+  assert.equal(spiAuditSave.json.record.header.auditDocNumber, 'BA-SPI/ITPLN/2026/001');
+  assert.equal(spiAuditSave.json.record.items.A_1a.verificationStatus, 'SESUAI_BUKTI');
+
+  // Non-SPI (Admin maupun Unit) ditolak 403 bila mencoba mengisi kolom/bagian milik SPI
+  const adminWriteSpiAttempt = await invokeApi('POST', '/api/v1/spi/audit', {
+    token: adminToken,
+    body: {
+      formId: 'form_privacy_2026',
+      header: { auditDocNumber: 'HACK-BY-ADMIN' },
+    },
+  });
+  assert.equal(adminWriteSpiAttempt.status, 403);
 
   // 5. Sinkronisasi Notifikasi In-App & Log Email Audit Trail
   const notifSync = await invokeApi('POST', '/api/v1/sync/push', {

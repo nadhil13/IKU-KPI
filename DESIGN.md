@@ -29,10 +29,10 @@ Seluruh pasangan warna telah diverifikasi menggunakan `.agents/skills/antislop-h
 ### C. 10% Aksen Energi & Interaksi Kampus ITPLN
 - `--primary` / `--ent-accent-teal`: `#0E7480` (*ITPLN Accessible Electric Teal* dari sayap kanan logo, kontras **5.49:1** terhadap `#FFFFFF` baik sebagai teks tautan di atas putih maupun latar tombol dengan teks putih)
 - `--primary-light`: `#1B9AAA` (Kontras **3.36:1** terhadap `#FFFFFF`; **hanya** untuk garis aksen non-teks, indikator fokus grafis, atau teks berukuran besar `>= 24px`, dilarang untuk teks normal)
-- **Status Semantik**:
-  - Disetujui (`Approved`): Teks `#14532D` di atas `#F0FDF4`, border `#86EFAC`
-  - Revisi (`Revision`): Teks `#78350F` di atas `#FFFBEB`, border `#FCD34D`
-  - Ditolak / Peringatan (`Rejected`): Teks `#7F1D1D` di atas `#FEF2F2`, border `#FCA5A5`
+- **Status Semantik & Indikator Periode (Tegas & Kontras Tinggi)**:
+  - Aktif / Terbuka / Disetujui (`Active` / `Approved`): Latar hijau tegas `#15803D` dengan teks putih bold `#FFFFFF` (`font-weight: 800`, kontras **5.02:1** WCAG AA), border `#14532D`.
+  - Tidak Aktif / Terkunci / Ditolak (`Inactive` / `Locked` / `Rejected`): Latar merah tegas `#B91C1C` dengan teks putih bold `#FFFFFF` (`font-weight: 800`, kontras **6.47:1** WCAG AA), border `#7F1D1D`.
+  - Revisi (`Revision`): Teks `#78350F` (`font-weight: 700`) di atas `#FFFBEB`, border `#FCD34D`.
 
 ---
 

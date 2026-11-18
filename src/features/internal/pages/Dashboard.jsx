@@ -8,6 +8,7 @@ import { useAuth } from '../../auth/hooks/useAuth';
 import { ikuPercentage, listIkuSubmissions, subscribeIku } from '../../iku/ikuWorkflowStore';
 import { listKpiPeriodsWithStatus } from '../../kpi/kpiWorkflowStore';
 import KPIDataEntrySheet from '../../kpi/components/KPIDataEntrySheet';
+import SPIAuditWorkspace from '../../kpi/components/SPIAuditWorkspace';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -446,7 +447,7 @@ export default function Dashboard() {
             {isIkuOnly
               ? 'OTORITAS KHUSUS IKU'
               : isSpiAuditor
-                ? 'AUDITOR SPI · HANYA LIHAT (READ-ONLY) & EKSPOR AUDIT'
+                ? 'SATUAN PENGAWASAN INTERNAL (SPI) · AUDIT TERVALIDASI RENBANG & FORM INPUT REAL-TIME'
                 : isKpiOnly
                   ? `OTORITAS KHUSUS UNIT PIC: ${(currentUser?.picCodes || []).join(', ') || currentUser?.unit || 'KPI'}`
                   : currentUser?.role === 'superadmin_prp'
@@ -478,12 +479,12 @@ export default function Dashboard() {
                   const openFlag = Boolean(period.inputOpen ?? period.isOpenForInput);
                   return (
                     <option key={period.id || period.year} value={period.year || period.id}>
-                      {period.label || `Periode ${period.year || period.id}`} [{openFlag ? 'AKTIF • Terbuka untuk Diisi' : 'TERKUNCI • Nonaktif / Arsip'}]
+                      {period.label || `Periode ${period.year || period.id}`} [{openFlag ? 'AKTIF · Terbuka untuk Diisi' : 'TIDAK AKTIF · Terkunci / Arsip'}]
                     </option>
                   );
                 })
               ) : (
-                <option value="2026">Tahun Akademik 2025/2026 [AKTIF • Terbuka untuk Diisi]</option>
+                <option value="2026">Tahun Akademik 2025/2026 [AKTIF · Terbuka untuk Diisi]</option>
               )}
             </select>
           </div>
@@ -491,20 +492,24 @@ export default function Dashboard() {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem',
-              padding: '0.35rem 0.68rem',
+              gap: '0.4rem',
+              padding: '0.42rem 0.82rem',
               borderRadius: '6px',
-              fontSize: '0.68rem',
+              fontSize: '0.7rem',
               fontWeight: 800,
               fontFamily: 'var(--ent-mono)',
-              background: isPeriodOpen ? '#F0FDF4' : '#FEF2F2',
-              border: `1px solid ${isPeriodOpen ? '#86EFAC' : '#FECACA'}`,
-              color: isPeriodOpen ? '#14532D' : '#991B1B',
+              letterSpacing: '0.03em',
+              background: isPeriodOpen ? '#15803D' : '#B91C1C',
+              border: `1.5px solid ${isPeriodOpen ? '#14532D' : '#7F1D1D'}`,
+              color: '#FFFFFF',
+              boxShadow: isPeriodOpen
+                ? '0 2px 6px rgba(21, 128, 61, 0.28)'
+                : '0 2px 6px rgba(185, 28, 28, 0.28)',
             }}
-            title={selectedPeriod?.statusLabel || (isPeriodOpen ? 'Periode Aktif (Terbuka untuk Diisi)' : 'Periode Nonaktif (Terkunci)')}
+            title={selectedPeriod?.statusLabel || (isPeriodOpen ? 'Periode Aktif (Terbuka untuk Diisi)' : 'Periode Tidak Aktif (Terkunci)')}
           >
-            {isPeriodOpen ? <LockOpen size={12} /> : <Lock size={12} />}
-            {isPeriodOpen ? 'STATUS PERIODE: AKTIF (TERBUKA)' : 'STATUS PERIODE: TERKUNCI (NONAKTIF)'}
+            {isPeriodOpen ? <LockOpen size={13} /> : <Lock size={13} />}
+            {isPeriodOpen ? 'STATUS PERIODE: AKTIF (TERBUKA)' : 'STATUS PERIODE: TIDAK AKTIF (TERKUNCI)'}
           </span>
         </div>
       </div>
@@ -518,7 +523,7 @@ export default function Dashboard() {
                 {currentView === 'iku'
                   ? 'Matriks Capaian'
                   : isSpiAuditor
-                    ? 'Tabel Audit & Rekapitulasi'
+                    ? 'Ruang Kerja Audit & Input'
                     : isKpiOnly
                       ? 'Indikator Kerja Khusus'
                       : 'Evaluasi Operasional'}
@@ -529,7 +534,7 @@ export default function Dashboard() {
                 {currentView === 'iku'
                   ? '8 IKU Kementerian.'
                   : isSpiAuditor
-                    ? 'KPI Institusi (SPI View-Only).'
+                    ? 'Satuan Pengawasan Internal (SPI).'
                     : isKpiOnly
                       ? `${currentUser?.unit || 'Unit PIC Anda'}.`
                       : 'KPI Unit & Fakultas.'}
@@ -549,7 +554,7 @@ export default function Dashboard() {
             {currentView === 'iku'
               ? 'Pemantauan pengisian aktual, standar target RKAT, dan kelengkapan bukti 8 Indikator Kinerja Utama Institut Teknologi PLN.'
               : isSpiAuditor
-                ? 'Halaman audit Satuan Pengawasan Internal (SPI). Seluruh data KPI dan bukti dukung ditampilkan dalam mode baca-saja (Read-Only) tanpa fitur checklist persetujuan, dilengkapi akses unduh bukti dan Ekspor Excel penuh.'
+                ? 'Tabel Audit KPI (Read-Only) terkunci selama validasi Renbang belum selesai 100%, dan terbuka otomatis segera setelah validasi Renbang 100%. Dilengkapi Form Inputan Khusus SPI yang tersimpan ke database secara real-time.'
                 : isKpiOnly
                   ? `Menampilkan khusus daftar indikator yang menjadi tanggung jawab PIC Anda (${(currentUser?.picCodes || []).join(', ')}). Data unit lain diisolasi demi kerahasiaan antar-bagian.`
                   : 'Pengukuran terstruktur capaian Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), serta Kepatuhan (D).'}
@@ -859,6 +864,13 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+      ) : isSpiAuditor ? (
+        <div style={{ marginTop: '1.25rem' }}>
+          <SPIAuditWorkspace
+            period={effectiveYear}
+            isPeriodOpen={isPeriodOpen}
+          />
+        </div>
       ) : (
         <div style={{ marginTop: '1.25rem' }}>
           <KPIDataEntrySheet
@@ -938,7 +950,7 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
-      ) : (
+      ) : !isSpiAuditor && (
         <div className="dash-ledger-strip" style={{ marginTop: '1.75rem', borderTop: '1px solid #D8E4EA' }}>
           {[
             ...(kpiLiveMetrics.sectionScores || []).map((sec) => ({

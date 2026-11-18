@@ -691,20 +691,24 @@ export default function KPITableDesigner() {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem',
-              padding: '0.42rem 0.7rem',
+              gap: '0.4rem',
+              padding: '0.45rem 0.8rem',
               borderRadius: '6px',
               fontSize: '0.73rem',
               fontWeight: 800,
-              background: selectedPeriodMeta?.isOpenForInput ? '#F0FDF4' : '#FEF2F2',
-              border: `1px solid ${selectedPeriodMeta?.isOpenForInput ? '#86EFAC' : '#FECACA'}`,
-              color: selectedPeriodMeta?.isOpenForInput ? '#14532D' : '#991B1B',
+              letterSpacing: '0.02em',
+              background: selectedPeriodMeta?.isOpenForInput ? '#15803D' : '#B91C1C',
+              border: `1.5px solid ${selectedPeriodMeta?.isOpenForInput ? '#14532D' : '#7F1D1D'}`,
+              color: '#FFFFFF',
+              boxShadow: selectedPeriodMeta?.isOpenForInput
+                ? '0 2px 6px rgba(21, 128, 61, 0.25)'
+                : '0 2px 6px rgba(185, 28, 28, 0.25)',
             }}
             title={selectedPeriodMeta ? selectedPeriodMeta.statusLabel : 'Periode Baru (belum disinkronkan)'}
           >
             {selectedPeriodMeta?.isOpenForInput ? <LockOpen size={13} /> : <Lock size={13} />}
             {selectedPeriodMeta
-              ? (selectedPeriodMeta.isOpenForInput ? `Periode ${periodString}: AKTIF (Terbuka)` : `Periode ${periodString}: TERKUNCI (Nonaktif)`)
+              ? (selectedPeriodMeta.isOpenForInput ? `Periode ${periodString}: AKTIF (Terbuka)` : `Periode ${periodString}: TIDAK AKTIF (Terkunci)`)
               : `Periode ${periodString || '-'}: Siap Buat Baru`}
           </span>
           <button

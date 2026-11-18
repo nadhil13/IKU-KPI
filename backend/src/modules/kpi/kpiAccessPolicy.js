@@ -269,9 +269,109 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
 }
 
 /**
- * Isolasi Data Antar-Unit (Data Privacy):
- * Akun unit (kpi_only) hanya boleh menerima submissions, drafts, dan evidence milik unitnya sendiri.
- * Admin PRP (superadmin_prp) dan Auditor SPI (spi) dapat melihat seluruh data lintas unit.
+ * Mengevaluasi apakah proses validasi data KPI dari Renbang (PRP) pada satu formulir periode telah selesai 100%.
+ * Digunakan untuk membuka kunci otomatis Tabel Audit KPI (Read-Only) pada akun SPI.
+ */
+export function evaluateRenbangValidationForForm(form, workflow) {
+  if (!form || typeof form !== 'object') {
+    return {
+      isValidated100: false,
+      totalUnits: 0,
+      validatedUnits: 0,
+      pendingUnits: 0,
+      progressPercent: 0,
+      statusLabel: 'Akses masih tertutup',
+    };
+  }
+  const formId = String(form.id || '');
+  const submissions = workflow?.submissions || {};
+  const drafts = workflow?.drafts || {};
+
+  if (form.renbangValidatedFinal === true && !form.renbangExplicitlyLocked) {
+    const unitCount = Array.isArray(form.units) && form.units.length > 0 ? form.units.length : 1;
+    return {
+      formId,
+      period: form.period || '2026',
+      isValidated100: true,
+      renbangValidatedFinal: true,
+      renbangValidatedAt: form.renbangValidatedAt || null,
+      renbangValidatedBy: form.renbangValidatedBy || null,
+      totalUnits: unitCount,
+      validatedUnits: unitCount,
+      pendingUnits: 0,
+      progressPercent: 100,
+      statusLabel: 'Tervalidasi Final 100% oleh Renbang (Akses Terbuka)',
+    };
+  }
+
+  const allSectionItems = (form.sections || []).flatMap((sec) => sec.items || []);
+  const candidateEmails = new Set();
+
+  if (Array.isArray(form.units) && form.units.length > 0) {
+    form.units.forEach((u) => {
+      const email = String(u?.email || '').trim().toLowerCase();
+      if (!email || email === 'spi@itpln.ac.id') return;
+      const unitPics = normalizePicList(u?.picCodes || []);
+      const hasAssignedRow = allSectionItems.length === 0 || unitPics.length === 0 || allSectionItems.some((item) => {
+        const rowPics = normalizePicList(item?.pics ?? item?.picDisplay ?? []);
+        return rowPics.length === 0 || rowPics.some((p) => unitPics.includes(p));
+      });
+      if (hasAssignedRow) candidateEmails.add(email);
+    });
+  } else {
+    const prefix = `${formId}:`;
+    Object.keys(submissions).forEach((k) => {
+      if (k.startsWith(prefix)) {
+        const email = k.slice(prefix.length).toLowerCase();
+        if (email && email !== 'spi@itpln.ac.id') candidateEmails.add(email);
+      }
+    });
+    Object.keys(drafts).forEach((k) => {
+      if (k.startsWith(prefix)) {
+        const email = k.slice(prefix.length).toLowerCase();
+        if (email && email !== 'spi@itpln.ac.id') candidateEmails.add(email);
+      }
+    });
+  }
+
+  const requiredEmails = [...candidateEmails];
+  const totalUnits = requiredEmails.length;
+  let validatedUnits = 0;
+
+  requiredEmails.forEach((email) => {
+    const sub = submissions[`${formId}:${email}`];
+    if (sub && (sub.status === 'APPROVED' || sub.status === 'LOCKED')) {
+      validatedUnits += 1;
+    }
+  });
+
+  const isValidated100 = !form.renbangExplicitlyLocked && totalUnits > 0 && validatedUnits === totalUnits;
+  const progressPercent = isValidated100
+    ? 100
+    : (totalUnits > 0 ? Math.min(99, Math.floor((validatedUnits / totalUnits) * 100)) : 0);
+
+  return {
+    formId,
+    period: form.period || '2026',
+    isValidated100,
+    renbangValidatedFinal: false,
+    renbangExplicitlyLocked: Boolean(form.renbangExplicitlyLocked),
+    totalUnits,
+    validatedUnits,
+    pendingUnits: Math.max(0, totalUnits - validatedUnits),
+    progressPercent,
+    statusLabel: isValidated100
+      ? 'Tervalidasi Final 100% oleh Renbang (Akses Terbuka)'
+      : 'Akses masih tertutup',
+  };
+}
+
+/**
+ * Isolasi Data Antar-Unit (Data Privacy) & Penguncian Akses Tabel Audit SPI:
+ * - Akun unit (kpi_only / dual) hanya boleh menerima submissions, drafts, dan evidence milik unitnya sendiri.
+ * - Admin PRP (superadmin_prp) dapat melihat seluruh data lintas unit.
+ * - Auditor SPI (spi) HANYA dapat memantau data KPI pada formulir yang sudah tervalidasi final 100% oleh Renbang.
+ *   Selama validasi Renbang belum 100%, data unit yang baru terisi sebagian disembunyikan ("Akses masih tertutup").
  */
 export function filterKpiWorkflowForCaller(workflow, callerUser) {
   if (!workflow || typeof workflow !== 'object') return workflow;
@@ -285,8 +385,56 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
       revisions: {},
     };
   }
-  if (['superadmin_prp', 'spi'].includes(callerUser.role)) {
+  if (callerUser.role === 'superadmin_prp') {
     return workflow;
+  }
+  if (callerUser.role === 'spi') {
+    const forms = Array.isArray(workflow.forms) ? workflow.forms : [];
+    const unlockedFormIds = new Set();
+    const validationByFormId = {};
+    const annotatedForms = forms.map((form) => {
+      const valStatus = evaluateRenbangValidationForForm(form, workflow);
+      if (valStatus.isValidated100) {
+        unlockedFormIds.add(String(form.id));
+      }
+      validationByFormId[form.id] = valStatus;
+      return {
+        ...form,
+        renbangValidationSummary: valStatus,
+      };
+    });
+
+    const filterUnlockedMap = (mapObj, onlyApprovedSubmissions = false) => {
+      const out = {};
+      for (const [entryKey, val] of Object.entries(mapObj || {})) {
+        const [fId] = String(entryKey).split(':');
+        if (fId && unlockedFormIds.has(fId)) {
+          if (onlyApprovedSubmissions && val && !['APPROVED', 'LOCKED'].includes(val.status) && !annotatedForms.find((f) => f.id === fId)?.renbangValidatedFinal) {
+            continue;
+          }
+          out[entryKey] = val;
+        }
+      }
+      return out;
+    };
+
+    const filteredOverrides = {};
+    for (const [fId, ov] of Object.entries(workflow.adminOverrides || {})) {
+      if (unlockedFormIds.has(fId)) {
+        filteredOverrides[fId] = ov;
+      }
+    }
+
+    return {
+      ...workflow,
+      forms: annotatedForms,
+      validationByFormId,
+      submissions: filterUnlockedMap(workflow.submissions, true),
+      evidence: filterUnlockedMap(workflow.evidence, false),
+      drafts: {},
+      adminOverrides: filteredOverrides,
+      revisions: {},
+    };
   }
   const callerEmail = String(callerUser.email || '').toLowerCase();
   const filterByOwnEmail = (mapObj) => {

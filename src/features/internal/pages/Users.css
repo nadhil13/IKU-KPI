@@ -332,28 +332,28 @@
 
 .user-status {
   align-items: center;
-  border-radius: 4px;
+  border-radius: 5px;
   display: inline-flex;
   font-family: var(--ent-mono);
-  font-size: 0.62rem;
-  font-weight: 600;
+  font-size: 0.64rem;
+  font-weight: 800;
   gap: 0.35rem;
-  padding: 0.22rem 0.55rem;
+  padding: 0.25rem 0.62rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
 .user-status.is-active {
-  background: #F0FDF4;
-  border: 1px solid #86EFAC;
-  color: #14532D;
+  background: #15803D;
+  border: 1.5px solid #14532D;
+  color: #FFFFFF;
 }
 
 .user-status.is-inactive {
-  background: #FEF2F2;
-  border: 1px solid #FCA5A5;
-  color: #B91C1C;
+  background: #B91C1C;
+  border: 1.5px solid #7F1D1D;
+  color: #FFFFFF;
 }
 
 .user-status i {

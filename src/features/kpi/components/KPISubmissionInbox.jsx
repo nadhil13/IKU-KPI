@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Check, ExternalLink, Eye, Download, FileText, Image as ImageIcon,
   Link2, Search, ShieldCheck, X, Layers, History, CheckCircle2,
-  Save, FolderDown, PenLine, Send, MessageSquareWarning, Trash2, Plus,
+  Save, FolderDown, PenLine, Send, MessageSquareWarning, Trash2, Plus, Lock, Unlock,
 } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
@@ -27,6 +27,9 @@ import {
   readIntegratedKpiBoard,
   ensureDefaultKpiDistribution,
   getEditableItemsForUser,
+  evaluateRenbangValidationStatus,
+  setRenbangFinalValidation,
+  readSpiAuditForForm,
   MAX_EVIDENCE_FILE_BYTES,
   ALLOWED_EVIDENCE_MIME_TYPES,
 } from '../kpiWorkflowStore';
@@ -370,6 +373,152 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </div>
             </div>
           </div>
+
+          {/* Panel Kontrol Validasi Final 100% Renbang & Pembukaan Otomatis Akses Audit SPI */}
+          {(() => {
+            const renbangStatus = evaluateRenbangValidationStatus(latestForm.id, state);
+            const spiRecord = readSpiAuditForForm(latestForm.id, state);
+            const spiCheckedItems = Object.values(spiRecord.items || {}).filter(
+              (it) => it && (it.verificationStatus !== 'BELUM_DIPERIKSA' || String(it.auditNote || '').trim() !== '')
+            );
+            return (
+              <div
+                style={{
+                  padding: '0.95rem 1.3rem',
+                  borderTop: '1px solid #D8E4EA',
+                  background: renbangStatus.isValidated100 ? '#F0FDF4' : '#FEF2F2',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.65rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.3rem 0.65rem',
+                          borderRadius: '6px',
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          background: renbangStatus.isValidated100 ? '#15803D' : '#B91C1C',
+                          color: '#FFFFFF',
+                          border: renbangStatus.isValidated100 ? '1.5px solid #14532D' : '1.5px solid #7F1D1D',
+                        }}
+                      >
+                        {renbangStatus.isValidated100 ? <Unlock size={13} /> : <Lock size={13} />}
+                        {renbangStatus.isValidated100
+                          ? 'AKSES TABEL AUDIT SPI: TERBUKA OTOMATIS (VALIDASI RENBANG 100%)'
+                          : 'AKSES TABEL AUDIT SPI: TERKUNCI ("Akses masih tertutup")'}
+                      </span>
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>
+                        Progres Validasi Renbang: {renbangStatus.validatedUnits}/{renbangStatus.totalUnits} Unit ({renbangStatus.progressPercent}%)
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.74rem', color: '#334155' }}>
+                      {renbangStatus.isValidated100
+                        ? 'Seluruh data KPI periode ini telah berstatus tervalidasi final 100% oleh Renbang. Akun SPI kini dapat melihat Tabel Audit KPI (Read-Only) dan mengisi catatan audit.'
+                        : 'Selama validasi Renbang belum mencapai 100%, akun SPI tidak dapat memantau data unit yang baru terisi sebagian. Setujui seluruh unit atau klik tombol pengesahan final di kanan untuk membuka akses SPI.'}
+                    </span>
+                  </div>
+
+                  {currentUser?.role === 'superadmin_prp' && (
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {!renbangStatus.isValidated100 ? (
+                        <button
+                          type="button"
+                          onClick={() => mutate(() => {
+                            setRenbangFinalValidation(latestForm.id, true, currentUser, {
+                              approveAllSubmitted: true,
+                              note: 'Validasi Final 100% disahkan oleh Admin Renbang / PRP',
+                            });
+                            setState(readKpiWorkflow());
+                            setSavedNotice('Validasi Final 100% Renbang disahkan. Tabel Audit KPI pada akun SPI kini terbuka otomatis.');
+                          })}
+                          style={{
+                            minHeight: '40px',
+                            padding: '0.45rem 0.95rem',
+                            borderRadius: '8px',
+                            border: '1.5px solid #14532D',
+                            background: '#15803D',
+                            color: '#FFFFFF',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                          }}
+                        >
+                          <CheckCircle2 size={14} />
+                          <span>Sahkan Validasi Final 100% Renbang (Buka Akses Audit SPI)</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => mutate(() => {
+                            setRenbangFinalValidation(latestForm.id, false, currentUser, {
+                              note: 'Validasi dibuka kembali oleh Renbang, akses SPI dikunci sementara',
+                            });
+                            setState(readKpiWorkflow());
+                            setSavedNotice('Akses Tabel Audit KPI pada akun SPI dikunci kembali ("Akses masih tertutup").');
+                          })}
+                          style={{
+                            minHeight: '40px',
+                            padding: '0.45rem 0.95rem',
+                            borderRadius: '8px',
+                            border: '1.5px solid #7F1D1D',
+                            background: '#B91C1C',
+                            color: '#FFFFFF',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                          }}
+                        >
+                          <Lock size={14} />
+                          <span>Kunci Kembali Akses Audit SPI</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {(spiRecord.updatedAt || spiCheckedItems.length > 0) && (
+                  <div
+                    style={{
+                      padding: '0.6rem 0.85rem',
+                      borderRadius: '8px',
+                      background: '#FFFFFF',
+                      border: '1px solid #CBD5E1',
+                      fontSize: '0.74rem',
+                      color: '#1E293B',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <div>
+                      <strong>Pantauan Real-Time Inputan Akun SPI:</strong>{' '}
+                      No. Dokumen: <strong>{spiRecord.header?.auditDocNumber || '-'}</strong> ·{' '}
+                      Indikator Diperiksa SPI: <strong>{spiCheckedItems.length} butir</strong>
+                      {spiRecord.header?.generalSummary ? ` · Ringkasan SPI: "${spiRecord.header.generalSummary}"` : ''}
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: '#15803D', fontWeight: 800 }}>
+                      Diperbarui SPI: {spiRecord.updatedAt ? new Date(spiRecord.updatedAt).toLocaleString('id-ID') : '-'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {showEvidenceVault && (
             <div style={{ padding: '1rem 1.3rem', borderTop: '1px solid #D8E4EA', background: '#F7FAFB', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>

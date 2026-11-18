@@ -30,7 +30,11 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { useAuth } from '../features/auth/hooks/useAuth';
-import { readKpiWorkflow } from '../features/kpi/kpiWorkflowStore';
+import {
+  evaluateRenbangValidationStatus,
+  getFormForPeriod,
+  readKpiWorkflow,
+} from '../features/kpi/kpiWorkflowStore';
 import { listIkuSubmissions } from '../features/iku/ikuWorkflowStore';
 import { readAudit } from '../features/internal/adminStore';
 import { mountSmoothScroll, getLenis } from '../lib/smoothScroll';
@@ -171,7 +175,7 @@ export default function InternalLayout() {
   // Live telemetry listener
   useEffect(() => {
     const bump = () => setTelemetryTick((v) => v + 1);
-    const events = ['storage', 'prp-admin-updated', 'prp-kpi-workflow-updated', 'prp-iku-updated', 'prp-notifications-updated'];
+    const events = ['storage', 'prp-admin-updated', 'prp-kpi-workflow-updated', 'prp-spi-audit-updated', 'prp-iku-updated', 'prp-notifications-updated'];
     events.forEach((ev) => window.addEventListener(ev, bump));
     const unsubNotif = subscribeNotifications(bump);
     return () => {
@@ -295,13 +299,25 @@ export default function InternalLayout() {
 
   const telemetry = useMemo(() => {
     void telemetryTick;
-    if (!currentUser) return { kpiPending: 0, ikuPending: 0, totalPending: 0, recentAudit: [] };
+    if (!currentUser) {
+      return {
+        kpiPending: 0,
+        ikuPending: 0,
+        totalPending: 0,
+        recentAudit: [],
+        spiValidationStatus: { isValidated100: false, progressPercent: 0, statusLabel: 'Akses masih tertutup' },
+      };
+    }
     let kpiPending = 0;
     let ikuPending = 0;
     let recentAudit = [];
+    let spiValidationStatus = { isValidated100: false, progressPercent: 0, statusLabel: 'Akses masih tertutup' };
     try {
       const kpi = readKpiWorkflow();
       kpiPending = Object.values(kpi.submissions || {}).filter((r) => r.status === 'SUBMITTED').length;
+      const periodQuery = new URLSearchParams(location.search).get('period') || '2026';
+      const activeForm = getFormForPeriod(periodQuery, kpi, { fallbackToLatest: true });
+      spiValidationStatus = evaluateRenbangValidationStatus(activeForm?.id || periodQuery, kpi);
     } catch {
       /* fallback */
     }
@@ -323,8 +339,9 @@ export default function InternalLayout() {
       ikuPending,
       totalPending: kpiPending + ikuPending,
       recentAudit,
+      spiValidationStatus,
     };
-  }, [currentUser, telemetryTick]);
+  }, [currentUser, telemetryTick, location.search]);
 
   // Sinkronisasi Posisi Indikator Aktif di Sidebar
   const syncActiveLaser = useCallback(() => {
@@ -1342,22 +1359,129 @@ export default function InternalLayout() {
             {showKPI && (
               <div className="sidebar-stagger nav-context-item">
                 <div className="corp-nav-section-label">
-                  <span>{isSpiAuditor ? 'AUDIT SPI (VIEW-ONLY)' : 'MODUL KPI UNIT'}</span>
+                  <span>{isSpiAuditor ? 'AUDIT SPI & INPUT REAL-TIME' : 'MODUL KPI UNIT'}</span>
                   <span>{isSpiAuditor ? '[AUDIT]' : '[MIKRO]'}</span>
                 </div>
                 <ul className="corp-nav-ul">
-                  <li>
-                    <button
-                      type="button"
-                      onMouseEnter={handleNavItemEnter}
-                      onClick={() => handleSelectWorkspaceMenu('kpi')}
-                      data-nav-active={(isExactPath('/internal') || isExactPath('/internal/kpi')) && effectiveWorkspace === 'kpi' ? 'true' : undefined}
-                      className={`corp-nav-item ${(isExactPath('/internal') || isExactPath('/internal/kpi')) && effectiveWorkspace === 'kpi' ? 'active' : ''}`}
-                    >
-                      <Building2 size={15} strokeWidth={1.85} className="corp-item-icon" />
-                      <span>{isSpiAuditor ? 'Tabel Audit KPI (Read-Only)' : 'Lembar Kerja KPI'}</span>
-                    </button>
-                  </li>
+                  {isSpiAuditor ? (
+                    <>
+                      <li>
+                        <button
+                          type="button"
+                          onMouseEnter={handleNavItemEnter}
+                          onClick={() => {
+                            closeMobileSidebar();
+                            const params = new URLSearchParams(location.search);
+                            params.set('spiView', 'audit-table');
+                            navigate(`/internal?${params.toString()}`);
+                          }}
+                          data-nav-active={
+                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
+                            && searchParams.get('spiView') !== 'spi-form'
+                              ? 'true'
+                              : undefined
+                          }
+                          className={`corp-nav-item ${
+                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
+                            && searchParams.get('spiView') !== 'spi-form'
+                              ? 'active'
+                              : ''
+                          }`}
+                          style={{ alignItems: 'center' }}
+                        >
+                          {telemetry.spiValidationStatus?.isValidated100 ? (
+                            <ShieldCheck size={15} strokeWidth={1.85} className="corp-item-icon" />
+                          ) : (
+                            <Lock size={15} strokeWidth={1.85} className="corp-item-icon" />
+                          )}
+                          <span style={{ flex: 1, textAlign: 'left', lineHeight: 1.25 }}>
+                            <span style={{ display: 'block' }}>Tabel Audit KPI (Read-Only)</span>
+                            <span
+                              style={{
+                                display: 'block',
+                                fontSize: '0.66rem',
+                                fontWeight: 700,
+                                color: telemetry.spiValidationStatus?.isValidated100 ? '#15803D' : '#B91C1C',
+                                marginTop: '2px',
+                              }}
+                            >
+                              {telemetry.spiValidationStatus?.isValidated100
+                                ? 'Terbuka (100% Tervalidasi)'
+                                : 'Akses masih tertutup'}
+                            </span>
+                          </span>
+                          <span
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: '5px',
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              background: telemetry.spiValidationStatus?.isValidated100 ? '#15803D' : '#B91C1C',
+                              color: '#FFFFFF',
+                              border: telemetry.spiValidationStatus?.isValidated100
+                                ? '1px solid #14532D'
+                                : '1px solid #7F1D1D',
+                            }}
+                          >
+                            {telemetry.spiValidationStatus?.isValidated100 ? 'TERBUKA' : 'TERKUNCI'}
+                          </span>
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          onMouseEnter={handleNavItemEnter}
+                          onClick={() => {
+                            closeMobileSidebar();
+                            const params = new URLSearchParams(location.search);
+                            params.set('spiView', 'spi-form');
+                            navigate(`/internal?${params.toString()}`);
+                          }}
+                          data-nav-active={
+                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
+                            && searchParams.get('spiView') === 'spi-form'
+                              ? 'true'
+                              : undefined
+                          }
+                          className={`corp-nav-item ${
+                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
+                            && searchParams.get('spiView') === 'spi-form'
+                              ? 'active'
+                              : ''
+                          }`}
+                        >
+                          <FileText size={15} strokeWidth={1.85} className="corp-item-icon" />
+                          <span style={{ flex: 1, textAlign: 'left' }}>Form Inputan Khusus SPI</span>
+                          <span
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: '5px',
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              background: '#15803D',
+                              color: '#FFFFFF',
+                              border: '1px solid #14532D',
+                            }}
+                          >
+                            REAL-TIME
+                          </span>
+                        </button>
+                      </li>
+                    </>
+                  ) : (
+                    <li>
+                      <button
+                        type="button"
+                        onMouseEnter={handleNavItemEnter}
+                        onClick={() => handleSelectWorkspaceMenu('kpi')}
+                        data-nav-active={(isExactPath('/internal') || isExactPath('/internal/kpi')) && effectiveWorkspace === 'kpi' ? 'true' : undefined}
+                        className={`corp-nav-item ${(isExactPath('/internal') || isExactPath('/internal/kpi')) && effectiveWorkspace === 'kpi' ? 'active' : ''}`}
+                      >
+                        <Building2 size={15} strokeWidth={1.85} className="corp-item-icon" />
+                        <span>Lembar Kerja KPI</span>
+                      </button>
+                    </li>
+                  )}
                   {!isSpiAuditor && (
                     <>
                       <li>

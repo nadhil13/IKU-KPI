@@ -1113,21 +1113,24 @@ img {
 }
 
 .ent-badge-approved {
-  background: #f0fdf4;
-  border-color: #86efac;
-  color: #14532d;
+  background: #15803D;
+  border: 1.5px solid #14532D;
+  color: #FFFFFF;
+  font-weight: 800;
 }
 
 .ent-badge-revision {
   background: #fffbeb;
   border-color: #fcd34d;
   color: #78350f;
+  font-weight: 700;
 }
 
 .ent-badge-rejected {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  color: #7f1d1d;
+  background: #B91C1C;
+  border: 1.5px solid #7F1D1D;
+  color: #FFFFFF;
+  font-weight: 800;
 }
 
 .ent-badge-locked {

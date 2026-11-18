@@ -296,13 +296,13 @@ export const MOCK_ACCOUNTS = [
     name: 'Auditor Satuan Pengawasan Intern (SPI)',
     shortName: 'Auditor SPI',
     role: 'spi',
-    roleTitle: 'Auditor SPI (View Only & Audit)',
-    badge: 'AUDITOR SPI (VIEW ONLY)',
+    roleTitle: 'Auditor SPI (Tabel Audit Tervalidasi & Input SPI Real-Time)',
+    badge: 'AUDITOR SPI',
     allowedPortals: ['kpi'],
     picCodes: ['SPI'],
     unit: 'Satuan Pengawasan Intern (SPI)',
     avatar: 'SPI',
-    description: 'Akses khusus audit (Read-Only) satu halaman tabel KPI terisi, buka/unduh bukti capaian semua unit, dan ekspor Excel rekapitulasi penuh.'
+    description: 'Tabel Audit KPI (Read-Only) terkunci selama validasi Renbang belum 100%, terbuka otomatis saat validasi 100%, serta memiliki Form Inputan Khusus SPI yang tersimpan real-time ke database.'
   },
   {
     id: 'user-kpi-wbs',

@@ -761,3 +761,94 @@ test('Reject bukti otomatis membuka NEEDS_REVISION, kirim ulang mempertahankan V
     'inputAllowed harus memblokir submit saat periode kustom tahun terkait berstatus Inactive',
   );
 });
+
+test('penguncian akses tabel audit SPI (<100% Renbang) & pembukaan otomatis 100% + input real-time khusus SPI', () => {
+  memory.clear();
+  const {
+    distributeKpiForm,
+    evaluateRenbangValidationStatus,
+    setRenbangFinalValidation,
+    saveSpiAuditHeader,
+    saveSpiIndicatorAudit,
+    readSpiAuditForForm,
+  } = store;
+
+  const adminPrp = { email: 'admin@itpln.ac.id', name: 'Admin Renbang PRP', role: 'superadmin_prp', status: 'Aktif' };
+  const spiUser = { email: 'spi@itpln.ac.id', name: 'Auditor SPI ITPLN', role: 'spi', status: 'Aktif' };
+  const ppaUser = { email: 'ppa@itpln.ac.id', name: 'Operator PPA', role: 'kpi_only', status: 'Aktif', picCodes: ['PPA'] };
+
+  const form = distributeKpiForm(
+    [
+      {
+        code: 'A',
+        title: 'Keberlanjutan',
+        totalWeight: 100,
+        isPenaltySection: false,
+        items: [
+          {
+            id: 'A_1a',
+            no: '1a',
+            indikator: 'Kesesuaian Kurikulum',
+            bobot: 50,
+            targetNum: 100,
+            pics: ['PPA'],
+            picDisplay: 'PPA',
+            formulaExpr: 'I1/T*100',
+            subrows: [{ key: 'a1_val', label: 'Realisasi' }],
+          },
+          {
+            id: 'A_1b',
+            no: '1b',
+            indikator: 'Laporan Keuangan',
+            bobot: 50,
+            targetNum: 100,
+            pics: ['BAKT'],
+            picDisplay: 'BAKT',
+            formulaExpr: 'I1/T*100',
+            subrows: [{ key: 'a1b_val', label: 'Realisasi' }],
+          },
+        ],
+      },
+    ],
+    { period: '2026', actor: adminPrp },
+  );
+
+  // 1. Awal distribusi: validasi Renbang 0% -> Akses Tabel Audit SPI wajib terkunci ("Akses masih tertutup")
+  const initialVal = evaluateRenbangValidationStatus(form.id);
+  assert.equal(initialVal.isValidated100, false);
+  assert.equal(initialVal.statusLabel, 'Akses masih tertutup');
+
+  // 2. Saat Renbang mengesahkan validasi final 100%, Tabel Audit SPI otomatis terbuka
+  const unlockedVal = setRenbangFinalValidation(form.id, true, adminPrp, { note: 'Seluruh data KPI tervalidasi Renbang' });
+  assert.equal(unlockedVal.isValidated100, true);
+  assert.equal(unlockedVal.progressPercent, 100);
+
+  // 3. SPI hanya dapat mengisi bagian/kolom miliknya sendiri secara real-time
+  saveSpiAuditHeader(form.id, spiUser, {
+    auditDocNumber: 'BA-SPI/2026/09',
+    auditDate: '2026-11-18',
+    generalSummary: 'Dokumen bukti telah diperiksa oleh SPI.',
+  });
+  saveSpiIndicatorAudit(form.id, spiUser, 'A_1a', {
+    verificationStatus: 'SESUAI_BUKTI',
+    auditNote: 'SK Kurikulum valid dan lengkap.',
+    recommendation: 'Lanjutkan pemantauan semester depan.',
+    followUpStatus: 'CLOSED',
+    evidenceChecked: true,
+  });
+
+  const savedSpi = readSpiAuditForForm(form.id);
+  assert.equal(savedSpi.header.auditDocNumber, 'BA-SPI/2026/09');
+  assert.equal(savedSpi.items.A_1a.verificationStatus, 'SESUAI_BUKTI');
+  assert.equal(savedSpi.items.A_1a.evidenceChecked, true);
+
+  // 4. Akun non-SPI (Admin maupun Unit) dilarang mengisi bagian/kolom milik SPI
+  assert.throws(
+    () => saveSpiIndicatorAudit(form.id, adminPrp, 'A_1a', { auditNote: 'Diubah Admin' }),
+    /Hanya akun SPI aktif/,
+  );
+  assert.throws(
+    () => saveSpiAuditHeader(form.id, ppaUser, { generalSummary: 'Diubah Unit' }),
+    /Hanya akun SPI aktif/,
+  );
+});

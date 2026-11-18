@@ -128,15 +128,33 @@ function PeriodRow({ period, globalDeadline, onUpdate }) {
         </select>
       </div>
       <div className="gov-period-cell gov-period-check-cell">
-        <span className="gov-period-field-label">Akses Unit</span>
-        <label>
-          <input
-            type="checkbox"
-            checked={period.inputOpen !== false}
-            onChange={(event) => onUpdate(period.id, 'inputOpen', event.target.checked)}
-          />
-          <span>Input dibuka</span>
-        </label>
+        <span className="gov-period-field-label">Akses Unit &amp; Indikator Status</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={period.inputOpen !== false}
+              onChange={(event) => onUpdate(period.id, 'inputOpen', event.target.checked)}
+            />
+            <span>Input dibuka</span>
+          </label>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '3px 9px',
+              borderRadius: '5px',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              letterSpacing: '0.02em',
+              background: period.status === 'Active' && period.inputOpen !== false ? '#15803D' : '#B91C1C',
+              border: `1.5px solid ${period.status === 'Active' && period.inputOpen !== false ? '#14532D' : '#7F1D1D'}`,
+              color: '#FFFFFF',
+            }}
+          >
+            {period.status === 'Active' && period.inputOpen !== false ? 'AKTIF (TERBUKA)' : 'TIDAK AKTIF (TERTUTUP)'}
+          </span>
+        </div>
       </div>
     </div>
   );

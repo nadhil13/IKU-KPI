@@ -458,6 +458,15 @@ export function getDatabase(customPath = null) {
       PRIMARY KEY (broadcast_id, user_email)
     );
 
+    CREATE TABLE IF NOT EXISTS spi_audit_records (
+      form_id TEXT PRIMARY KEY,
+      period TEXT NOT NULL,
+      header_json TEXT NOT NULL DEFAULT '{}',
+      items_json TEXT NOT NULL DEFAULT '{}',
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS audit_logs (
       seq INTEGER PRIMARY KEY AUTOINCREMENT,
       id TEXT NOT NULL UNIQUE,
@@ -798,6 +807,108 @@ export function writeKvStore(key, value, actorEmail = 'system') {
   `).run(key, serialized, nextVersion, checksum, actorEmail, now);
 
   return { version: nextVersion, checksum, changed: true, updatedAt: now };
+}
+
+export function readSpiAuditRecords() {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT form_id, period, header_json, items_json, updated_by, updated_at FROM spi_audit_records ORDER BY updated_at DESC').all();
+  const byForm = {};
+  for (const row of rows) {
+    try {
+      byForm[row.form_id] = {
+        formId: row.form_id,
+        period: row.period,
+        header: JSON.parse(row.header_json || '{}'),
+        items: JSON.parse(row.items_json || '{}'),
+        updatedBy: row.updated_by,
+        updatedAt: row.updated_at,
+      };
+    } catch {
+      // Abaikan entri korup
+    }
+  }
+  const kvFallback = readKvStore('prp_spi_audit_v1', { byForm: {} }).value;
+  if (kvFallback && typeof kvFallback.byForm === 'object') {
+    for (const [fId, entry] of Object.entries(kvFallback.byForm)) {
+      if (!byForm[fId] || String(entry?.updatedAt || '') > String(byForm[fId].updatedAt || '')) {
+        byForm[fId] = entry;
+      }
+    }
+  }
+  return { byForm };
+}
+
+export function upsertSpiAuditRecord(formId, payload = {}, actorEmail = 'spi@itpln.ac.id', ip = '127.0.0.1') {
+  const cleanFormId = String(formId || payload.formId || 'global').trim();
+  if (!cleanFormId) return null;
+  const db = getDatabase();
+  const existingRow = db.prepare('SELECT period, header_json, items_json FROM spi_audit_records WHERE form_id = ?').get(cleanFormId);
+  let prevHeader = {};
+  let prevItems = {};
+  if (existingRow) {
+    try { prevHeader = JSON.parse(existingRow.header_json || '{}'); } catch { prevHeader = {}; }
+    try { prevItems = JSON.parse(existingRow.items_json || '{}'); } catch { prevItems = {}; }
+  }
+  const kvCurrent = readSpiAuditRecords();
+  if (kvCurrent.byForm[cleanFormId]) {
+    prevHeader = { ...(kvCurrent.byForm[cleanFormId].header || {}), ...prevHeader };
+    prevItems = { ...(kvCurrent.byForm[cleanFormId].items || {}), ...prevItems };
+  }
+
+  const now = new Date().toISOString();
+  const nextPeriod = String(payload.period || existingRow?.period || '2026').trim();
+  const nextHeader = payload.header && typeof payload.header === 'object'
+    ? { ...prevHeader, ...payload.header, updatedAt: now, updatedBy: actorEmail }
+    : prevHeader;
+  const nextItems = { ...prevItems };
+  if (payload.items && typeof payload.items === 'object') {
+    for (const [indId, itemVal] of Object.entries(payload.items)) {
+      if (!indId || typeof itemVal !== 'object') continue;
+      nextItems[indId] = {
+        ...(nextItems[indId] || {}),
+        ...itemVal,
+        indicatorId: indId,
+        updatedAt: now,
+        updatedBy: actorEmail,
+      };
+    }
+  }
+
+  db.prepare(`
+    INSERT INTO spi_audit_records (form_id, period, header_json, items_json, updated_by, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(form_id) DO UPDATE SET
+      period = excluded.period,
+      header_json = excluded.header_json,
+      items_json = excluded.items_json,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(
+    cleanFormId,
+    nextPeriod,
+    JSON.stringify(nextHeader),
+    JSON.stringify(nextItems),
+    actorEmail,
+    now,
+  );
+
+  const fullState = readSpiAuditRecords();
+  fullState.byForm[cleanFormId] = {
+    formId: cleanFormId,
+    period: nextPeriod,
+    header: nextHeader,
+    items: nextItems,
+    updatedBy: actorEmail,
+    updatedAt: now,
+  };
+  writeKvStore('prp_spi_audit_v1', fullState, actorEmail);
+  appendAuditLog(
+    'SPI_AUDIT_REALTIME',
+    `Auditor SPI memperbarui catatan/evaluasi audit KPI pada formulir ${cleanFormId} (Periode ${nextPeriod})`,
+    actorEmail,
+    ip,
+  );
+  return fullState.byForm[cleanFormId];
 }
 
 export function appendAuditLog(action, detail, actor = 'system', ip = '127.0.0.1') {

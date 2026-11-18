@@ -3331,19 +3331,23 @@ ${sectionSummaryHtml}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '0.66rem',
+                    gap: '5px',
+                    fontSize: '0.68rem',
                     fontWeight: 800,
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    background: periodStatusMeta.isLocked ? '#FEF2F2' : '#F0FDF4',
-                    border: `1px solid ${periodStatusMeta.isLocked ? '#FCA5A5' : '#86EFAC'}`,
-                    color: periodStatusMeta.isLocked ? '#7F1D1D' : '#14532D',
+                    padding: '3px 9px',
+                    borderRadius: '5px',
+                    background: periodStatusMeta.isLocked ? '#B91C1C' : '#15803D',
+                    border: `1.5px solid ${periodStatusMeta.isLocked ? '#7F1D1D' : '#14532D'}`,
+                    color: '#FFFFFF',
                     fontFamily: 'JetBrains Mono, monospace',
+                    letterSpacing: '0.02em',
+                    boxShadow: periodStatusMeta.isLocked
+                      ? '0 1px 4px rgba(185, 28, 28, 0.25)'
+                      : '0 1px 4px rgba(21, 128, 61, 0.25)',
                   }}
                 >
                   {periodStatusMeta.isLocked ? <LockKeyhole size={11} /> : <CheckCircle2 size={11} />}
-                  PERIODE {periodStatusMeta.year}: {periodStatusMeta.isLocked ? 'TERKUNCI (NONAKTIF)' : 'AKTIF (TERBUKA)'}
+                  PERIODE {periodStatusMeta.year}: {periodStatusMeta.isLocked ? 'TIDAK AKTIF (TERKUNCI)' : 'AKTIF (TERBUKA)'}
                 </span>
               )}
               {isUnitMode && (

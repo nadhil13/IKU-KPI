@@ -26,6 +26,7 @@ const SYNCED_STORE_KEYS = [
   'prp_users',
   'prp_notifications_v1',
   'prp_email_outbox_v1',
+  'prp_spi_audit_v1',
 ];
 
 const clientId = `client_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
@@ -98,6 +99,10 @@ function dispatchStoreRefreshEvents(changedKeys = []) {
   }
   if (set.has('prp_notifications_v1') || set.has('prp_email_outbox_v1')) {
     window.dispatchEvent(new Event('prp-notifications-updated'));
+  }
+  if (set.has('prp_spi_audit_v1')) {
+    window.dispatchEvent(new Event('prp-spi-audit-updated'));
+    window.dispatchEvent(new Event('prp-kpi-workflow-updated'));
   }
   window.dispatchEvent(new Event('prp-admin-updated'));
 }
@@ -464,7 +469,7 @@ async function flushPendingStorePush() {
   if (pendingStoreKeys.size === 0) return;
   const user = getCurrentUserFromStorage();
   const token = getAccessToken();
-  if (!user || !token || user.role === 'spi') {
+  if (!user || !token) {
     pendingStoreKeys.clear();
     return;
   }
@@ -474,6 +479,8 @@ async function flushPendingStorePush() {
 
   const storesPayload = {};
   for (const key of keysToPush) {
+    if (user.role === 'spi' && key !== 'prp_spi_audit_v1') continue;
+    if (key === 'prp_spi_audit_v1' && user.role !== 'spi') continue;
     if (SUPERADMIN_ONLY_SET.has(key) && user.role !== 'superadmin_prp') continue;
     if (key === 'prp_iku_submissions_v1' && user.role === 'kpi_only') continue;
     if (key === 'prp_kpi_distribution_v1' && user.role === 'iku_only') continue;
@@ -520,7 +527,7 @@ const SUPERADMIN_ONLY_SET = new Set([
   'prp_users',
 ]);
 
-// ================== BROADCAST REALTIME API & FALLBACK ==================
+// API siaran instruksi pusat (Broadcast) dan cadangan penyimpanan lokal.
 
 export function readLocalBroadcastsCache() {
   try {
@@ -785,6 +792,9 @@ export function connectRealtimeEngine() {
     });
     window.addEventListener('prp-notifications-updated', () => {
       if (!isApplyingRemote) queueStorePush(['prp_notifications_v1', 'prp_email_outbox_v1']);
+    });
+    window.addEventListener('prp-spi-audit-updated', () => {
+      if (!isApplyingRemote) queueStorePush(['prp_spi_audit_v1']);
     });
     window.addEventListener('prp-admin-updated', () => {
       if (!isApplyingRemote) {
