@@ -1,10 +1,9 @@
 import { useRef, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, ArrowRight } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
-import LiquidGlassCanvas from './LiquidGlassCanvas';
 import { getWindowLenis } from '../../lib/smoothScroll';
 import logoPln from '../../assets/logo_pln.png';
 import './Navbar.css';
@@ -64,6 +63,10 @@ export default function Navbar() {
   }, []);
 
   useGSAP(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+
     const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
 
     tl.fromTo(
@@ -94,7 +97,6 @@ export default function Navbar() {
     );
   }, { scope: wrapRef });
 
-  // Separate enter/leave thresholds keep the fold from flickering near the edge.
   useEffect(() => {
     const performFold = (fold) => {
       if (isFoldedRef.current === fold) return;
@@ -107,55 +109,51 @@ export default function Navbar() {
       if (!island || !wrap) return;
 
       const isMobileScreen = window.innerWidth <= 640;
+      const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const dur = prefersReduced ? 0 : 0.45;
 
       if (fold) {
-        // Morph into a floating island.
         gsap.to(wrap, {
-          paddingTop: isMobileScreen ? 8 : 14,
+          paddingTop: isMobileScreen
+            ? 'calc(8px + env(safe-area-inset-top, 0px))'
+            : 'calc(12px + env(safe-area-inset-top, 0px))',
           paddingLeft: isMobileScreen ? 12 : 22,
           paddingRight: isMobileScreen ? 12 : 22,
-          duration: 0.75,
-          ease: 'power4.out',
+          duration: dur,
+          ease: 'power3.out',
           overwrite: 'auto',
         });
 
         gsap.to(island, {
-          maxWidth: isMobileScreen ? 640 : 1040,
-          borderRadius: 9999,
+          maxWidth: isMobileScreen ? 640 : 1080,
+          borderRadius: 8,
           height: isMobileScreen ? 56 : 60,
           paddingLeft: isMobileScreen ? '0.85rem' : '1.5rem',
           paddingRight: isMobileScreen ? '0.85rem' : '1.5rem',
-          backgroundColor: 'rgba(255, 255, 255, 0.88)',
-          borderColor: 'rgba(255, 255, 255, 0.92)',
-          boxShadow:
-            '0 20px 48px -12px rgba(11, 23, 44, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.75) inset, 0 1px 2px rgba(0,0,0,0.04)',
-          duration: 0.75,
-          ease: 'power4.out',
+          backgroundColor: 'rgba(255, 255, 255, 0.96)',
+          borderColor: '#CBD5E1',
+          boxShadow: '0 10px 28px -10px rgba(7, 37, 52, 0.14)',
+          duration: dur,
+          ease: 'power3.out',
           overwrite: 'auto',
         });
-
-        gsap.fromTo(
-          island,
-          { rotateX: -2.0, scale: 0.99 },
-          { rotateX: 0, scale: 1, duration: 0.65, ease: 'power3.out', overwrite: 'auto' }
-        );
 
         if (sub) {
           gsap.to(sub, {
             opacity: 0,
             maxHeight: 0,
-            duration: 0.35,
+            duration: prefersReduced ? 0 : 0.25,
             ease: 'power2.inOut',
             overwrite: 'auto',
           });
         }
       } else {
         gsap.to(wrap, {
-          paddingTop: 0,
-          paddingLeft: 0,
-          paddingRight: 0,
-          duration: 0.65,
-          ease: 'power4.out',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingRight: 'env(safe-area-inset-right, 0px)',
+          duration: dur,
+          ease: 'power3.out',
           overwrite: 'auto',
         });
 
@@ -165,29 +163,21 @@ export default function Navbar() {
           height: isMobileScreen ? 64 : 72,
           paddingLeft: isMobileScreen ? '1rem' : '2.5rem',
           paddingRight: isMobileScreen ? '1rem' : '2.5rem',
-          backgroundColor: 'rgba(255, 255, 255, 0.70)',
-          borderColor: 'rgba(255, 255, 255, 0.40)',
-          boxShadow:
-            '0 4px 24px rgba(11, 23, 44, 0.05), 0 -1px 0 rgba(255, 255, 255, 0.7) inset',
-          duration: 0.65,
-          ease: 'power4.out',
+          backgroundColor: 'rgba(255, 255, 255, 0.94)',
+          borderColor: '#CBD5E1',
+          boxShadow: '0 2px 12px rgba(7, 37, 52, 0.06)',
+          duration: dur,
+          ease: 'power3.out',
           overwrite: 'auto',
         });
-
-        gsap.fromTo(
-          island,
-          { rotateX: 1.4, scale: 0.995 },
-          { rotateX: 0, scale: 1, duration: 0.6, ease: 'power3.out', overwrite: 'auto' }
-        );
 
         if (sub) {
           gsap.to(sub, {
             opacity: 1,
             maxHeight: 18,
-            duration: 0.45,
+            duration: prefersReduced ? 0 : 0.3,
             ease: 'power2.out',
             overwrite: 'auto',
-            delay: 0.1,
           });
         }
       }
@@ -260,8 +250,6 @@ export default function Navbar() {
         justifyContent: 'center',
         alignItems: 'flex-start',
         pointerEvents: 'none',
-        perspective: '1400px',
-        transformStyle: 'preserve-3d',
       }}
     >
       <header
@@ -277,46 +265,16 @@ export default function Navbar() {
           alignItems: 'center',
           justifyContent: 'space-between',
           borderRadius: '0px',
-          background: 'rgba(255, 255, 255, 0.70)',
-          backdropFilter: 'blur(28px) saturate(190%)',
-          WebkitBackdropFilter: 'blur(28px) saturate(190%)',
-          border: '1px solid rgba(255, 255, 255, 0.45)',
+          background: 'rgba(255, 255, 255, 0.94)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '1px solid #CBD5E1',
           borderTop: 'none',
-          boxShadow: '0 4px 24px rgba(11, 23, 44, 0.05), 0 -1px 0 rgba(255, 255, 255, 0.7) inset',
-          willChange: 'transform, border-radius, max-width, height, box-shadow',
+          boxShadow: '0 2px 12px rgba(7, 37, 52, 0.06)',
+          willChange: 'border-radius, max-width, height, box-shadow',
           transformOrigin: 'center top',
         }}
       >
-        <LiquidGlassCanvas navbarRef={islandRef} isFolded={isFolded} />
-
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: '2%',
-            right: '2%',
-            height: '1px',
-            zIndex: 1,
-            pointerEvents: 'none',
-            background:
-              'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.95) 25%, rgba(255,255,255,1) 50%, rgba(255,255,255,0.95) 75%, transparent 100%)',
-          }}
-        />
-
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: '1px',
-            zIndex: 1,
-            pointerEvents: 'none',
-            background:
-              'linear-gradient(90deg, transparent 5%, rgba(9, 78, 104, 0.22) 30%, rgba(14, 116, 128, 0.38) 50%, rgba(9, 78, 104, 0.22) 70%, transparent 95%)',
-          }}
-        />
-
         <Link
           to="/"
           ref={brandRef}
@@ -400,7 +358,7 @@ export default function Navbar() {
               className="navbar-brand-sub"
               style={{
                 fontSize: '0.64rem',
-                color: '#475569',
+                color: '#334155',
                 fontWeight: 600,
                 letterSpacing: '0.06em',
                 textTransform: 'uppercase',
@@ -518,7 +476,6 @@ export default function Navbar() {
             }}
           >
             <span>Masuk Portal</span>
-            <ArrowRight size={14} strokeWidth={2.2} />
           </Link>
         </div>
 
@@ -530,20 +487,24 @@ export default function Navbar() {
             aria-expanded={isOpen}
             style={{
               background: '#F7FAFB',
-              border: '1px solid #BFD2DC',
+              border: '1px solid #64748B',
               cursor: 'pointer',
               minWidth: '44px',
               minHeight: '44px',
-              padding: '0.5rem',
+              padding: '0.45rem 0.75rem',
               color: '#072534',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: '0.4rem',
               borderRadius: '6px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
               transition: 'background 0.2s ease, border-color 0.2s ease',
             }}
           >
-            {isOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
+            {isOpen ? <X size={18} strokeWidth={2} /> : <Menu size={18} strokeWidth={2} />}
+            <span>{isOpen ? 'Tutup' : 'Menu'}</span>
           </button>
         </div>
       </header>
@@ -559,7 +520,7 @@ export default function Navbar() {
                 onClick={(e) => handleNavClick(e, item)}
                 style={{
                   background: isItemActive ? '#EDF5F7' : 'transparent',
-                  border: isItemActive ? '1px solid #B8D9E2' : '1px solid transparent',
+                  border: isItemActive ? '1px solid #094E68' : '1px solid transparent',
                   textAlign: 'left',
                   fontSize: '0.94rem',
                   fontWeight: isItemActive ? 700 : 500,
@@ -610,7 +571,6 @@ export default function Navbar() {
             }}
           >
             <span>Masuk Portal</span>
-            <ArrowRight size={15} strokeWidth={2.2} />
           </Link>
         </div>
       )}

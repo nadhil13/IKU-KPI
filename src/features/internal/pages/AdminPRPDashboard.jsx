@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -115,7 +114,7 @@ export default function AdminPRPDashboard() {
       idx: '05',
       title: 'Inspeksi Ruang Kerja Evaluasi',
       sub: 'Pratinjau langsung matriks 8 IKU dan lembar kerja KPI',
-      to: '/internal',
+      to: '/internal/kpi',
     },
     {
       idx: '06',
@@ -495,18 +494,16 @@ export default function AdminPRPDashboard() {
 
         <div className="prp-mast-sub" style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
           <Link className="ent-btn" to="/internal/admin/governance?tab=submissions" style={{ minHeight: '44px' }}>
-            Pusat Review ({kpiPending + ikuPending}) <ArrowUpRight size={14} />
+            Pusat Review ({kpiPending + ikuPending})
           </Link>
           <Link className="ent-btn ent-btn-primary" to="/internal/admin/governance?tab=kpi-builder" style={{ minHeight: '44px' }}>
-            Buka Desainer KPI <ArrowUpRight size={14} />
+            Buka Desainer KPI
           </Link>
         </div>
       </div>
 
-      {/* Keyline */}
       <div className="prp-keyline" />
 
-      {/* 4-Column Connected Telemetry Ledger */}
       <div className="prp-ledger-grid">
         {controlLedger.map((item) => (
           <Link className="prp-ledger-cell" key={item.idx} to={item.to}>
@@ -522,7 +519,9 @@ export default function AdminPRPDashboard() {
               >
                 {item.idx} · {item.code}
               </span>
-              <ArrowUpRight size={15} className="prp-ledger-arrow" />
+              <span className="prp-ledger-arrow" style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.62rem', fontWeight: 700 }}>
+                BUKA
+              </span>
             </div>
 
             <div>
@@ -562,9 +561,9 @@ export default function AdminPRPDashboard() {
             <Link
               className="ent-btn"
               to="/internal/admin/governance?tab=audit"
-              style={{ minHeight: '40px', padding: '0.45rem 0.85rem', fontSize: '0.74rem' }}
+              style={{ minHeight: '44px', padding: '0.45rem 0.85rem', fontSize: '0.74rem' }}
             >
-              Log Lengkap <ArrowUpRight size={13} />
+              Log Lengkap
             </Link>
           </div>
 
@@ -637,7 +636,9 @@ export default function AdminPRPDashboard() {
                     </div>
                   </div>
                 </div>
-                <ArrowUpRight size={15} color="#094E68" style={{ flexShrink: 0 }} />
+                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.62rem', fontWeight: 700, color: '#094E68', flexShrink: 0 }}>
+                  BUKA
+                </span>
               </Link>
             ))}
           </div>

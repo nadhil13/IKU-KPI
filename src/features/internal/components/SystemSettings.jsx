@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, ShieldAlert, Sliders } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { readSystemConfig, saveSystemConfig } from '../adminStore';
@@ -7,6 +7,19 @@ export default function SystemSettings() {
   const { currentUser } = useAuth();
   const [config, setConfig] = useState(() => ({ minimumPasswordLength: 8, ...readSystemConfig() }));
   const [feedback, setFeedback] = useState({ type: '', text: '' });
+
+  useEffect(() => {
+    const syncConfig = (event) => {
+      if (event?.type === 'storage' && event.key && event.key !== 'prp_system_config') return;
+      setConfig({ minimumPasswordLength: 8, ...readSystemConfig() });
+    };
+    window.addEventListener('prp-admin-updated', syncConfig);
+    window.addEventListener('storage', syncConfig);
+    return () => {
+      window.removeEventListener('prp-admin-updated', syncConfig);
+      window.removeEventListener('storage', syncConfig);
+    };
+  }, []);
 
   const change = (field, value) => {
     setConfig((previous) => ({ ...previous, [field]: value }));

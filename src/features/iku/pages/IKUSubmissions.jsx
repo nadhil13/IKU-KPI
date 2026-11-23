@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -74,8 +74,11 @@ export default function IKUSubmissions() {
   const { currentUser } = useAuth();
   const admin = currentUser?.role === 'superadmin_prp';
   const [tick, refresh] = useState(0);
-  const periods = getIkuPeriods();
-  const [params] = useSearchParams();
+  const periods = useMemo(() => {
+    void tick;
+    return getIkuPeriods();
+  }, [tick]);
+  const [params, setParams] = useSearchParams();
 
   const [period, setPeriod] = useState(() =>
     periods.some((p) => p.id === params.get('period'))
@@ -92,15 +95,19 @@ export default function IKUSubmissions() {
   const paramPeriod = params.get('period');
   const paramId = params.get('id');
   useEffect(() => {
-    if (paramPeriod && periods.some((p) => p.id === paramPeriod) && paramPeriod !== period) {
-      setPeriod(paramPeriod);
-      setDraftValues(null);
+    if (paramPeriod && periods.some((p) => p.id === paramPeriod)) {
+      setPeriod((prev) => {
+        if (prev !== paramPeriod) setDraftValues(null);
+        return paramPeriod;
+      });
     }
-    if (paramId !== null && paramId !== selected) {
-      setSelected(paramId);
-      setDraftValues(null);
+    if (paramId !== null) {
+      setSelected((prev) => {
+        if (prev !== paramId) setDraftValues(null);
+        return paramId;
+      });
     }
-  }, [paramPeriod, paramId, periods, period, selected]);
+  }, [paramPeriod, paramId, periods]);
 
   const records = listIkuSubmissions(currentUser).filter((r) => r.period === period);
   const record = admin ? records.find((r) => r.id === selected) : records[0];
@@ -443,12 +450,19 @@ export default function IKUSubmissions() {
             style={{ minHeight: '44px' }}
             value={period}
             onChange={(e) => {
-              setPeriod(e.target.value);
+              const nextPeriod = e.target.value;
+              setPeriod(nextPeriod);
               setSelected('');
               setDraftValues(null);
               setReason('');
               setChecked(false);
               setFeedback(null);
+              setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set('period', nextPeriod);
+                next.delete('id');
+                return next;
+              }, { replace: true });
             }}
           >
             {periods.map((p) => (
@@ -467,11 +481,18 @@ export default function IKUSubmissions() {
               style={{ minHeight: '44px' }}
               value={selected}
               onChange={(e) => {
-                setSelected(e.target.value);
+                const nextId = e.target.value;
+                setSelected(nextId);
                 setDraftValues(null);
                 setReason('');
                 setChecked(false);
                 setFeedback(null);
+                setParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (nextId) next.set('id', nextId);
+                  else next.delete('id');
+                  return next;
+                }, { replace: true });
               }}
             >
               <option value="">Pilih submission unit ({records.length})</option>
@@ -906,7 +927,7 @@ export default function IKUSubmissions() {
               style={{ padding: '0.75rem 0', borderTop: i > 0 ? '1px solid #EDF3F6' : 'none', fontSize: '0.78rem' }}
             >
               <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#072534', minHeight: '44px' }}>
-                {new Date(entry.at).toLocaleString('id-ID')} · {entry.action} · {entry.actor.email} ({entry.from || 'Baru'} -&gt; {entry.status})
+                {new Date(entry.at).toLocaleString('id-ID')} · {entry.action} · {entry.actor?.email || entry.actor || 'Sistem'} ({entry.from || 'Baru'} -&gt; {entry.status})
               </summary>
               {entry.reason && <p style={{ margin: '0.4rem 0', color: '#334155' }}>Catatan: {entry.reason}</p>}
               <pre

@@ -156,10 +156,12 @@ export default function Dashboard() {
     };
     window.addEventListener('storage', refreshPeriods);
     window.addEventListener('prp-admin-updated', refreshPeriods);
+    window.addEventListener('prp-kpi-workflow-updated', refreshPeriods);
     window.addEventListener('kpi-workflow-updated', refreshPeriods);
     return () => {
       window.removeEventListener('storage', refreshPeriods);
       window.removeEventListener('prp-admin-updated', refreshPeriods);
+      window.removeEventListener('prp-kpi-workflow-updated', refreshPeriods);
       window.removeEventListener('kpi-workflow-updated', refreshPeriods);
     };
   }, []);
@@ -502,9 +504,6 @@ export default function Dashboard() {
               background: isPeriodOpen ? '#15803D' : '#B91C1C',
               border: `1.5px solid ${isPeriodOpen ? '#14532D' : '#7F1D1D'}`,
               color: '#FFFFFF',
-              boxShadow: isPeriodOpen
-                ? '0 2px 6px rgba(21, 128, 61, 0.28)'
-                : '0 2px 6px rgba(185, 28, 28, 0.28)',
             }}
             title={selectedPeriod?.statusLabel || (isPeriodOpen ? 'Periode Aktif (Terbuka untuk Diisi)' : 'Periode Tidak Aktif (Terkunci)')}
           >
@@ -642,10 +641,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Keyline */}
       <div className="dash-keyline" />
 
-      {/* Main Content First: Immediate Operational Workspace before Summary Cards */}
       {currentView === 'iku' ? (
         <div style={{ marginTop: '1.5rem' }}>
           {/* Honest Data Source Notice when no submission exists yet */}
@@ -671,7 +668,7 @@ export default function Dashboard() {
               <div>
                 <strong style={{ color: '#072534' }}>Belum ada pengajuan IKU pada periode {effectiveYear}.</strong>{' '}
                 Kartu di bawah menampilkan standar target referensi RKAT ITPLN. Buka menu{' '}
-                {['iku_only', 'superadmin_prp'].includes(currentUser?.role) ? (
+                {['iku_only', 'dual', 'superadmin_prp'].includes(currentUser?.role) ? (
                   <Link to="/internal/iku-submissions" style={{ color: '#094E68', fontWeight: 700 }}>
                     Submission &amp; Verifikasi 8 IKU
                   </Link>
@@ -837,7 +834,7 @@ export default function Dashboard() {
                       <span>{item.pic}</span>
                       <Link
                         to={
-                          ['iku_only', 'superadmin_prp'].includes(currentUser?.role)
+                          ['iku_only', 'dual', 'superadmin_prp'].includes(currentUser?.role)
                             ? `/internal/iku-submissions?period=${encodeURIComponent(effectiveYear)}`
                             : `/iku-list#iku-${item.id}`
                         }
@@ -855,7 +852,7 @@ export default function Dashboard() {
                           textDecoration: 'none',
                         }}
                       >
-                        {['iku_only', 'superadmin_prp'].includes(currentUser?.role) ? 'INPUT' : 'DETAIL'}
+                        {['iku_only', 'dual', 'superadmin_prp'].includes(currentUser?.role) ? 'INPUT' : 'DETAIL'}
                       </Link>
                     </div>
                   </div>

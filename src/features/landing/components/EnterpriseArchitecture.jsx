@@ -117,7 +117,6 @@ export default function EnterpriseArchitecture() {
       return undefined;
     }
 
-    // 1. Smooth Reveal untuk Header (Selaras dengan Section 01 & 02 di Home.jsx)
     gsap.fromTo(
       '.topo-header-item',
       { y: 40, opacity: 0 },
@@ -135,7 +134,6 @@ export default function EnterpriseArchitecture() {
       }
     );
 
-    // 2. Scroll-Scrubbed Topological Canvas (user-driven, tanpa loop tak terbatas)
     const orbitEl = sectionRef.current?.querySelector('.sso-orbit-dashed');
     stInstanceRef.current = ScrollTrigger.create({
       trigger: pinWrapRef.current,
@@ -148,7 +146,6 @@ export default function EnterpriseArchitecture() {
       onUpdate: (self) => {
         const p = self.progress;
 
-        // A. Update Hairline Progress & Orbit Sudut berdasar Scroll
         if (topLineFillRef.current) {
           topLineFillRef.current.style.transform = `scaleX(${p})`;
         }
@@ -156,8 +153,7 @@ export default function EnterpriseArchitecture() {
           orbitEl.setAttribute('transform', `rotate(${(p * 180).toFixed(1)} 185 210)`);
         }
 
-        // B. Kalkulasi Posisi Y Magnetis untuk Kabel SVG Kiri (85px -> 335px)
-        const scaled = p * (Y_NODES.length - 1); // 0.0 -> 2.0
+        const scaled = p * (Y_NODES.length - 1);
         const segIdx = Math.min(Y_NODES.length - 2, Math.floor(scaled));
         const frac = scaled - segIdx;
         const smoothFrac = easeInOutCubic(frac);
@@ -178,13 +174,11 @@ export default function EnterpriseArchitecture() {
           activeNodeDotRef.current.setAttribute('cy', currentY.toFixed(2));
         }
 
-        // C. Efek Skala Halus pada Inti SSO
         if (ssoCoreGroupRef.current) {
           const transitPulse = 1 + Math.sin(frac * Math.PI) * 0.05;
           ssoCoreGroupRef.current.style.transform = `scale(${transitPulse.toFixed(3)})`;
         }
 
-        // D. Trigger Perubahan Role
         const nextIdx = Math.min(
           ROLES_DATA.length - 1,
           Math.max(0, Math.round(scaled))
@@ -194,8 +188,11 @@ export default function EnterpriseArchitecture() {
     });
   }, { scope: sectionRef });
 
-  // Transisi Silky (expo.out) pada Kartu Kanan setiap kali Role aktif berganti
   useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
     const role = ROLES_DATA[activeIdx];
 
     gsap.fromTo(
@@ -377,7 +374,7 @@ export default function EnterpriseArchitecture() {
               display: 'inline-block',
             }}
           >
-            ARSITEKTUR HAK AKSES SSO
+            ARSITEKTUR OTORITAS PERAN (RBAC)
           </div>
 
           <h2
@@ -424,8 +421,9 @@ export default function EnterpriseArchitecture() {
                   className="role-item-row"
                   onClick={() => handleSelectRole(idx)}
                   style={{
-                    opacity: isActive ? 1 : 0.48,
-                    transform: isActive ? 'translate3d(8px, 0, 0)' : 'translate3d(0px, 0, 0)',
+                    background: isActive ? '#F7FAFB' : 'transparent',
+                    border: isActive ? '1px solid #094E68' : '1px solid transparent',
+                    transform: isActive ? 'translate3d(6px, 0, 0)' : 'translate3d(0px, 0, 0)',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem' }}>
@@ -450,7 +448,7 @@ export default function EnterpriseArchitecture() {
                             fontWeight: 800,
                             margin: 0,
                             letterSpacing: '-0.025em',
-                            color: '#072534',
+                            color: isActive ? '#072534' : '#334155',
                           }}
                         >
                           {item.title}
@@ -625,13 +623,13 @@ export default function EnterpriseArchitecture() {
                   fill="#ffffff"
                   style={{ fontSize: '8px', fontWeight: 800, letterSpacing: '1.5px' }}
                 >
-                  SSO
+                  RBAC
                 </text>
                 <text
                   x="185"
                   y="218"
                   textAnchor="middle"
-                  fill="#94B8C7"
+                  fill="#C5DEE8"
                   style={{ fontSize: '6.5px', fontWeight: 600, letterSpacing: '1px' }}
                 >
                   ITPLN
@@ -640,7 +638,6 @@ export default function EnterpriseArchitecture() {
             </svg>
           </div>
 
-          {/* Bidang ruang kerja tujuan (8 IKU Kementerian dan KPI Operasional). */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div
               ref={ikuPlaneRef}
@@ -664,7 +661,7 @@ export default function EnterpriseArchitecture() {
                       width: '7px',
                       height: '7px',
                       borderRadius: '1px',
-                      background: current.iku.unlocked ? '#38BDF8' : '#94A3B8',
+                      background: current.iku.unlocked ? '#1B9AAA' : '#64748B',
                     }}
                   />
                   <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: current.iku.unlocked ? '#C5DEE8' : '#475569' }}>
@@ -683,7 +680,7 @@ export default function EnterpriseArchitecture() {
                     padding: '0.22rem 0.58rem',
                     borderRadius: '4px',
                     background: current.iku.unlocked ? '#094E68' : '#EDF3F6',
-                    border: current.iku.unlocked ? '1px solid #1B9AAA' : '1px solid #BFD2DC',
+                    border: current.iku.unlocked ? '1px solid #1B9AAA' : '1px solid #64748B',
                     color: current.iku.unlocked ? '#ffffff' : '#334155',
                   }}
                 >
@@ -719,8 +716,8 @@ export default function EnterpriseArchitecture() {
               </div>
 
               <div className="plane-anim-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.73rem' }}>
-                <span style={{ color: current.iku.unlocked ? '#94B8C7' : '#475569' }}>{current.iku.actionText}</span>
-                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: current.iku.unlocked ? '#38BDF8' : '#475569' }}>{current.iku.code}</span>
+                <span style={{ color: current.iku.unlocked ? '#C5DEE8' : '#475569' }}>{current.iku.actionText}</span>
+                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: current.iku.unlocked ? '#E2F1F7' : '#475569' }}>{current.iku.code}</span>
               </div>
             </div>
 
@@ -746,7 +743,7 @@ export default function EnterpriseArchitecture() {
                       width: '7px',
                       height: '7px',
                       borderRadius: '1px',
-                      background: current.kpi.unlocked ? '#38BDF8' : '#94A3B8',
+                      background: current.kpi.unlocked ? '#1B9AAA' : '#64748B',
                     }}
                   />
                   <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: current.kpi.unlocked ? '#C5DEE8' : '#475569' }}>
@@ -765,7 +762,7 @@ export default function EnterpriseArchitecture() {
                     padding: '0.22rem 0.58rem',
                     borderRadius: '4px',
                     background: current.kpi.unlocked ? '#094E68' : '#EDF3F6',
-                    border: current.kpi.unlocked ? '1px solid #1B9AAA' : '1px solid #BFD2DC',
+                    border: current.kpi.unlocked ? '1px solid #1B9AAA' : '1px solid #64748B',
                     color: current.kpi.unlocked ? '#ffffff' : '#334155',
                   }}
                 >
@@ -801,8 +798,8 @@ export default function EnterpriseArchitecture() {
               </div>
 
               <div className="plane-anim-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.73rem' }}>
-                <span style={{ color: current.kpi.unlocked ? '#94B8C7' : '#475569' }}>{current.kpi.actionText}</span>
-                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: current.kpi.unlocked ? '#38BDF8' : '#475569' }}>{current.kpi.code}</span>
+                <span style={{ color: current.kpi.unlocked ? '#C5DEE8' : '#475569' }}>{current.kpi.actionText}</span>
+                <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', color: current.kpi.unlocked ? '#E2F1F7' : '#475569' }}>{current.kpi.code}</span>
               </div>
             </div>
           </div>

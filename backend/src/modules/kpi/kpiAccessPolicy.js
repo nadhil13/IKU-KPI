@@ -33,9 +33,19 @@ export function canCallerEditKpiRow(item, callerUser) {
   return rowPics.some((code) => userPics.has(code));
 }
 
+function splitFormAndEmailKey(entryKey) {
+  const raw = String(entryKey || '');
+  const idx = raw.lastIndexOf(':');
+  if (idx === -1) return { formId: raw, email: '' };
+  return {
+    formId: raw.slice(0, idx),
+    email: raw.slice(idx + 1).trim().toLowerCase(),
+  };
+}
+
 function keyEmailLabel(entryKey) {
-  const parts = String(entryKey).split(':');
-  return parts[1] || entryKey;
+  const { email } = splitFormAndEmailKey(entryKey);
+  return email || String(entryKey || '');
 }
 
 /**
@@ -49,8 +59,11 @@ export function syncActiveFormWithPublishedSections(existingWorkflow, nextSectio
     : { forms: [], submissions: {}, evidence: {}, drafts: {} };
   if (!Array.isArray(base.forms) || base.forms.length === 0) return null;
 
-  const lastIdx = base.forms.length - 1;
-  const latestForm = base.forms[lastIdx];
+  const activeIdx = base.activeFormId
+    ? base.forms.findIndex((f) => String(f?.id) === String(base.activeFormId))
+    : -1;
+  const targetIdx = activeIdx >= 0 ? activeIdx : base.forms.length - 1;
+  const latestForm = base.forms[targetIdx];
   if (JSON.stringify(latestForm.sections || []) === JSON.stringify(nextSections)) {
     return null;
   }
@@ -64,7 +77,7 @@ export function syncActiveFormWithPublishedSections(existingWorkflow, nextSectio
   };
   return {
     ...base,
-    forms: base.forms.map((f, idx) => (idx === lastIdx ? updatedForm : f)),
+    forms: base.forms.map((f, idx) => (idx === targetIdx ? updatedForm : f)),
   };
 }
 
@@ -78,7 +91,7 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
     ? incomingWorkflow
     : { forms: [], submissions: {}, evidence: {}, drafts: {} };
 
-  // Jika server belum memiliki form sama sekali, izinkan inisialisasi form default tanpa submission
+  // Saat server belum memiliki form aktif (cold-start), izinkan bootstrap struktur form awal
   const forms = Array.isArray(base.forms) && base.forms.length > 0
     ? base.forms
     : (Array.isArray(incoming.forms) ? incoming.forms.slice(0, 2) : []);
@@ -95,8 +108,8 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
   // Cek apakah ada upaya memodifikasi key milik unit lain
   const checkForeignKeyTampering = (incomingMap, baseMap, mapLabel) => {
     for (const [entryKey, incomingVal] of Object.entries(incomingMap || {})) {
-      const [, keyEmail] = String(entryKey).split(':');
-      if (keyEmail && keyEmail.toLowerCase() !== callerEmail) {
+      const { email: keyEmail } = splitFormAndEmailKey(entryKey);
+      if (keyEmail && keyEmail !== callerEmail) {
         const prevJson = JSON.stringify(baseMap?.[entryKey] ?? null);
         const nextJson = JSON.stringify(incomingVal ?? null);
         if (prevJson !== nextJson) {
@@ -133,7 +146,6 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
 
     const unitKey = `${form.id}:${callerEmail}`;
 
-    // 1. Validasi Draf Unit
     if (incoming.drafts && Object.prototype.hasOwnProperty.call(incoming.drafts, unitKey)) {
       const rawDraft = incoming.drafts[unitKey];
       if (!rawDraft) {
@@ -173,7 +185,6 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
       delete nextDrafts[unitKey];
     }
 
-    // 2. Validasi Evidence Unit per Baris
     const prevSubForUnit = base.submissions?.[unitKey];
     const isUnitSubmissionLocked = prevSubForUnit && ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(prevSubForUnit.status);
 
@@ -183,7 +194,10 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
       } else {
         const rawEvList = Array.isArray(incoming.evidence[unitKey]) ? incoming.evidence[unitKey] : [];
         const prevEvById = new Map(((base.evidence && base.evidence[unitKey]) || []).map((e) => [e.id, e]));
-        const cleanEvList = rawEvList.map((ev) => {
+        const seenEvIds = new Set();
+        const cleanEvList = [];
+        for (const ev of rawEvList) {
+          if (!ev || typeof ev !== 'object') continue;
           if (!editableItemIds.has(ev.indicatorId)) {
             appendAuditLog(
               'SECURITY_VIOLATION',
@@ -196,15 +210,24 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
               { status: 403 },
             );
           }
-          const prevEv = prevEvById.get(ev.id);
-          return {
+          const evId = String(ev.id || `${ev.indicatorId}_${cleanEvList.length + 1}`);
+          if (seenEvIds.has(evId)) continue;
+          seenEvIds.add(evId);
+          const prevEv = prevEvById.get(evId);
+          const isUnchangedVerified = prevEv?.status === 'VERIFIED'
+            && prevEv.indicatorId === ev.indicatorId
+            && String(prevEv.url || '') === String(ev.url || '')
+            && String(prevEv.dataUrl || '') === String(ev.dataUrl || '')
+            && String(prevEv.fileName || '') === String(ev.fileName || '');
+          cleanEvList.push({
             ...ev,
+            id: evId,
             owner: callerEmail,
             ownerUnit: callerUser.unit || callerUser.name,
             picCodes: callerUser.picCodes || [],
-            status: prevEv?.status === 'VERIFIED' ? 'VERIFIED' : 'PENDING',
-          };
-        });
+            status: isUnchangedVerified ? 'VERIFIED' : 'PENDING',
+          });
+        }
         if (cleanEvList.length > 0) {
           nextEvidence[unitKey] = cleanEvList;
         } else {
@@ -215,10 +238,10 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
       delete nextEvidence[unitKey];
     }
 
-    // 3. Validasi Submission Unit
     if (incoming.submissions && Object.prototype.hasOwnProperty.call(incoming.submissions, unitKey)) {
       const rawSub = incoming.submissions[unitKey];
       const prevSub = base.submissions?.[unitKey];
+      const isPrevFinalLocked = prevSub && ['APPROVED', 'LOCKED'].includes(prevSub.status);
       if (!rawSub) {
         if (!isUnitSubmissionLocked) {
           delete nextSubmissions[unitKey];
@@ -236,25 +259,29 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
             { status: 403 },
           );
         }
-        for (const [k, v] of Object.entries(rawSub.values || {})) {
-          if (!editableSubKeys.has(k) && String(v ?? '').trim() !== '') {
-            appendAuditLog(
-              'SECURITY_VIOLATION',
-              `Percobaan submit nilai pada sub-baris ${k} milik PIC lain oleh ${callerEmail}`,
-              callerEmail,
-              ip,
-            );
-            throw Object.assign(
-              new Error(`Pelanggaran hak akses PIC: Anda tidak berhak mengisi sub-baris ${k}.`),
-              { status: 403 },
-            );
+        if (isPrevFinalLocked) {
+          nextSubmissions[unitKey] = prevSub;
+        } else {
+          for (const [k, v] of Object.entries(rawSub.values || {})) {
+            if (!editableSubKeys.has(k) && String(v ?? '').trim() !== '') {
+              appendAuditLog(
+                'SECURITY_VIOLATION',
+                `Percobaan submit nilai pada sub-baris ${k} milik PIC lain oleh ${callerEmail}`,
+                callerEmail,
+                ip,
+              );
+              throw Object.assign(
+                new Error(`Pelanggaran hak akses PIC: Anda tidak berhak mengisi sub-baris ${k}.`),
+                { status: 403 },
+              );
+            }
           }
+          nextSubmissions[unitKey] = {
+            ...rawSub,
+            email: callerEmail,
+            picCodes: callerUser.picCodes || [],
+          };
         }
-        nextSubmissions[unitKey] = {
-          ...rawSub,
-          email: callerEmail,
-          picCodes: callerUser.picCodes || [],
-        };
       }
     }
   }
@@ -411,8 +438,8 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
     const filterUnlockedMap = (mapObj, onlyApprovedSubmissions = false) => {
       const out = {};
       for (const [entryKey, val] of Object.entries(mapObj || {})) {
-        const [fId, keyEmail] = String(entryKey).split(':');
-        if (keyEmail && keyEmail.toLowerCase() === spiOwnEmail) {
+        const { formId: fId, email: keyEmail } = splitFormAndEmailKey(entryKey);
+        if (keyEmail && keyEmail === spiOwnEmail) {
           out[entryKey] = val;
           continue;
         }
@@ -429,8 +456,8 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
     const filterOwnDrafts = (mapObj) => {
       const out = {};
       for (const [entryKey, val] of Object.entries(mapObj || {})) {
-        const [, keyEmail] = String(entryKey).split(':');
-        if (keyEmail && keyEmail.toLowerCase() === spiOwnEmail) {
+        const { email: keyEmail } = splitFormAndEmailKey(entryKey);
+        if (keyEmail && keyEmail === spiOwnEmail) {
           out[entryKey] = val;
         }
       }
@@ -459,8 +486,8 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
   const filterByOwnEmail = (mapObj) => {
     const out = {};
     for (const [entryKey, val] of Object.entries(mapObj || {})) {
-      const [, keyEmail] = String(entryKey).split(':');
-      if (keyEmail && keyEmail.toLowerCase() === callerEmail) {
+      const { email: keyEmail } = splitFormAndEmailKey(entryKey);
+      if (keyEmail && keyEmail === callerEmail) {
         out[entryKey] = val;
       }
     }

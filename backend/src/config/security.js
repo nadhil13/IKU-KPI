@@ -65,8 +65,9 @@ function base64UrlDecode(input) {
 }
 
 export function signAccessToken(user, extra = {}) {
+  const opts = typeof extra === 'number' ? { ttlSeconds: extra } : (extra || {});
   const nowSec = Math.floor(Date.now() / 1000);
-  const jti = extra.jti || `sess_${crypto.randomUUID()}`;
+  const jti = opts.jti || `sess_${crypto.randomUUID()}`;
   const header = { alg: 'HS256', typ: 'JWT' };
   const payload = {
     sub: String(user.email || '').toLowerCase(),
@@ -76,7 +77,7 @@ export function signAccessToken(user, extra = {}) {
     picCodes: Array.isArray(user.picCodes) ? user.picCodes : [],
     jti,
     iat: nowSec,
-    exp: nowSec + (extra.ttlSeconds || ACCESS_TOKEN_TTL_SECONDS),
+    exp: nowSec + (opts.ttlSeconds || ACCESS_TOKEN_TTL_SECONDS),
   };
   const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
   const signature = base64UrlEncode(

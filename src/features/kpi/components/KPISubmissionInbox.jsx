@@ -756,7 +756,6 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
           </div>
           <select className="gov-field" aria-label="Status" value={filter} onChange={(e) => setFilter(e.target.value)}>
             <option value="">Semua status pengisian</option>
-            <option value="EMPTY">Belum mulai mengisi</option>
             {Object.entries(labels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
@@ -903,15 +902,45 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     ))}
                   </tbody>
                 </table>
-                {unitEntries.length === 0 && (
-                  <div className="gov-placeholder">Tidak ada unit KPI yang cocok dengan filter pencarian.</div>
+                 {unitEntries.length === 0 && (
+                  <div className="gov-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
+                    <span>Tidak ada unit KPI yang cocok dengan filter pencarian.</span>
+                    {(search || filter) && (
+                      <button
+                        type="button"
+                        className="gov-button"
+                        style={{ minHeight: '44px' }}
+                        onClick={() => {
+                          setSearch('');
+                          setFilter('');
+                        }}
+                      >
+                        Reset Pencarian &amp; Filter
+                      </button>
+                    )}
+                  </div>
                 )}
               </HorizontalTableViewport>
             </div>
 
             <div className="resp-mobile-cards">
               {unitEntries.length === 0 ? (
-                <div className="gov-placeholder">Tidak ada unit KPI yang cocok dengan filter pencarian.</div>
+                <div className="gov-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
+                  <span>Tidak ada unit KPI yang cocok dengan filter pencarian.</span>
+                  {(search || filter) && (
+                    <button
+                      type="button"
+                      className="gov-button"
+                      style={{ minHeight: '44px' }}
+                      onClick={() => {
+                        setSearch('');
+                        setFilter('');
+                      }}
+                    >
+                      Reset Pencarian &amp; Filter
+                    </button>
+                  )}
+                </div>
               ) : (
                 unitEntries.map(({ u, r, evList, effectiveStatus, assignedCount, verifiedCount }) => (
                   <article
@@ -1073,17 +1102,29 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
         };
 
         const runUnitTransition = (status) => {
-          if (status === 'LOCKED' || record?.status === 'LOCKED') {
-            if (record?.status === 'LOCKED') {
-              setPendingUnlock({
-                formId: form.id,
-                email: targetEmail,
-                status,
-                nextNote: note || 'Submission dibuka kembali oleh PRP',
-                pendingEdits: adminUnitEdits,
-              });
-              return;
-            }
+          if (status === 'LOCKED' || status === 'REJECTED' || record?.status === 'LOCKED') {
+            const isUnlock = record?.status === 'LOCKED';
+            setPendingUnlock({
+              formId: form.id,
+              email: targetEmail,
+              status,
+              isUnlock,
+              title: isUnlock
+                ? 'Buka Kunci Submission KPI'
+                : status === 'LOCKED'
+                  ? 'Kunci Final Submission KPI'
+                  : 'Tolak Submission KPI Unit',
+              message: isUnlock
+                ? `Buka kembali submission yang sudah dikunci untuk ${targetEmail}? Unit dapat mengubah data capaian lagi.`
+                : status === 'LOCKED'
+                  ? `Kunci final submission milik ${unitDisplayName} (${targetEmail})? Setelah dikunci final, unit tidak dapat mengubah isian kecuali dibuka kembali oleh Admin PRP.`
+                  : `Tolak submission milik ${unitDisplayName} (${targetEmail}) dengan catatan: "${note || '-'}"?`,
+              confirmLabel: isUnlock ? 'Ya, Buka Kunci' : status === 'LOCKED' ? 'Ya, Kunci Final' : 'Ya, Tolak Submission',
+              danger: status === 'REJECTED',
+              nextNote: note || (isUnlock ? 'Submission dibuka kembali oleh PRP' : 'Disetujui dan dikunci final oleh PRP'),
+              pendingEdits: adminUnitEdits,
+            });
+            return;
           }
           mutate(() => {
             if (adminUnitEdits) {
@@ -1260,7 +1301,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             disabled={!note.trim()}
                             onClick={() => saveUnitEditsNow('NEEDS_REVISION')}
                           >
-                            Kirim Revisi + Email ke Unit
+                            Kirim Revisi ke Unit
                           </button>
                         </>
                       ) : (
@@ -1656,10 +1697,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                     onClick={() => mutate(() => {
                                       reviewUnitEvidence(form.id, targetEmail, e.id, 'NEEDS_REVISION', evActionPanel.note || '', currentUser);
                                       setEvActionPanel(null);
-                                      setSavedNotice(`Permintaan revisi bukti "${e.label}" terkirim via Notifikasi Web + Email ke unit.`);
+                                      setSavedNotice(`Permintaan revisi bukti "${e.label}" disimpan ke Notifikasi In-App & Outbox Audit Email unit.`);
                                     })}
                                   >
-                                    <Send size={12} /> Kirim Revisi Bukti + Email
+                                    <Send size={12} /> Kirim Revisi Bukti
                                   </button>
                                   <button type="button" className="ent-btn" style={{ minHeight: '44px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
                                     Batal
@@ -1887,10 +1928,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                 id="kpi-unlock-title"
                 style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
               >
-                Buka Kunci Submission KPI
+                {pendingUnlock.title || 'Buka Kunci Submission KPI'}
               </h3>
               <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
-                Buka kembali submission yang sudah dikunci untuk <strong>{pendingUnlock.email}</strong>? Unit dapat mengubah data capaian lagi.
+                {pendingUnlock.message || `Buka kembali submission yang sudah dikunci untuk ${pendingUnlock.email}?`}
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setPendingUnlock(null)}>
@@ -1899,7 +1940,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                 <button
                   type="button"
                   className="ent-btn ent-btn-primary"
-                  style={{ minHeight: '44px' }}
+                  style={{
+                    minHeight: '44px',
+                    ...(pendingUnlock.danger ? { background: '#991B1B', borderColor: '#991B1B', color: '#FFFFFF' } : null),
+                  }}
                   onClick={() => {
                     const target = pendingUnlock;
                     setPendingUnlock(null);
@@ -1915,7 +1959,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     });
                   }}
                 >
-                  Ya, Buka Kunci
+                  {pendingUnlock.confirmLabel || 'Ya, Buka Kunci'}
                 </button>
               </div>
             </div>
@@ -1961,7 +2005,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                 Reset Data Unit ke Semula
               </h3>
               <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
-                Hapus dan reset seluruh isian uji coba milik <strong>{pendingResetUnit.unitDisplayName}</strong> ({pendingResetUnit.email}) kembali ke Belum Diisi (0,00)?
+                Hapus dan reset seluruh data isian serta draf milik <strong>{pendingResetUnit.unitDisplayName}</strong> ({pendingResetUnit.email}) kembali ke Belum Diisi (0,00)?
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setPendingResetUnit(null)}>

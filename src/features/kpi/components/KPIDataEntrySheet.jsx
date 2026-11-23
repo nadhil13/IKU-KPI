@@ -591,7 +591,7 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
                     onClick={() => runAdminDecision('NEEDS_REVISION')}
                   >
                     <MessageSquareWarning size={14} />
-                    <span>Minta Revisi Gambar/Bukti + Email</span>
+                    <span>Minta Revisi Gambar/Bukti</span>
                   </button>
                   <button
                     type="button"
@@ -756,7 +756,7 @@ function RowEvidenceAndNotesCell({
               )}
             </span>
             <span style={{ fontSize: '0.6rem', color: '#92400E', fontFamily: 'JetBrains Mono, monospace' }}>
-              <MailCheck size={10} style={{ verticalAlign: 'middle' }} /> Email Terkirim
+              <MailCheck size={10} style={{ verticalAlign: 'middle' }} /> Tercatat di Outbox Audit
             </span>
           </div>
           <div style={{ fontWeight: 600 }}>{itemRevision.comment}</div>
@@ -967,7 +967,7 @@ function RowEvidenceAndNotesCell({
                         }}
                       >
                         <Send size={11} />
-                        <span>Kirim Revisi Bukti + Email</span>
+                        <span>Kirim Revisi Bukti</span>
                       </button>
                       <button type="button" className="clean-mini-btn" onClick={() => setActiveEvPanel(null)}>
                         Batal
@@ -1280,7 +1280,7 @@ function RowEvidenceAndNotesCell({
                   }}
                 >
                   <Send size={11} />
-                  <span>Kirim Revisi + Email</span>
+                  <span>Kirim Revisi</span>
                 </button>
                 {itemRevision?.comment && (
                   <button
@@ -1444,9 +1444,12 @@ function KPIEntryContent({
       setNewlySyncedItemIds(new Set(addedIds));
       showToast(`+${addedIds.length} baris indikator baru ditambahkan oleh Admin PRP secara realtime (total ${currentIds.length} baris).`);
       if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && containerRef.current) {
+        const escapeAttr = (val) => (typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(String(val ?? ''))
+          : String(val ?? '').replace(/["\\\]\[]/g, '\\$&'));
         requestAnimationFrame(() => {
           addedIds.forEach((id) => {
-            const rowEl = containerRef.current?.querySelector(`[data-kpi-row-id="${id}"]`);
+            const rowEl = containerRef.current?.querySelector(`[data-kpi-row-id="${escapeAttr(id)}"]`);
             if (rowEl) {
               gsap.fromTo(
                 rowEl,
@@ -1680,8 +1683,11 @@ function KPIEntryContent({
     return merged;
   }, [isAdminUnitReview, readOnly, valuesOverride, emptyDefaults, integratedBoard, isUnitMode, values, governedSections, editableItemIds]);
 
+  const isSimulationFillRef = useRef(false);
+
   useEffect(() => {
     if (!persist || !isAdminPrp || isUnitMode || isAdminUnitReview || readOnly || !activeForm?.id) return undefined;
+    if (isSimulationFillRef.current) return undefined;
     const hasOverrideValues = Object.values(values || {}).some((v) => String(v ?? '').trim() !== '')
       || Object.values(notes || {}).some((v) => String(v ?? '').trim() !== '');
     if (!hasOverrideValues) return undefined;
@@ -1697,6 +1703,7 @@ function KPIEntryContent({
 
   const handleSaveAdminOverrideManual = () => {
     if (!isAdminPrp || !activeForm?.id) return;
+    isSimulationFillRef.current = false;
     try {
       saveAdminKpiOverride(activeForm.id, unitUser, { values, notes });
       showToast(`Override nilai & keterangan Admin PRP berhasil disimpan pada periode ${activeForm.period || 'aktif'}.`);
@@ -1735,7 +1742,7 @@ function KPIEntryContent({
         showToast('Catatan revisi baris indikator ditandai selesai.');
       } else {
         const recipientsText = res.notifiedEmails?.length ? res.notifiedEmails.join(', ') : 'akun PIC terkait';
-        showToast(`Catatan revisi disimpan & dikirim via Notifikasi Web + Email Audit ke ${recipientsText}.`);
+        showToast(`Catatan revisi disimpan ke Notifikasi In-App & Outbox Audit Email untuk ${recipientsText}.`);
       }
     } catch (err) {
       showToast(err.message || 'Gagal menyimpan catatan revisi baris.');
@@ -1759,7 +1766,7 @@ function KPIEntryContent({
         showToast(`Catatan revisi Bagian ${sectionCode} ditandai selesai.`);
       } else {
         const recipientsText = res.notifiedEmails?.length ? res.notifiedEmails.join(', ') : 'akun PIC terkait';
-        showToast(`Catatan revisi Bagian ${sectionCode} dikirim via Notifikasi Web + Email Audit ke ${recipientsText}.`);
+        showToast(`Catatan revisi Bagian ${sectionCode} disimpan ke Notifikasi In-App & Outbox Audit Email untuk ${recipientsText}.`);
       }
     } catch (err) {
       showToast(err.message || 'Gagal menyimpan catatan revisi bagian.');
@@ -1779,9 +1786,12 @@ function KPIEntryContent({
     if (!focusItem && !focusSection) return undefined;
 
     const timer = setTimeout(() => {
+      const escapeAttr = (val) => (typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(String(val ?? ''))
+        : String(val ?? '').replace(/["\\\]\[]/g, '\\$&'));
       const selector = focusItem
-        ? `[data-kpi-row-id="${focusItem}"]`
-        : `[data-kpi-section-code="${focusSection}"]`;
+        ? `[data-kpi-row-id="${escapeAttr(focusItem)}"]`
+        : `[data-kpi-section-code="${escapeAttr(focusSection)}"]`;
       const targetEl = containerRef.current?.querySelector(selector);
       if (targetEl) {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1963,11 +1973,28 @@ function KPIEntryContent({
     [governedSections],
   );
 
+  const availableSectionsForTabs = useMemo(() => {
+    if (!isUnitMode && !(isAdminUnitReview && rowScopeFilter === 'MY_PIC')) return governedSections;
+    return governedSections
+      .map((sec) => {
+        const unitItems = sec.items.filter((item) => editableItemIds.has(item.id));
+        const unitWeight = unitItems.reduce((sum, it) => sum + (Number(it.bobot) || 0), 0);
+        return {
+          ...sec,
+          items: unitItems,
+          totalWeight: unitWeight,
+          weightDisplay: formatIndonesianNumber(unitWeight, 2),
+        };
+      })
+      .filter((sec) => sec.items.length > 0);
+  }, [governedSections, isUnitMode, isAdminUnitReview, rowScopeFilter, editableItemIds]);
+
   useGSAP(() => {
     const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const scrollerEl = document.querySelector('.internal-main-scroll');
 
-    const tabIdx = activeSectionTab === 'ALL' ? 0 : Math.max(0, governedSections.findIndex((sec) => sec.code === activeSectionTab) + 1);
+    const foundTabIdx = availableSectionsForTabs.findIndex((sec) => sec.code === activeSectionTab);
+    const tabIdx = activeSectionTab === 'ALL' || foundTabIdx < 0 ? 0 : foundTabIdx + 1;
     if (tabPillRef.current) {
       if (prefersReduced) {
         gsap.set(tabPillRef.current, { xPercent: tabIdx * 100 });
@@ -2018,10 +2045,10 @@ function KPIEntryContent({
   }, { dependencies: [activeSectionTab, sectionsStructureKey, rowScopeFilter], scope: containerRef });
 
   useEffect(() => {
-    if (activeSectionTab !== 'ALL' && !governedSections.some((sec) => sec.code === activeSectionTab)) {
+    if (activeSectionTab !== 'ALL' && !availableSectionsForTabs.some((sec) => sec.code === activeSectionTab)) {
       setActiveSectionTab('ALL');
     }
-  }, [activeSectionTab, governedSections]);
+  }, [activeSectionTab, availableSectionsForTabs]);
 
   useGSAP(() => {
     if (!fillProgressRef.current) return;
@@ -2041,6 +2068,7 @@ function KPIEntryContent({
     if ((isUnitMode || isAdminUnitReview) && !editableSubKeys.has(key)) return;
     if (!isAdminUnitReview && (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED)) return;
 
+    isSimulationFillRef.current = false;
     const nextValues = { ...values, [key]: val };
     setValues(nextValues);
     if (isAdminUnitReview) {
@@ -2057,6 +2085,7 @@ function KPIEntryContent({
     if (readOnly) return;
     if ((isUnitMode || isAdminUnitReview) && !editableItemIds.has(itemId)) return;
     if (!isAdminUnitReview && (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED)) return;
+    isSimulationFillRef.current = false;
     const nextNotes = { ...notes, [itemId]: text };
     setNotes(nextNotes);
     if (isAdminUnitReview) {
@@ -2111,7 +2140,31 @@ function KPIEntryContent({
     ]);
   };
 
-  const handleRemoveRowEvidence = (evidenceId) => {
+  const [actionConfirmDialog, setActionConfirmDialog] = useState(null);
+
+  useEffect(() => {
+    if (!actionConfirmDialog) return undefined;
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setActionConfirmDialog(null);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [actionConfirmDialog]);
+
+  useEffect(() => {
+    if (!hasUnsavedUnitEdit || typeof window === 'undefined') return undefined;
+    const onBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasUnsavedUnitEdit]);
+
+  const executeRemoveRowEvidence = (evidenceId) => {
     if (isAdminUnitReview && adminUnitContext?.formId && adminUnitContext?.email) {
       removeUnitEvidenceByAdmin(adminUnitContext.formId, adminUnitContext.email, unitUser, evidenceId);
       return;
@@ -2121,6 +2174,17 @@ function KPIEntryContent({
       return;
     }
     setLocalEvidenceList((prev) => prev.filter((ev) => ev.id !== evidenceId));
+  };
+
+  const handleRemoveRowEvidence = (evidenceId) => {
+    const found = ownEvidenceList.find((ev) => ev.id === evidenceId);
+    setActionConfirmDialog({
+      title: 'Hapus Dokumen Bukti Capaian',
+      message: `Hapus bukti "${found?.label || evidenceId}" dari baris indikator ini?`,
+      confirmLabel: 'Ya, Hapus Bukti',
+      danger: true,
+      onConfirm: () => executeRemoveRowEvidence(evidenceId),
+    });
   };
 
   const handleUpdateRowEvidence = (evidenceId, metadata) => {
@@ -2140,7 +2204,7 @@ function KPIEntryContent({
       if (latestEv) setPreviewEvidence(latestEv);
     }
     if (status === 'NEEDS_REVISION') {
-      showToast('Catatan revisi bukti/gambar dikirim via Notifikasi Web + Email Audit ke unit.');
+      showToast('Catatan revisi bukti/gambar disimpan ke Notifikasi In-App & Outbox Audit Email unit.');
     } else if (status === 'VERIFIED') {
       showToast('Bukti capaian ditandai Terverifikasi oleh Admin PRP.');
     } else {
@@ -2276,6 +2340,9 @@ function KPIEntryContent({
         simulatedEvidenceItems.push({ secCode: sec.code, item });
       }
     }));
+    if (!isUnitMode && isAdminPrp) {
+      isSimulationFillRef.current = true;
+    }
     setValues(nextValues);
     setNotes(nextNotes);
     if (isUnitMode && unitForm && unitUser && simulatedEvidenceItems.length > 0) {
@@ -2318,8 +2385,6 @@ function KPIEntryContent({
     );
   };
 
-  const [pendingResetConfirm, setPendingResetConfirm] = useState(false);
-
   const executeReset = () => {
     setValues(emptyDefaults);
     setNotes({});
@@ -2329,7 +2394,7 @@ function KPIEntryContent({
       localStorage.removeItem(notesKey);
       localStorage.removeItem(workflowKey);
     } catch {
-      // Abaikan kegagalan hapus penyimpanan lokal
+      // Penyimpanan lokal tidak tersedia
     }
     setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
     showToast(
@@ -2343,61 +2408,53 @@ function KPIEntryContent({
     if (readOnly) return;
     if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED || workflow.status === 'LOCKED') return;
     if (isUnitMode) {
-      const cleared = { ...values };
-      editableSubKeys.forEach((k) => { cleared[k] = ''; });
-      const clearedNotes = { ...notes };
-      editableItemIds.forEach((id) => { delete clearedNotes[id]; });
-      setValues(cleared);
-      setNotes(clearedNotes);
-      if (unitForm && unitUser) {
-        clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true });
-      }
-      try {
-        localStorage.removeItem(valuesKey);
-        localStorage.removeItem(notesKey);
-        localStorage.removeItem(workflowKey);
-      } catch {
-        // Abaikan kegagalan hapus penyimpanan lokal
-      }
-      setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
-      showToast('Draf isian, keterangan, dan lampiran belum terkirim telah dikosongkan.');
+      setActionConfirmDialog({
+        title: 'Kosongkan Draf Isian Unit',
+        message: 'Kosongkan seluruh draf angka capaian, keterangan, dan bukti yang belum dikirim pada indikator unit Anda?',
+        confirmLabel: 'Ya, Kosongkan Draf',
+        danger: true,
+        onConfirm: () => {
+          const cleared = { ...values };
+          editableSubKeys.forEach((k) => { cleared[k] = ''; });
+          const clearedNotes = { ...notes };
+          editableItemIds.forEach((id) => { delete clearedNotes[id]; });
+          setValues(cleared);
+          setNotes(clearedNotes);
+          if (unitForm && unitUser) {
+            clearUnitKpiDraft(unitForm.id, unitUser, { clearPendingEvidence: true });
+          }
+          try {
+            localStorage.removeItem(valuesKey);
+            localStorage.removeItem(notesKey);
+            localStorage.removeItem(workflowKey);
+          } catch {
+            // Penyimpanan lokal tidak tersedia
+          }
+          setWorkflow((prev) => ({ ...prev, status: WORKFLOW_STATUS.NOT_STARTED, revisionNote: '' }));
+          showToast('Draf isian, keterangan, dan lampiran belum terkirim telah dikosongkan.');
+        },
+      });
       return;
     }
     if (isAdminPrp && activeForm?.id) {
-      setPendingResetConfirm(true);
+      setActionConfirmDialog({
+        title: 'Reset Data Periode ke Kondisi Awal',
+        message: 'Reset seluruh data isian, submission unit, bukti capaian, dan override pada periode ini kembali ke kondisi awal (0,00)?',
+        confirmLabel: 'Ya, Reset Data Periode',
+        danger: true,
+        onConfirm: () => {
+          if (activeForm?.id) {
+            resetAllFormKpiData(activeForm.id, unitUser);
+          }
+          executeReset();
+        },
+      });
       return;
     }
     executeReset();
   };
 
-  const handleSubmit = () => {
-    if (readOnly || ['SUBMITTED', 'APPROVED', 'REJECTED', 'LOCKED'].includes(workflow.status)) return;
-
-    const invalidCount = isUnitMode ? calculated.picInvalidInputs : calculated.totalInvalidInputs;
-    const filledCount = isUnitMode ? calculated.picFilledInputs : calculated.totalFilledInputs;
-    const requiredCount = isUnitMode ? calculated.picTotalInputs : calculated.totalInputsCount;
-
-    if (isUnitMode && calculated.picTotalIndicators === 0) {
-      showToast('Akun ini tidak memiliki penugasan baris indikator PIC untuk disubmit.');
-      return;
-    }
-
-    if (invalidCount > 0) {
-      showToast(`Masih ada ${invalidCount} isian pada indikator Anda dengan format tidak valid.`);
-      return;
-    }
-
-    if (filledCount < requiredCount) {
-      const missingCount = requiredCount - filledCount;
-      showToast(`Lembar kerja belum lengkap. Masih ada ${missingCount} isian wajib pada indikator PIC Anda yang kosong.`);
-      return;
-    }
-
-    if (isUnitMode && calculated.missingEvidenceIndicators.length > 0) {
-      showToast(`Lampirkan bukti capaian terlebih dahulu pada indikator: ${calculated.missingEvidenceIndicators.join(', ')}.`);
-      return;
-    }
-
+  const executeSubmitNow = () => {
     if (unitForm && isUnitMode) {
       try {
         const sanitized = {};
@@ -2428,6 +2485,43 @@ function KPIEntryContent({
     }));
   };
 
+  const handleSubmit = () => {
+    if (readOnly || ['SUBMITTED', 'APPROVED', 'REJECTED', 'LOCKED'].includes(workflow.status)) return;
+
+    const invalidCount = isUnitMode ? calculated.picInvalidInputs : calculated.totalInvalidInputs;
+    const filledCount = isUnitMode ? calculated.picFilledInputs : calculated.totalFilledInputs;
+    const requiredCount = isUnitMode ? calculated.picTotalInputs : calculated.totalInputsCount;
+
+    if (isUnitMode && calculated.picTotalIndicators === 0) {
+      showToast('Akun ini tidak memiliki penugasan baris indikator PIC untuk disubmit.');
+      return;
+    }
+
+    if (invalidCount > 0) {
+      showToast(`Masih ada ${invalidCount} isian pada indikator Anda dengan format tidak valid.`);
+      return;
+    }
+
+    if (filledCount < requiredCount) {
+      const missingCount = requiredCount - filledCount;
+      showToast(`Lembar kerja belum lengkap. Masih ada ${missingCount} isian wajib pada indikator PIC Anda yang kosong.`);
+      return;
+    }
+
+    if (isUnitMode && calculated.missingEvidenceIndicators.length > 0) {
+      showToast(`Lampirkan bukti capaian terlebih dahulu pada indikator: ${calculated.missingEvidenceIndicators.join(', ')}.`);
+      return;
+    }
+
+    setActionConfirmDialog({
+      title: 'Kirim Submission KPI ke Sistem Pusat',
+      message: `Kirim seluruh capaian dan bukti dukung unit Anda untuk ditinjau oleh Direktorat PRP? Selama proses review, isian baris akan dikunci sementara.`,
+      confirmLabel: 'Ya, Submit ke Sistem Pusat',
+      danger: false,
+      onConfirm: executeSubmitNow,
+    });
+  };
+
   const handleRequestRevision = () => {
     showToast('Hubungi Admin PRP untuk membuka kembali pengajuan melalui ruang tinjauan.');
   };
@@ -2455,13 +2549,17 @@ function KPIEntryContent({
   const WorkflowIcon = workflowStatusTone.icon;
 
   const getItemNotesAndEvidenceForExport = (item, isExcel = false) => {
-    const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;',
-    }[ch]));
+    const esc = (value) => {
+      const raw = String(value ?? '');
+      const formulaSafe = isExcel && /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      return formulaSafe.replace(/[&<>'"]/g, (ch) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;',
+      }[ch]));
+    };
     const ownEv = ownEvidenceByItem[item.id] || [];
     const sharedEv = !isUnitMode ? (integratedBoard?.evidenceByItem?.[item.id] || []) : [];
     const byId = new Map();
@@ -2524,13 +2622,17 @@ function KPIEntryContent({
   const buildDocumentRowsHtml = (isExcel = true) => {
     let html = '';
 
-    const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (ch) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;',
-    }[ch]));
+    const esc = (value) => {
+      const raw = String(value ?? '');
+      const formulaSafe = isExcel && /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      return formulaSafe.replace(/[&<>'"]/g, (ch) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;',
+      }[ch]));
+    };
 
     exportableSections.forEach((sec) => {
       if (isExcel) {
@@ -2967,22 +3069,6 @@ ${sectionSummaryHtml}
     printWin.document.close();
   };
 
-  const availableSectionsForTabs = useMemo(() => {
-    if (!isUnitMode && !(isAdminUnitReview && rowScopeFilter === 'MY_PIC')) return governedSections;
-    return governedSections
-      .map((sec) => {
-        const unitItems = sec.items.filter((item) => editableItemIds.has(item.id));
-        const unitWeight = unitItems.reduce((sum, it) => sum + (Number(it.bobot) || 0), 0);
-        return {
-          ...sec,
-          items: unitItems,
-          totalWeight: unitWeight,
-          weightDisplay: formatIndonesianNumber(unitWeight, 2),
-        };
-      })
-      .filter((sec) => sec.items.length > 0);
-  }, [governedSections, isUnitMode, isAdminUnitReview, rowScopeFilter, editableItemIds]);
-
   const visibleSections = useMemo(() => {
     const byTab = activeSectionTab === 'ALL'
       ? calculated.sections
@@ -3263,7 +3349,7 @@ ${sectionSummaryHtml}
           border-color: #072534;
           color: #FFFFFF;
         }
-        @media (max-width: 768px) {
+        @media (max-width: 768px), (pointer: coarse) {
           .clean-btn,
           .clean-sheet-input,
           .clean-mini-btn,
@@ -3272,6 +3358,10 @@ ${sectionSummaryHtml}
           }
           .clean-section-header {
             padding: 1rem;
+          }
+          .kpi-sticky-action-bar {
+            position: static !important;
+            padding: 0.75rem 0.85rem !important;
           }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -3341,9 +3431,6 @@ ${sectionSummaryHtml}
                     color: '#FFFFFF',
                     fontFamily: 'JetBrains Mono, monospace',
                     letterSpacing: '0.02em',
-                    boxShadow: periodStatusMeta.isLocked
-                      ? '0 1px 4px rgba(185, 28, 28, 0.25)'
-                      : '0 1px 4px rgba(21, 128, 61, 0.25)',
                   }}
                 >
                   {periodStatusMeta.isLocked ? <LockKeyhole size={11} /> : <CheckCircle2 size={11} />}
@@ -3464,6 +3551,7 @@ ${sectionSummaryHtml}
       )}
 
       <div
+        className="kpi-sticky-action-bar"
         style={{
           position: 'sticky',
           top: '-0.5rem',
@@ -3838,7 +3926,7 @@ ${sectionSummaryHtml}
                 {secRevision.comment}
               </div>
               <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#92400E', fontFamily: 'JetBrains Mono, monospace' }}>
-                <MailCheck size={12} style={{ verticalAlign: 'middle' }} /> Notifikasi &amp; Email Terkirim ke PIC Bagian {sec.code}
+                <MailCheck size={12} style={{ verticalAlign: 'middle' }} /> Notifikasi In-App &amp; Outbox Audit Email PIC Bagian {sec.code}
               </span>
             </div>
           )}
@@ -3874,7 +3962,7 @@ ${sectionSummaryHtml}
                   onClick={() => handleSaveSectionRevision(sec.code, sectionRevComposer.text, false, sectionRevComposer.targetColumn)}
                 >
                   <Send size={13} />
-                  <span>Kirim Revisi Bagian {sec.code} + Email ke PIC</span>
+                  <span>Kirim Revisi Bagian {sec.code} ke PIC</span>
                 </button>
                 {secRevision?.comment && (
                   <button
@@ -4175,6 +4263,23 @@ ${sectionSummaryHtml}
                               onKeyDown={(e) => handleKeyDown(e, sub.key)}
                               disabled={isRowInputDisabled}
                             />
+                            {sub.isInvalid && (
+                              <div
+                                role="alert"
+                                style={{
+                                  marginTop: '0.25rem',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  color: '#991B1B',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                }}
+                              >
+                                <AlertTriangle size={11} style={{ flexShrink: 0 }} />
+                                <span>Format tidak valid</span>
+                              </div>
+                            )}
                             {coPicValue && (
                               <button
                                 type="button"
@@ -4416,11 +4521,11 @@ ${sectionSummaryHtml}
         } : null}
       />
 
-      {pendingResetConfirm && (
+      {actionConfirmDialog && (
         <div
-          role="dialog"
+          role="alertdialog"
           aria-modal="true"
-          aria-labelledby="kpi-period-reset-title"
+          aria-labelledby="kpi-action-confirm-title"
           style={{
             position: 'fixed',
             inset: 0,
@@ -4432,15 +4537,14 @@ ${sectionSummaryHtml}
             padding: '1rem',
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setPendingResetConfirm(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setPendingResetConfirm(false);
+            if (e.target === e.currentTarget) setActionConfirmDialog(null);
           }}
         >
           <div
             style={{
               width: 'min(440px, 100%)',
+              maxHeight: '90dvh',
+              overflowY: 'auto',
               background: '#FFFFFF',
               borderRadius: '10px',
               border: '1px solid #64748B',
@@ -4449,36 +4553,39 @@ ${sectionSummaryHtml}
             }}
           >
             <h3
-              id="kpi-period-reset-title"
+              id="kpi-action-confirm-title"
               style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontFamily: 'Outfit, sans-serif', color: '#072534' }}
             >
-              Reset Data Periode ke Kondisi Awal
+              {actionConfirmDialog.title}
             </h3>
             <p style={{ margin: '0 0 1.15rem', fontSize: '0.84rem', lineHeight: 1.55, color: '#334155' }}>
-              Reset seluruh data isian, submission unit, bukti capaian, dan override pada periode ini kembali ke kondisi awal (0,00)?
+              {actionConfirmDialog.message}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="clean-btn"
                 style={{ minHeight: '44px' }}
-                onClick={() => setPendingResetConfirm(false)}
+                onClick={() => setActionConfirmDialog(null)}
               >
                 Batal
               </button>
               <button
                 type="button"
                 className="clean-btn"
-                style={{ minHeight: '44px', background: '#DC2626', borderColor: '#DC2626', color: '#FFFFFF' }}
+                style={{
+                  minHeight: '44px',
+                  background: actionConfirmDialog.danger ? '#991B1B' : '#094E68',
+                  borderColor: actionConfirmDialog.danger ? '#991B1B' : '#094E68',
+                  color: '#FFFFFF',
+                }}
                 onClick={() => {
-                  setPendingResetConfirm(false);
-                  if (activeForm?.id) {
-                    resetAllFormKpiData(activeForm.id, unitUser);
-                  }
-                  executeReset();
+                  const fn = actionConfirmDialog.onConfirm;
+                  setActionConfirmDialog(null);
+                  fn?.();
                 }}
               >
-                Ya, Reset Data Periode
+                {actionConfirmDialog.confirmLabel}
               </button>
             </div>
           </div>

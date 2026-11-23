@@ -150,7 +150,7 @@ export default function Profile() {
           {currentUser?.avatar || 'USR'}
         </div>
         <div className="profile-overview-main">
-          <span className="profile-overline">Prinsipal Terautentikasi</span>
+          <span className="profile-overline">Akun Sesi Aktif</span>
           <h2>{currentUser?.name}</h2>
           <p>{currentUser?.unit}</p>
         </div>

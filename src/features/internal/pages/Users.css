@@ -164,7 +164,7 @@
 .users-filter {
   align-items: center;
   background: #FFFFFF;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   border-radius: 6px;
   color: #475569;
   display: flex;
@@ -308,7 +308,7 @@
 .user-role {
   align-items: center;
   background: #EDF3F6;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   border-radius: 4px;
   color: #072534;
   display: inline-flex;
@@ -392,10 +392,10 @@
   align-items: center;
   justify-content: center;
   gap: 0.28rem;
-  min-height: 32px;
+  min-height: 36px;
   padding: 0.3rem 0.6rem;
   border-radius: 4px;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   background: #FFFFFF;
   color: #072534;
   font-size: 0.69rem;
@@ -468,7 +468,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) {
   .users-action,
   .users-search,
   .users-filter,

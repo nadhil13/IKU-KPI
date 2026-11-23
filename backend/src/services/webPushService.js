@@ -175,7 +175,21 @@ export function savePushSubscription(subscription, caller = null) {
   const auth = String(subscription?.keys?.auth || '').trim();
 
   if (!endpoint || !p256dh || !auth) {
-    throw new Error('Format langganan Web Push tidak lengkap (endpoint, keys.p256dh, keys.auth wajib ada).');
+    throw Object.assign(
+      new Error('Format langganan Web Push tidak lengkap (endpoint, keys.p256dh, keys.auth wajib ada).'),
+      { status: 400 },
+    );
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(endpoint);
+  } catch {
+    throw Object.assign(new Error('Endpoint Web Push harus berupa URL yang valid.'), { status: 400 });
+  }
+  const isLocalhost = parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1';
+  if (parsedUrl.protocol !== 'https:' && !(parsedUrl.protocol === 'http:' && isLocalhost)) {
+    throw Object.assign(new Error('Endpoint Web Push wajib menggunakan protokol HTTPS.'), { status: 400 });
   }
 
   const list = listPushSubscriptions();
@@ -233,6 +247,7 @@ export async function sendWebPushNotification(subscription, payloadObj) {
         Urgency: 'high',
       },
       body,
+      signal: AbortSignal.timeout(8000),
     });
 
     if (response.status === 404 || response.status === 410) {
@@ -263,18 +278,21 @@ function subscriptionMatchesTarget(sub, filter = {}) {
     ? sub.picCodes.map((c) => String(c || '').trim().toUpperCase())
     : [];
 
-  if (Array.isArray(filter.targetEmails) && filter.targetEmails.length > 0) {
-    const normalizedEmails = filter.targetEmails.map((e) => String(e || '').trim().toLowerCase());
+  const emailCandidates = [
+    ...(Array.isArray(filter.targetEmails) ? filter.targetEmails : []),
+    ...(Array.isArray(filter.emailRecipients) ? filter.emailRecipients : []),
+  ];
+  if (emailCandidates.length > 0) {
+    const normalizedEmails = emailCandidates.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean);
     if (subEmail && normalizedEmails.includes(subEmail)) return true;
   }
 
   if (Array.isArray(filter.targetRoles) && filter.targetRoles.length > 0) {
     if (subRole && filter.targetRoles.includes(subRole)) return true;
-    if (subRole === 'superadmin_prp' && filter.targetRoles.includes('superadmin_prp')) return true;
   }
 
   if (Array.isArray(filter.targetPicCodes) && filter.targetPicCodes.length > 0) {
-    const normalizedPics = filter.targetPicCodes.map((c) => String(c || '').trim().toUpperCase());
+    const normalizedPics = filter.targetPicCodes.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean);
     if (subPicCodes.some((code) => normalizedPics.includes(code))) return true;
   }
 
@@ -282,15 +300,31 @@ function subscriptionMatchesTarget(sub, filter = {}) {
     const tType = String(filter.targetType).toUpperCase();
     const tVal = String(filter.targetValue || '').trim();
     if (tType === 'ROLE') {
-      if (tVal === 'ALL_UNITS') return subRole !== 'superadmin_prp' && subRole !== 'spi';
-      return subRole === tVal || (tVal === 'kpi_only' && subRole === 'dual') || (tVal === 'iku_only' && subRole === 'dual');
+      const lowerVal = tVal.toLowerCase();
+      const lowerRole = subRole.toLowerCase();
+      if (tVal.toUpperCase() === 'ALL_UNITS') return lowerRole !== 'superadmin_prp' && lowerRole !== 'spi';
+      return (
+        lowerRole === lowerVal
+        || (lowerVal === 'kpi_only' && lowerRole === 'dual')
+        || (lowerVal === 'iku_only' && lowerRole === 'dual')
+      );
     }
-    if (tType === 'UNIT') {
-      const upperVal = tVal.toUpperCase();
-      return subUnit.includes(tVal.toLowerCase()) || subPicCodes.includes(upperVal);
+    if (tType === 'PIC' || tType === 'UNIT') {
+      const targetTokens = tVal
+        .split(/[,;/+&]|\bdan\b/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const upperTokens = targetTokens.map((s) => s.toUpperCase());
+      if (subPicCodes.some((code) => upperTokens.includes(code))) return true;
+      if (tVal && subUnit && targetTokens.some((tok) => subUnit.includes(tok.toLowerCase()))) return true;
+      return false;
     }
     if (tType === 'USER') {
-      return subEmail === tVal.toLowerCase();
+      const targetUsers = tVal
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      return Boolean(subEmail && targetUsers.includes(subEmail));
     }
   }
 

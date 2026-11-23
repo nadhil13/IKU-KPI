@@ -12,7 +12,9 @@ import './TeamPIC.css';
 
 const TYPES = { units: 'Unit Kerja', faculties: 'Fakultas', bureaus: 'Biro', teams: 'Tim Kerja' };
 const blank = (type = 'units') => ({ type, name: '', code: '', parentId: '', picEmail: '' });
-const createOrgId = () => `org-${crypto.randomUUID()}`;
+const createOrgId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+  ? `org-${crypto.randomUUID()}`
+  : `org-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`);
 
 const DEFAULT_PIC_EMAIL_BY_CODE = {
   PPA: 'ppa@itpln.ac.id',
@@ -35,8 +37,8 @@ const DEFAULT_PIC_EMAIL_BY_CODE = {
   BKAN: 'bkan@itpln.ac.id',
   BPTI: 'bpti@itpln.ac.id',
   SPI: 'spi@itpln.ac.id',
-  Akuntansi: 'spi@itpln.ac.id',
-  WBS: 'spi@itpln.ac.id',
+  Akuntansi: 'wbs@itpln.ac.id',
+  WBS: 'wbs@itpln.ac.id',
 };
 
 const normalizeOrgItem = (entry, idx, type) => {
@@ -100,6 +102,7 @@ export default function TeamPIC() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState('');
+  const [visibleLimit, setVisibleLimit] = useState(40);
 
   useEffect(() => {
     const sync = (event) => {
@@ -463,7 +466,7 @@ export default function TeamPIC() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((item) => {
+              {visible.slice(0, visibleLimit).map((item) => {
                 const pic = picOf(item);
                 const children = rows.filter((child) => child.parentId === keyOf(item)).length;
                 return (
@@ -530,15 +533,55 @@ export default function TeamPIC() {
           </table>
         </HorizontalTableViewport>
 
+        {visible.length > visibleLimit && (
+          <div style={{ padding: '0.85rem 1.2rem', borderTop: '1px solid #D8E4EA', background: '#F7FAFB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
+            <span style={{ fontSize: '0.76rem', color: '#475569', fontWeight: 600 }}>
+              Menampilkan {Math.min(visibleLimit, visible.length)} dari {visible.length} entitas organisasi
+            </span>
+            <button
+              type="button"
+              className="tp-secondary"
+              style={{ minHeight: '44px' }}
+              onClick={() => setVisibleLimit((prev) => prev + 40)}
+            >
+              Tampilkan Lebih Banyak ({visible.length - visibleLimit} tersisa)
+            </button>
+          </div>
+        )}
+
         {!visible.length && (
           <div className="tp-empty">
             <GitBranch size={30} color="#475569" style={{ margin: '0 auto' }} />
             <h2>{rows.length ? 'Tidak ada entitas yang cocok' : 'Direktori organisasi masih kosong'}</h2>
             <p>
               {rows.length
-                ? 'Gunakan kata kunci berbeda atau atur ulang filter kategori.'
-                : 'Klik tombol "Muat 22 Master PIC ITPLN" di bagian atas untuk mengisi seluruh master unit kerja resmi secara instan.'}
+                ? 'Gunakan kata kunci pencarian yang berbeda atau atur ulang filter kategori struktur organisasi.'
+                : canEdit
+                  ? 'Gunakan tombol di bawah untuk memuat seluruh 22 master unit kerja dan kode PIC resmi ITPLN.'
+                  : 'Struktur organisasi dan penugasan master PIC belum dipublikasikan oleh Superadmin PRP.'}
             </p>
+            {rows.length > 0 && (query || filter !== 'all') && (
+              <div style={{ marginTop: '0.9rem' }}>
+                <button
+                  type="button"
+                  className="tp-secondary"
+                  style={{ minHeight: '44px' }}
+                  onClick={() => {
+                    setQuery('');
+                    setFilter('all');
+                  }}
+                >
+                  Reset Pencarian &amp; Filter
+                </button>
+              </div>
+            )}
+            {rows.length === 0 && canEdit && (
+              <div style={{ marginTop: '0.9rem' }}>
+                <button type="button" className="tp-primary" style={{ minHeight: '44px' }} onClick={handleSeedMasterPics}>
+                  <Database size={15} /> Muat 22 Master PIC ITPLN
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -193,11 +193,6 @@ export function parseIndonesianNumber(input) {
     const dotCount = (s.match(/\./g) || []).length;
     if (dotCount > 1) {
       s = s.replace(/\./g, '');
-    } else {
-      const parts = s.split('.');
-      if (parts[1] && parts[1].length === 3 && parts[0].length >= 1 && parts[0].length <= 3) {
-        s = parts[0] + parts[1];
-      }
     }
   }
 
@@ -282,6 +277,12 @@ export const CALC_TYPES = {
     minInputs: 2,
     needsTarget: true,
   },
+  ratio_inverse_target_pct: {
+    label: 'Efisiensi rasio terhadap batas target % (makin rendah makin baik)',
+    expression: 'Capaian = 100% jika Rasio <= Target; atau (Target / Rasio) x 100%',
+    minInputs: 2,
+    needsTarget: true,
+  },
   sum_two_target: {
     label: 'Jumlah dua isian / Target',
     expression: 'Capaian = (Isian 1 + Isian 2) / Target x 100%',
@@ -337,6 +338,7 @@ export const PRESET_FORMULA_EXPR = {
   single_target: 'I1/T*100',
   ratio_two: 'I1/I2*100',
   ratio_target_pct: '(I1/I2*100)/T*100',
+  ratio_inverse_target_pct: 'IF(I1/I2*100<=T;100;T/(I1/I2*100)*100)',
   sum_two_target: '(I1+I2)/T*100',
   tracer_study: 'SUM(I1;I2;I3;I4;I5;I6)/I7*100/T*100',
   primary_with_meta: 'I1/T*100',
@@ -439,6 +441,17 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
         ratioPercent = (actualPct / targetNum) * 100;
         weightedScore = (ratioPercent / 100) * bobot;
         extraNote = `Rasio aktual: ${formatIndonesianNumber(actualPct, 2)}% (Target: ${item.targetDisplay}%)`;
+      }
+      break;
+    }
+    case 'ratio_inverse_target_pct': {
+      if (n(0) !== null && n(1) !== null && n(1) > 0 && targetNum > 0 && n(0) >= 0) {
+        const actualPct = (n(0) / n(1)) * 100;
+        ratioPercent = actualPct <= targetNum
+          ? 100
+          : (actualPct > 0 ? (targetNum / actualPct) * 100 : 100);
+        weightedScore = (ratioPercent / 100) * bobot;
+        extraNote = `Rasio efisiensi: ${formatIndonesianNumber(actualPct, 2)}% (Batas maks: ${item.targetDisplay}%)`;
       }
       break;
     }

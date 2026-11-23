@@ -1,9 +1,22 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
-import { createViteApiPlugin } from './backend/src/server.js'
 
 const BUILD_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 const BUILT_AT = new Date().toISOString()
+
+function lazyBackendApiPlugin() {
+  return {
+    name: 'performa-itpln-realtime-backend',
+    async configureServer(server) {
+      const { createViteApiPlugin } = await import('./backend/src/server.js')
+      createViteApiPlugin().configureServer(server)
+    },
+    async configurePreviewServer(server) {
+      const { createViteApiPlugin } = await import('./backend/src/server.js')
+      createViteApiPlugin().configurePreviewServer(server)
+    },
+  }
+}
 
 function performaVersionStampPlugin() {
   const versionPayload = JSON.stringify({ buildId: BUILD_ID, builtAt: BUILT_AT })
@@ -26,12 +39,11 @@ function performaVersionStampPlugin() {
   }
 }
 
-// https://vite.dev/config/
 export default defineConfig({
   define: {
     __PERFORMA_BUILD_ID__: JSON.stringify(BUILD_ID),
   },
-  plugins: [react(), createViteApiPlugin(), performaVersionStampPlugin()],
+  plugins: [react(), lazyBackendApiPlugin(), performaVersionStampPlugin()],
   server: {
     host: true,
     port: 5174,

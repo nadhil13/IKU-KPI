@@ -150,6 +150,7 @@ export function pushRealtimeNotification({
   period = '',
   sendEmail = false,
   includeSuperadmin = false,
+  suppressOsNotification = false,
 } = {}) {
   if (!title.trim()) return null;
   const resolvedActorEmail = actorEmail || senderEmail || 'admin@itpln.ac.id';
@@ -202,16 +203,18 @@ export function pushRealtimeNotification({
     window.dispatchEvent(new CustomEvent(NOTIFICATIONS_EVENT, { detail: notif }));
     window.dispatchEvent(new Event('prp-admin-updated'));
     try {
-      const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
-      if (activeUser && doesNotificationMatchUser(notif, activeUser)) {
-        dispatchOsNotification({
-          id: notif.id,
-          title: `[${notif.kind}] ${notif.title}`,
-          body: notif.message,
-          url: notif.actionUrl,
-          actionLabel: notif.actionLabel,
-          priority: resolvedPriority,
-        });
+      if (!suppressOsNotification) {
+        const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
+        if (activeUser && doesNotificationMatchUser(notif, activeUser)) {
+          dispatchOsNotification({
+            id: notif.id,
+            title: `[${notif.kind}] ${notif.title}`,
+            body: notif.message,
+            url: notif.actionUrl,
+            actionLabel: notif.actionLabel,
+            priority: resolvedPriority,
+          });
+        }
       }
     } catch {
       // Abaikan jika di luar konteks browser
@@ -259,7 +262,9 @@ export function markAllNotificationsRead(user) {
   const all = readAllNotifications();
   let changed = false;
   const next = all.map((n) => {
-    if (!doesNotificationMatchUser(n, user)) return n;
+    const isVisibleToUser = doesNotificationMatchUser(n, user)
+      || (user.role === 'superadmin_prp' && n.actorEmail?.toLowerCase() === email);
+    if (!isVisibleToUser) return n;
     const readBy = Array.isArray(n.readBy) ? n.readBy : [];
     if (readBy.some((r) => String(r).toLowerCase() === email)) return n;
     changed = true;

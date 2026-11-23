@@ -17,8 +17,8 @@ const FAQS = [
     a: 'Setiap pengajuan wajib menyertakan tautan dokumen berprotokol HTTPS (seperti repositori cloud resmi institusi atau surat keputusan terpublikasi) yang dapat diakses oleh verifikator PRP, dilengkapi ringkasan keterangan capaian pada kolom catatan.',
   },
   {
-    q: 'Apa perbedaan hak akses antara akun PIC IKU, PIC KPI, dan Superadmin PRP?',
-    a: 'Akun PIC IKU difokuskan pada pemantauan dan pelaporan 8 Indikator Kinerja Utama standar Kemendikbudristek. Akun PIC KPI mengelola lembar kerja Key Performance Indicator operasional unit dan fakultas. Sementara itu, Superadmin PRP mengelola periode aktif, skema tabel rumus KPI, akun pengguna, dan verifikasi lintas ruang kerja.',
+    q: 'Apa perbedaan hak akses antara 5 peran otoritas di PERFORMA ITPLN?',
+    a: 'Sistem membagi otoritas menjadi 5 peran: (1) Otoritas Khusus IKU untuk pelaporan 8 IKU Perguruan Tinggi; (2) PIC Unit KPI untuk pengisian baris indikator KPI sesuai kode PIC unit; (3) Peran Ganda (Dual) untuk unit yang memegang tanggung jawab IKU sekaligus KPI; (4) Auditor SPI untuk pemantauan tabel audit KPI tervalidasi 100% Renbang serta pengisian Bagian D.5; dan (5) Superadmin PRP untuk pengelolaan periode, skema rumus KPI, akun pengguna, serta verifikasi akhir.',
   },
   {
     q: 'Bagaimana penyimpanan dan pencadangan data kerja dilakukan pada portal ini?',
@@ -158,8 +158,8 @@ export default function FAQ() {
           justify-content: space-between;
           gap: 1rem;
           padding: clamp(1.35rem, 2.5vw, 1.85rem);
-          border-radius: 10px;
-          border: 1px solid #D8E4EA;
+          border-radius: 8px;
+          border: 1px solid #64748B;
           background: #F7FAFB;
           color: #072534;
           text-decoration: none;
@@ -355,7 +355,7 @@ export default function FAQ() {
 
             <div className="contact-cards-grid">
               <a
-                href="mailto:iku-support@itpln.ac.id"
+                href="mailto:spmi@itpln.ac.id"
                 className="contact-card contact-card-link"
                 style={{
                   gridColumn: '1 / -1',
@@ -378,7 +378,7 @@ export default function FAQ() {
                       color: '#C5DEE8',
                     }}
                   >
-                    <Mail size={15} /> Surat Elektronik Bantuan Teknis
+                    <Mail size={15} /> Surat Elektronik Direktorat PRP &amp; SPMI
                   </span>
                   <ArrowUpRight size={20} color="#C5DEE8" style={{ flexShrink: 0 }} />
                 </div>
@@ -394,10 +394,10 @@ export default function FAQ() {
                     overflowWrap: 'anywhere',
                   }}
                 >
-                  iku-support@itpln.ac.id
+                  spmi@itpln.ac.id
                 </div>
 
-                <div style={{ fontSize: '0.86rem', color: '#94B8C7', lineHeight: 1.5 }}>
+                <div style={{ fontSize: '0.86rem', color: '#C5DEE8', lineHeight: 1.5 }}>
                   Sertakan kode indikator (mis. IKU.03 atau kode KPI) dan nama unit kerja pada subjek pesan untuk mempercepat penanganan.
                 </div>
               </a>
@@ -480,7 +480,7 @@ export default function FAQ() {
                     (021) 5440342
                   </div>
                   <div style={{ fontSize: '0.92rem', color: '#334155', lineHeight: 1.6 }}>
-                    Ekstensi Layanan Kinerja: 123
+                    Sekretariat Direktorat Perencanaan &amp; Pengembangan (PRP)
                     <br />
                     Senin s.d. Jumat, 08.00 - 16.00 WIB
                   </div>

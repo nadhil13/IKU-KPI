@@ -15,8 +15,9 @@ const GUIDE_SECTIONS = [
     desc: 'Biro, fakultas, dan lembaga penanggung jawab (PIC) menginput capaian aktual beserta angka pembilang dan penyebut sesuai formula Kepmendikbudristek No. 210/M/2023.',
     checklist: [
       'Pilih periode evaluasi aktif pada ruang kerja 8 IKU.',
-      'Isi nilai capaian aktual dan uraian ringkas kegiatan.',
-      'Lampirkan tautan bukti dokumen resmi berformat HTTPS (Google Drive institusi, repositori, atau SK resmi).',
+      'Isi nilai capaian aktual, target tahunan, serta uraian ringkas kegiatan.',
+      'Lampirkan tautan bukti dokumen resmi berformat HTTPS (repositori institusi atau SK terpublikasi).',
+      'Kirim pengajuan setelah seluruh baris indikator memenuhi validasi numerik.',
     ],
   },
   {
@@ -25,20 +26,19 @@ const GUIDE_SECTIONS = [
     title: 'Pengisian Lembar Kerja KPI 4 Perspektif',
     desc: 'Unit kerja dan dekanat mengisi target serta realisasi pada Perspektif Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), dan Kepatuhan (D). Skor terhitung otomatis sesuai rumus bobot.',
     checklist: [
-      'Masukkan angka realisasi pada kolom input lembar kerja unit.',
-      'Periksa hasil kalkulasi persentase capaian dan skor terbobot secara langsung.',
-      'Simpan draf kerja atau ajukan ke Direktorat PRP untuk diverifikasi.',
+      'Masukkan angka realisasi pada sub-baris indikator yang ditugaskan ke kode PIC akun Anda dan lampirkan dokumen PDF/gambar atau tautan HTTPS.',
+      'Periksa hasil kalkulasi persentase capaian dan skor terbobot secara langsung sebelum menekan Submit.',
     ],
   },
   {
     idx: '03',
     tag: 'VERIFIKASI & PENETAPAN MUTU',
-    title: 'Pemeriksaan Bukti & Persetujuan Direktorat PRP',
-    desc: 'Auditor dan verifikator Direktorat PRP meninjau keabsahan setiap bukti pendukung sebelum mengunci skor akhir unit pada periode berjalan.',
+    title: 'Pemeriksaan Bukti, Persetujuan PRP & Audit SPI',
+    desc: 'Verifikator Direktorat PRP meninjau keabsahan setiap bukti pendukung sebelum mengesahkan capaian unit, diikuti evaluasi kepatuhan oleh Satuan Pengawasan Intern (SPI).',
     checklist: [
-      'Setiap tautan bukti diperiksa satu per satu oleh verifikator PRP.',
-      'Jika bukti belum sesuai, pengajuan dikembalikan berstatus Revisi beserta catatan perbaikan.',
-      'Pengajuan yang telah lengkap disetujui (Approved) dan terekam pada jejak audit.',
+      'Setiap lampiran bukti diperiksa satu per satu oleh verifikator Direktorat PRP.',
+      'Jika bukti belum sesuai, pengajuan dikembalikan berstatus Perlu Revisi beserta catatan perbaikan spesifik per baris atau kolom.',
+      'Setelah validasi Renbang mencapai 100%, Tabel Audit KPI terbuka bagi Auditor SPI untuk pencatatan tindak lanjut temuan Bagian D.5.',
     ],
   },
 ];
@@ -176,8 +176,7 @@ export default function Guide() {
                 padding: '1.25rem',
                 borderRadius: '8px',
                 background: '#F7FAFB',
-                border: '1px solid #D8E4EA',
-                borderLeft: '3px solid #094E68',
+                border: '1px solid #CBD5E1',
               }}
             >
               <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.1em', color: '#0E7480', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
@@ -267,7 +266,6 @@ export default function Guide() {
         </div>
       </section>
 
-      {/* Valid routes only, no href="#" */}
       <section
         className="cta-section"
         style={{

@@ -45,7 +45,7 @@ import {
   markAllNotificationsRead,
   subscribeNotifications,
 } from '../features/internal/notificationStore';
-import { getRealtimeStatus, subscribeRealtimeStatus } from '../lib/realtimeSync';
+import { getRealtimeStatus, subscribeRealtimeStatus, bootstrapFromBackend } from '../lib/realtimeSync';
 import {
   initPwaAndNotifications,
   getPwaAndNotificationState,
@@ -84,7 +84,7 @@ export default function InternalLayout() {
       try {
         localStorage.setItem('performa_desktop_sidebar_v1', next ? 'open' : 'collapsed');
       } catch {
-        // Abaikan jika storage mode privat diblokir.
+        return next;
       }
       return next;
     });
@@ -393,7 +393,6 @@ export default function InternalLayout() {
     }
   }, []);
 
-  // 1. Entrance Choreography saat Sesi Dimuat
   useGSAP(() => {
     if (!currentUser) return undefined;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
@@ -411,7 +410,6 @@ export default function InternalLayout() {
     );
   }, { dependencies: [currentUser?.id], scope: layoutRef });
 
-  // 2. Animasi Workspace Switcher Pill & Konteks Menu
   useGSAP(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (isDual && switcherPillRef.current) {
@@ -449,7 +447,6 @@ export default function InternalLayout() {
     );
   }, { dependencies: [effectiveWorkspace, activeContext, isDual, isSuperadminPrp], scope: layoutRef });
 
-  // 3. Animasi Accordion Submenu PRP Control Center
   useGSAP(() => {
     if (!showPRP) return undefined;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -513,7 +510,6 @@ export default function InternalLayout() {
     }
   }, { dependencies: [prpTreeOpen, showPRP], scope: layoutRef });
 
-  // 4. Transisi Rute & Konteks Halaman
   useGSAP(() => {
     requestAnimationFrame(syncActiveLaser);
     const routeScopeKey = `${location.pathname}|${activeContext}|${effectiveWorkspace}`;
@@ -666,7 +662,7 @@ export default function InternalLayout() {
         label: 'Dashboard Capaian 8 IKU Kementerian',
         run: () => handleSelectWorkspaceMenu('iku'),
       });
-      if (isIkuOnly || isSuperadminPrp) {
+      if (isIkuOnly || isDual || isSuperadminPrp) {
         list.push({
           code: 'IKU.01',
           group: 'Ruang Kerja 8 IKU',
@@ -781,7 +777,9 @@ export default function InternalLayout() {
         zIndex: 1,
       }}
     >
-      {/* Mobile Drawer Overlay */}
+      <a href="#internal-main-content" className="skip-to-main">
+        Lewati ke konten utama
+      </a>
       {sidebarOpen && (
         <div
           aria-hidden="true"
@@ -907,10 +905,10 @@ export default function InternalLayout() {
               title="Ciutkan sidebar"
               style={{
                 background: '#F7FAFB',
-                border: '1px solid #D8E4EA',
+                border: '1px solid #64748B',
                 borderRadius: '8px',
-                width: '34px',
-                height: '34px',
+                width: '44px',
+                height: '44px',
                 display: 'grid',
                 placeItems: 'center',
                 color: '#072534',
@@ -1008,7 +1006,7 @@ export default function InternalLayout() {
                     style={{
                       position: 'relative',
                       zIndex: 2,
-                      minHeight: isMobile ? '40px' : '34px',
+                      minHeight: '44px',
                       padding: '5px 4px',
                       border: 'none',
                       borderRadius: '6px',
@@ -1032,7 +1030,7 @@ export default function InternalLayout() {
                   style={{
                     position: 'relative',
                     zIndex: 2,
-                    minHeight: isMobile ? '40px' : '34px',
+                    minHeight: '44px',
                     padding: '5px 4px',
                     border: 'none',
                     borderRadius: '6px',
@@ -1055,7 +1053,7 @@ export default function InternalLayout() {
                   style={{
                     position: 'relative',
                     zIndex: 2,
-                    minHeight: isMobile ? '40px' : '34px',
+                    minHeight: '44px',
                     padding: '5px 4px',
                     border: 'none',
                     borderRadius: '6px',
@@ -1287,7 +1285,7 @@ export default function InternalLayout() {
                       <span>Capaian 8 IKU</span>
                     </button>
                   </li>
-                  {(isIkuOnly || isSuperadminPrp) && (
+                  {(isIkuOnly || isDual || isSuperadminPrp) && (
                     <li>
                       <Link
                         to="/internal/iku-submissions"
@@ -1593,8 +1591,9 @@ export default function InternalLayout() {
         </div>
       </aside>
 
-      {/* Area konten utama ruang kerja. */}
       <main
+        id="internal-main-content"
+        tabIndex={-1}
         style={{
           flex: 1,
           height: '100dvh',
@@ -1637,11 +1636,11 @@ export default function InternalLayout() {
               title={isMobile ? 'Buka menu navigasi' : (desktopSidebarOpen ? 'Tutup sidebar (lebih luas)' : 'Buka sidebar navigasi')}
               style={{
                 background: !isMobile && !desktopSidebarOpen ? '#094E68' : '#F7FAFB',
-                border: `1px solid ${!isMobile && !desktopSidebarOpen ? '#094E68' : '#D8E4EA'}`,
+                border: `1px solid ${!isMobile && !desktopSidebarOpen ? '#094E68' : '#64748B'}`,
                 borderRadius: '8px',
-                minWidth: isMobile ? '44px' : (desktopSidebarOpen ? '38px' : 'auto'),
-                height: isMobile ? '44px' : '38px',
-                padding: !isMobile && !desktopSidebarOpen ? '0 0.72rem' : '0',
+                minWidth: '44px',
+                minHeight: '44px',
+                padding: isMobile || !desktopSidebarOpen ? '0 0.68rem' : '0',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1655,7 +1654,10 @@ export default function InternalLayout() {
               }}
             >
               {isMobile ? (
-                <Menu size={19} />
+                <>
+                  <Menu size={18} />
+                  <span>Menu</span>
+                </>
               ) : desktopSidebarOpen ? (
                 <PanelLeftClose size={17} />
               ) : (
@@ -1711,22 +1713,27 @@ export default function InternalLayout() {
           {/* Right: Realtime Status + Broadcast Button + Activity Bell + User Session Identity */}
           <div style={{ display: 'flex', alignItems: 'center', gap: windowWidth <= 420 ? '0.32rem' : '0.5rem', flexShrink: 0 }}>
             {windowWidth > 768 && (
-              <div
-                title={rtStatus.mode === 'server-sse' ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif)' : 'Sinkronisasi lokal antar-tab aktif (mode offline/lokal)'}
+              <button
+                type="button"
+                onClick={() => {
+                  bootstrapFromBackend().catch(() => undefined);
+                }}
+                title={rtStatus.mode === 'server-sse' ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif). Klik untuk muat ulang data.' : 'Sinkronisasi lokal antar-tab aktif. Klik untuk mencoba koneksi ulang ke server.'}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.4rem',
-                  height: '34px',
+                  minHeight: '38px',
                   padding: '0 0.65rem',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   background: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#ECFDF5' : '#EDF3F6',
-                  border: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '1px solid #86EFAC' : '1px solid #C5D5DF',
+                  border: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '1px solid #86EFAC' : '1px solid #64748B',
                   color: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#047857' : '#094E68',
                   fontFamily: 'var(--ent-mono)',
                   fontSize: '0.64rem',
                   fontWeight: 700,
                   letterSpacing: '0.05em',
+                  cursor: 'pointer',
                 }}
               >
                 <span
@@ -1743,9 +1750,9 @@ export default function InternalLayout() {
                     ? 'SSE AKTIF'
                     : rtStatus.mode === 'server-digest'
                       ? 'SYNC SERVER'
-                      : 'LOKAL AKTIF'}
+                      : 'LOKAL · SINKRONKAN'}
                 </span>
-              </div>
+              </button>
             )}
 
             <button
@@ -2053,12 +2060,17 @@ export default function InternalLayout() {
                                 {!notif.isRead && (
                                   <span
                                     style={{
-                                      width: '7px',
-                                      height: '7px',
-                                      borderRadius: '50%',
+                                      fontSize: '0.58rem',
+                                      fontWeight: 800,
+                                      fontFamily: 'var(--ent-mono)',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
                                       background: '#991B1B',
+                                      color: '#FFFFFF',
                                     }}
-                                  />
+                                  >
+                                    BARU
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -2245,7 +2257,7 @@ export default function InternalLayout() {
                     Pembaruan Aplikasi Web Tersedia Secara Realtime
                   </strong>
                   <span style={{ fontSize: '0.73rem', color: '#E2E8F0', lineHeight: 1.45 }}>
-                    Versi terbaru PERFORMA ITPLN telah dirilis. Muat ulang aplikasi agar tampilan &amp; fitur mutakhir langsung aktif di HP Anda.
+                    Versi terbaru PERFORMA ITPLN telah dirilis. Muat ulang aplikasi agar pembaruan tampilan dan fitur aplikasi langsung aktif di perangkat Anda.
                   </span>
                 </div>
                 <button
@@ -2407,7 +2419,7 @@ export default function InternalLayout() {
                 type="button"
                 onClick={() => setPwaModalOpen(false)}
                 aria-label="Tutup dialog aplikasi"
-                style={{ width: isMobile ? '44px' : '36px', height: isMobile ? '44px' : '36px', borderRadius: '6px', border: '1px solid #D8E4EA', background: '#FFFFFF', color: '#072534', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
+                style={{ width: '44px', height: '44px', borderRadius: '6px', border: '1px solid #64748B', background: '#FFFFFF', color: '#072534', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}
               >
                 <X size={16} />
               </button>
@@ -2690,7 +2702,7 @@ export default function InternalLayout() {
                 type="button"
                 onClick={() => setCmdOpen(false)}
                 className="arch-kbd"
-                style={{ cursor: 'pointer', minHeight: '28px' }}
+                style={{ cursor: 'pointer', minHeight: '44px', minWidth: '44px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 ESC
               </button>

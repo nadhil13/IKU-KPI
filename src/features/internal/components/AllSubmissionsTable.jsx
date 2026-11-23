@@ -88,6 +88,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
   const [module, setModule] = useState('');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
+  const [visibleLimit, setVisibleLimit] = useState(30);
 
   useEffect(() => {
     const refresh = () => setTick((n) => n + 1);
@@ -185,7 +186,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((row) => (
+              {visible.slice(0, visibleLimit).map((row) => (
                 <tr
                   key={row.key}
                   style={{ borderTop: '1px solid #CBD5E1', background: '#ffffff', transition: 'background-color 0.18s ease' }}
@@ -271,15 +272,64 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
               ))}
             </tbody>
           </table>
-          {!visible.length && <div className="gov-placeholder">Tidak ada submission unit yang sesuai dengan filter.</div>}
+          {visible.length > visibleLimit && (
+            <div style={{ padding: '0.8rem 1rem', borderTop: '1px solid #D8E4EA', background: '#F7FAFB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
+              <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 600 }}>
+                Menampilkan {Math.min(visibleLimit, visible.length)} dari {visible.length} rekaman submission
+              </span>
+              <button
+                type="button"
+                className="gov-button"
+                style={{ minHeight: '44px' }}
+                onClick={() => setVisibleLimit((prev) => prev + 30)}
+              >
+                Tampilkan Lebih Banyak ({visible.length - visibleLimit} tersisa)
+              </button>
+            </div>
+          )}
+          {!visible.length && (
+            <div className="gov-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.65rem' }}>
+              <span>Tidak ada submission unit yang sesuai dengan filter.</span>
+              {(search || module || status) && (
+                <button
+                  type="button"
+                  className="gov-button"
+                  style={{ minHeight: '44px' }}
+                  onClick={() => {
+                    setSearch('');
+                    setModule('');
+                    setStatus('');
+                  }}
+                >
+                  Reset Filter Submission
+                </button>
+              )}
+            </div>
+          )}
         </HorizontalTableViewport>
       </div>
 
       <div className="resp-mobile-cards">
         {!visible.length ? (
-          <div className="gov-placeholder">Tidak ada submission unit yang sesuai dengan filter.</div>
+          <div className="gov-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.65rem' }}>
+            <span>Tidak ada submission unit yang sesuai dengan filter.</span>
+            {(search || module || status) && (
+              <button
+                type="button"
+                className="gov-button"
+                style={{ minHeight: '44px' }}
+                onClick={() => {
+                  setSearch('');
+                  setModule('');
+                  setStatus('');
+                }}
+              >
+                Reset Filter Submission
+              </button>
+            )}
+          </div>
         ) : (
-          visible.map((row) => (
+          visible.slice(0, visibleLimit).map((row) => (
             <article
               key={`mob-${row.key}`}
               style={{

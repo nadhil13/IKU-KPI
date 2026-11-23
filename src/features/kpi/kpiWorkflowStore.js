@@ -227,6 +227,26 @@ export const KPI_TRANSITIONS = Object.freeze({
   LOCKED: ['NEEDS_REVISION'],
 });
 
+function stripEvidenceDataUrl(evidenceList) {
+  if (!Array.isArray(evidenceList)) return [];
+  return evidenceList.map((ev) => {
+    if (!ev || typeof ev !== 'object') return ev;
+    const { dataUrl, ...meta } = ev;
+    return {
+      ...meta,
+      ...(dataUrl ? { hasBinaryData: true } : {}),
+    };
+  });
+}
+
+function isSubmissionLockedForActor(record, user) {
+  if (!record) return false;
+  if (user?.role === 'spi') {
+    return ['APPROVED', 'LOCKED'].includes(record.status);
+  }
+  return !['DRAFT', 'NEEDS_REVISION'].includes(record.status);
+}
+
 function history(record, status, note, actor, evidence) {
   return [
     ...(record?.history || []),
@@ -241,7 +261,7 @@ function history(record, status, note, actor, evidence) {
         notes: record?.notes || {},
         sectionScores: record?.sectionScores || [],
         totalScore: record?.totalScore ?? null,
-        evidence: evidence || [],
+        evidence: stripEvidenceDataUrl(evidence),
       }),
     },
   ];
@@ -347,7 +367,7 @@ export function addUnitEvidence(formId, user, metadata) {
   const form = state.forms.find((f) => f.id === formId);
   owner(form, user);
   const key = submissionKey(formId, user.email);
-  if (state.submissions[key] && state.submissions[key].status !== 'NEEDS_REVISION') {
+  if (isSubmissionLockedForActor(state.submissions[key], user)) {
     throw new Error('Bukti terkunci.');
   }
   const entry = buildValidatedEvidenceEntry(form, user, metadata);
@@ -546,7 +566,7 @@ export function removeUnitEvidence(formId, user, evidenceId) {
   const form = state.forms.find((f) => f.id === formId);
   owner(form, user);
   const key = submissionKey(formId, user.email);
-  if (state.submissions[key] && state.submissions[key].status !== 'NEEDS_REVISION') {
+  if (isSubmissionLockedForActor(state.submissions[key], user)) {
     throw new Error('Bukti terkunci.');
   }
   const existing = readUnitEvidence(formId, user.email, state);
@@ -692,8 +712,41 @@ export function reviewUnitEvidence(formId, email, evidenceId, status, note = '',
   return next.find((e) => e.id === evidenceId) || reviewedEv;
 }
 
+const pruneStateHistoryForQuota = (state) => {
+  if (!state || typeof state !== 'object') return state;
+  const prunedSubmissions = {};
+  for (const [k, sub] of Object.entries(state.submissions || {})) {
+    if (!sub || typeof sub !== 'object') continue;
+    prunedSubmissions[k] = {
+      ...sub,
+      history: (Array.isArray(sub.history) ? sub.history.slice(-3) : []).map((h) => ({
+        ...h,
+        snapshot: h?.snapshot
+          ? {
+              ...h.snapshot,
+              evidence: stripEvidenceDataUrl(h.snapshot.evidence),
+            }
+          : h?.snapshot,
+      })),
+    };
+  }
+  return {
+    ...state,
+    submissions: prunedSubmissions,
+  };
+};
+
 const write = (state, options = {}) => {
-  localStorage.setItem(KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    try {
+      const compactState = pruneStateHistoryForQuota(state);
+      localStorage.setItem(KEY, JSON.stringify(compactState));
+    } catch {
+      // Abaikan bila kuota penyimpanan browser tetap penuh
+    }
+  }
   if (!options.skipAudit) {
     const entries = read('prp_audit', []);
     const latest = Object.values(state.submissions || {})
@@ -703,20 +756,24 @@ const write = (state, options = {}) => {
       ? `${latest.at}:${latest.status}:${latest.note}`
       : `forms:${state.forms.length}:evidence:${Object.values(state.evidence || {}).reduce((sum, list) => sum + (list?.length || 0), 0)}:drafts:${Object.keys(state.drafts || {}).length}`;
     if (entries[0]?.workflowSignature !== signature) {
-      localStorage.setItem(
-        'prp_audit',
-        JSON.stringify([
-          {
-            id: createId('audit'),
-            action: 'KPI_WORKFLOW',
-            detail: latest ? `${latest.from} -> ${latest.status}: ${latest.note}` : 'Distribusi, draf, atau bukti KPI diperbarui',
-            actor: latest?.actor?.email || 'Workflow KPI',
-            at: new Date().toISOString(),
-            workflowSignature: signature,
-          },
-          ...entries,
-        ].slice(0, 500)),
-      );
+      try {
+        localStorage.setItem(
+          'prp_audit',
+          JSON.stringify([
+            {
+              id: createId('audit'),
+              action: 'KPI_WORKFLOW',
+              detail: latest ? `${latest.from} -> ${latest.status}: ${latest.note}` : 'Distribusi, draf, atau bukti KPI diperbarui',
+              actor: latest?.actor?.email || 'Workflow KPI',
+              at: new Date().toISOString(),
+              workflowSignature: signature,
+            },
+            ...entries,
+          ].slice(0, 500)),
+        );
+      } catch {
+        // Abaikan kegagalan kuota pada log audit lokal
+      }
     }
   }
   if (typeof window !== 'undefined') {
@@ -1688,7 +1745,7 @@ export function saveUnitKpiDraft(formId, user, { values = {}, notes = {} } = {})
   owner(form, user);
   const key = submissionKey(formId, user.email);
   const previous = state.submissions[key];
-  if (previous && !['NEEDS_REVISION'].includes(previous.status)) {
+  if (isSubmissionLockedForActor(previous, user)) {
     throw new Error('Submission sudah terkunci.');
   }
 
@@ -1755,14 +1812,17 @@ export function saveUnitKpiDraft(formId, user, { values = {}, notes = {} } = {})
     writeSpiAuditRecord(
       {
         ...currentSpi,
+        isDraft: true,
         items: {
           D_5: {
             ...(currentSpi.items?.D_5 || {}),
             indicatorId: 'D_5',
+            isDraft: true,
+            status: 'DRAFT',
             unfollowedCount: String(filteredValues[subKeyUn] ?? ''),
             totalRecommendations: String(filteredValues[subKeyTot] ?? ''),
             auditNote: String(filteredNotes.D_5 ?? ''),
-            evidenceList: readUnitEvidence(form.id, user.email),
+            evidenceList: stripEvidenceDataUrl(readUnitEvidence(form.id, user.email)),
             updatedBy: user.email.toLowerCase(),
             updatedByName: user.name || user.unit || 'SPI ITPLN',
             updatedAt: draft.updatedAt,
@@ -2006,7 +2066,7 @@ export function submitUnitKpi(formId, user, values, options = {}) {
   owner(form, user);
   const key = submissionKey(formId, user.email);
   const previous = state.submissions[key];
-  if (previous && !['NEEDS_REVISION'].includes(previous.status)) {
+  if (isSubmissionLockedForActor(previous, user)) {
     throw new Error('Submission sudah terkunci.');
   }
 
@@ -2100,6 +2160,7 @@ export function submitUnitKpi(formId, user, values, options = {}) {
         }
   ));
 
+  const rawTotalScore = sectionScores.reduce((sum, section) => sum + section.score, 0);
   const record = {
     formId,
     email: user.email.toLowerCase(),
@@ -2112,7 +2173,9 @@ export function submitUnitKpi(formId, user, values, options = {}) {
     submittedAt: new Date().toISOString(),
     revisionNote: '',
     sectionScores,
-    totalScore: Math.min(100, Math.max(0, sectionScores.reduce((sum, section) => sum + section.score, 0))),
+    totalScore: user.role === 'spi'
+      ? Math.min(100, Math.max(-25, rawTotalScore))
+      : Math.min(100, Math.max(0, rawTotalScore)),
   };
   record.history = history(previous, 'SUBMITTED', 'Dikirim unit ke sistem pusat PRP', user, evidence);
   record.history[record.history.length - 1].snapshot = clone({
@@ -2120,7 +2183,7 @@ export function submitUnitKpi(formId, user, values, options = {}) {
     notes: sanitizedNotes,
     sectionScores,
     totalScore: record.totalScore,
-    evidence,
+    evidence: stripEvidenceDataUrl(evidence),
   });
 
   const nextDrafts = { ...(state.drafts || {}) };
@@ -2463,9 +2526,13 @@ function spiActorGuard(user) {
 }
 
 export function readSpiAuditStore() {
-  const raw = read(SPI_AUDIT_KEY, { records: {}, updatedAt: null });
+  const raw = read(SPI_AUDIT_KEY, { records: {}, byForm: {}, updatedAt: null });
+  const recordsMap = (raw && typeof raw.records === 'object' && Object.keys(raw.records).length > 0)
+    ? raw.records
+    : (raw && typeof raw.byForm === 'object' ? raw.byForm : {});
   return {
-    records: raw && typeof raw.records === 'object' ? raw.records : {},
+    records: recordsMap,
+    byForm: recordsMap,
     updatedAt: raw?.updatedAt || null,
   };
 }
@@ -2504,29 +2571,39 @@ export function readSpiAuditForForm(formId, state = readKpiWorkflow()) {
 function writeSpiAuditRecord(nextRecord, actor, auditDetail) {
   if (typeof localStorage === 'undefined') return nextRecord;
   const store = readSpiAuditStore();
+  const nextRecordsMap = {
+    ...(store.records || {}),
+    [nextRecord.formId]: nextRecord,
+  };
   const nextStore = {
-    records: {
-      ...(store.records || {}),
-      [nextRecord.formId]: nextRecord,
-    },
+    records: nextRecordsMap,
+    byForm: nextRecordsMap,
     updatedAt: nextRecord.updatedAt,
   };
-  localStorage.setItem(SPI_AUDIT_KEY, JSON.stringify(nextStore));
+  try {
+    localStorage.setItem(SPI_AUDIT_KEY, JSON.stringify(nextStore));
+  } catch {
+    // Abaikan kegagalan kuota penyimpanan lokal
+  }
 
   const entries = read('prp_audit', []);
-  localStorage.setItem(
-    'prp_audit',
-    JSON.stringify([
-      {
-        id: createId('audit'),
-        action: 'SPI_AUDIT_REALTIME',
-        detail: auditDetail,
-        actor: actor?.email || 'spi@itpln.ac.id',
-        at: nextRecord.updatedAt,
-      },
-      ...(Array.isArray(entries) ? entries : []),
-    ].slice(0, 500)),
-  );
+  try {
+    localStorage.setItem(
+      'prp_audit',
+      JSON.stringify([
+        {
+          id: createId('audit'),
+          action: 'SPI_AUDIT_REALTIME',
+          detail: auditDetail,
+          actor: actor?.email || 'spi@itpln.ac.id',
+          at: nextRecord.updatedAt,
+        },
+        ...(Array.isArray(entries) ? entries : []),
+      ].slice(0, 500)),
+    );
+  } catch {
+    // Abaikan kegagalan kuota pada log audit lokal
+  }
 
   if (typeof fetch === 'function') {
     const token = localStorage.getItem('performa_access_token') || '';
@@ -2642,7 +2719,7 @@ export function saveSpiIndicatorAudit(formId, user, indicatorId = 'D_5', itemPat
     : String(prevItem.auditNote ?? '');
   const nextEvList = Array.isArray(itemPatch.evidenceList)
     ? itemPatch.evidenceList.filter((ev) => ev && ev.indicatorId === 'D_5')
-    : (Array.isArray(prevItem.evidenceList) ? prevItem.evidenceList : existingEv);
+    : (existingEv.length > 0 ? existingEv : (Array.isArray(prevItem.evidenceList) ? prevItem.evidenceList : []));
 
   const nextItem = {
     ...prevItem,
@@ -2673,40 +2750,66 @@ export function saveSpiIndicatorAudit(formId, user, indicatorId = 'D_5', itemPat
     const computedD5 = d5ItemDef
       ? computeKpiItem(d5ItemDef, d5Values, true, form.sections)
       : { ratioPercent: null, weightedScore: 0 };
-    const nextSpiSubmission = {
-      ...(existingSub || {}),
-      formId: form.id,
-      email: user.email.toLowerCase(),
-      unit: user.unit || user.name || 'Satuan Pengawasan Intern (SPI)',
-      picCodes: ['SPI'],
-      assignedIndicatorIds: ['D_5'],
-      values: d5Values,
-      notes: nextAuditNote.trim() ? { D_5: nextAuditNote.trim() } : {},
-      status: existingSub?.status || 'SUBMITTED',
-      submittedAt: now,
-      sectionScores: [
+    const isDraftOnly = Boolean(itemPatch.isDraft);
+    if (isDraftOnly && (!existingSub || existingSub.status === 'DRAFT' || existingSub.status === 'NEEDS_REVISION')) {
+      write(
         {
-          code: 'D',
-          title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)',
-          score: computedD5.weightedScore || 0,
+          ...state,
+          drafts: {
+            ...(state.drafts || {}),
+            [spiSubKey]: {
+              formId: form.id,
+              email: user.email.toLowerCase(),
+              unit: user.unit || user.name || 'Satuan Pengawasan Intern (SPI)',
+              picCodes: ['SPI'],
+              values: d5Values,
+              notes: nextAuditNote.trim() ? { D_5: nextAuditNote.trim() } : {},
+              updatedAt: now,
+            },
+          },
+          evidence: {
+            ...(state.evidence || {}),
+            [spiSubKey]: nextEvList,
+          },
         },
-      ],
-      totalScore: Math.max(0, computedD5.weightedScore || 0),
-    };
-    write(
-      {
-        ...state,
-        submissions: {
-          ...(state.submissions || {}),
-          [spiSubKey]: nextSpiSubmission,
+        { skipAudit: true },
+      );
+    } else {
+      const nextSpiSubmission = {
+        ...(existingSub || {}),
+        formId: form.id,
+        email: user.email.toLowerCase(),
+        unit: user.unit || user.name || 'Satuan Pengawasan Intern (SPI)',
+        picCodes: ['SPI'],
+        assignedIndicatorIds: ['D_5'],
+        values: d5Values,
+        notes: nextAuditNote.trim() ? { D_5: nextAuditNote.trim() } : {},
+        status: existingSub?.status || 'SUBMITTED',
+        submittedAt: now,
+        sectionScores: [
+          {
+            code: 'D',
+            title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)',
+            score: computedD5.weightedScore || 0,
+          },
+        ],
+        totalScore: computedD5.weightedScore || 0,
+      };
+      write(
+        {
+          ...state,
+          submissions: {
+            ...(state.submissions || {}),
+            [spiSubKey]: nextSpiSubmission,
+          },
+          evidence: {
+            ...(state.evidence || {}),
+            [spiSubKey]: nextEvList,
+          },
         },
-        evidence: {
-          ...(state.evidence || {}),
-          [spiSubKey]: nextEvList,
-        },
-      },
-      { skipAudit: true },
-    );
+        { skipAudit: true },
+      );
+    }
   }
 
   const nextRecord = {

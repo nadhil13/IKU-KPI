@@ -345,7 +345,7 @@ export function getDatabase(customPath = null) {
     return dbInstance;
   }
   const targetPath = customPath || process.env.PERFORMA_DB_PATH || DEFAULT_DB_PATH;
-  if (dbInstance && currentDbPath === targetPath) {
+  if (dbInstance && currentDbPath === targetPath && customPath !== ':memory:') {
     return dbInstance;
   }
   if (dbInstance) {
@@ -410,6 +410,7 @@ export function getDatabase(customPath = null) {
       unit TEXT,
       avatar TEXT,
       status TEXT NOT NULL DEFAULT 'Aktif',
+      must_change_password INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
 
@@ -480,17 +481,40 @@ export function getDatabase(customPath = null) {
     );
   `);
 
+  try {
+    db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
+  } catch {
+    // Kolom sudah tersedia pada basis data eksisting
+  }
+
   dbInstance = db;
   currentDbPath = targetPath;
   seedDefaultAccounts(db);
   return db;
 }
 
+export function closeDatabase() {
+  if (!dbInstance) return;
+  try {
+    dbInstance.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  } catch {
+    // Checkpoint diabaikan pada database in-memory
+  }
+  try {
+    dbInstance.close();
+  } catch {
+    // Koneksi sudah tertutup
+  }
+  dbInstance = null;
+  currentDbPath = null;
+}
+
 const sharedDefaultPasswordHash = hashPassword('password', 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
 
 function seedDefaultAccounts(db) {
   const countRow = db.prepare('SELECT COUNT(*) AS cnt FROM users').get();
-  if (countRow && countRow.cnt >= SEED_ACCOUNTS.length) {
+  const seedMarker = db.prepare("SELECT 1 FROM kv_store WHERE store_key = 'prp_seed_initialized_v1'").get();
+  if (seedMarker || (countRow && countRow.cnt > 0)) {
     db.prepare(`
       UPDATE users
       SET role = 'spi',
@@ -502,14 +526,21 @@ function seedDefaultAccounts(db) {
           unit = 'Satuan Pengawasan Intern (SPI)'
       WHERE email = 'spi@itpln.ac.id' AND role != 'spi'
     `).run();
+    if (!seedMarker) {
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT OR IGNORE INTO kv_store (store_key, payload_json, version, checksum, updated_by, updated_at)
+        VALUES ('prp_seed_initialized_v1', 'true', 1, 'seeded', 'system', ?)
+      `).run(now);
+    }
     return;
   }
 
   const insertStmt = db.prepare(`
     INSERT OR IGNORE INTO users (
       email, id, code, password_hash, name, short_name, role, role_title,
-      badge, allowed_portals_json, pic_codes_json, unit, avatar, status, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      badge, allowed_portals_json, pic_codes_json, unit, avatar, status, must_change_password, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
   `);
   const now = new Date().toISOString();
   db.exec('BEGIN IMMEDIATE');
@@ -544,6 +575,10 @@ function seedDefaultAccounts(db) {
           unit = 'Satuan Pengawasan Intern (SPI)'
       WHERE email = 'spi@itpln.ac.id' AND role != 'spi'
     `).run();
+    db.prepare(`
+      INSERT OR IGNORE INTO kv_store (store_key, payload_json, version, checksum, updated_by, updated_at)
+      VALUES ('prp_seed_initialized_v1', 'true', 1, 'seeded', 'system', ?)
+    `).run(now);
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
@@ -579,6 +614,7 @@ function rowToUser(row) {
     unit: row.unit,
     avatar: row.avatar,
     status: row.status,
+    mustChangePassword: Boolean(row.must_change_password),
     updatedAt: row.updated_at,
   };
 }
@@ -610,13 +646,16 @@ export function syncUsersListFromAdmin(usersArray, actorEmail = 'admin@itpln.ac.
   if (!Array.isArray(usersArray)) return listAllUsers();
   const db = getDatabase();
   const now = new Date().toISOString();
-  const existingStmt = db.prepare('SELECT password_hash FROM users WHERE email = ?');
+  const cleanActor = String(actorEmail || 'admin@itpln.ac.id').trim().toLowerCase();
+  const existingStmt = db.prepare('SELECT password_hash, must_change_password FROM users WHERE email = ?');
   const upsertStmt = db.prepare(`
     INSERT INTO users (
       email, id, code, password_hash, name, short_name, role, role_title,
-      badge, allowed_portals_json, pic_codes_json, unit, avatar, status, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      badge, allowed_portals_json, pic_codes_json, unit, avatar, status, must_change_password, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(email) DO UPDATE SET
+      id = excluded.id,
+      code = excluded.code,
       password_hash = excluded.password_hash,
       name = excluded.name,
       short_name = excluded.short_name,
@@ -628,18 +667,35 @@ export function syncUsersListFromAdmin(usersArray, actorEmail = 'admin@itpln.ac.
       unit = excluded.unit,
       avatar = excluded.avatar,
       status = excluded.status,
+      must_change_password = excluded.must_change_password,
       updated_at = excluded.updated_at
   `);
+  const deleteUserStmt = db.prepare('DELETE FROM users WHERE email = ?');
+  const deleteSessionStmt = db.prepare('DELETE FROM sessions WHERE email = ?');
 
-  db.exec('BEGIN IMMEDIATE');
+  const incomingEmails = new Set();
+
+  db.exec('SAVEPOINT sp_sync_users');
   try {
     usersArray.forEach((u, idx) => {
       if (!u?.email || typeof u.email !== 'string') return;
       const email = u.email.trim().toLowerCase();
+      if (!email) return;
+      if (u._deleted === true || u.deleted === true) {
+        if (email !== cleanActor) {
+          deleteUserStmt.run(email);
+          deleteSessionStmt.run(email);
+        }
+        return;
+      }
+      incomingEmails.add(email);
       const existing = existingStmt.get(email);
       const pwHash = u.password && u.password !== '********'
         ? hashPassword(u.password)
         : existing?.password_hash || sharedDefaultPasswordHash;
+      const mustChangePw = typeof u.mustChangePassword === 'boolean'
+        ? (u.mustChangePassword ? 1 : 0)
+        : (existing ? Number(existing.must_change_password) || 0 : 0);
       const role = ['superadmin_prp', 'iku_only', 'kpi_only', 'dual', 'spi'].includes(u.role) ? u.role : 'kpi_only';
       const portals = role === 'superadmin_prp' || role === 'dual' ? ['iku', 'kpi'] : role === 'iku_only' ? ['iku'] : ['kpi'];
       const picCodes = Array.isArray(u.picCodes) ? u.picCodes : [];
@@ -658,12 +714,30 @@ export function syncUsersListFromAdmin(usersArray, actorEmail = 'admin@itpln.ac.
         String(u.unit || ''),
         String(u.avatar || 'USR').slice(0, 4),
         u.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif',
+        mustChangePw,
         now,
       );
     });
-    db.exec('COMMIT');
+
+    if (incomingEmails.has(cleanActor)) {
+      const existingRows = db.prepare('SELECT email FROM users').all();
+      for (const row of existingRows) {
+        const dbEmail = String(row.email || '').toLowerCase();
+        if (dbEmail && dbEmail !== cleanActor && !incomingEmails.has(dbEmail)) {
+          deleteUserStmt.run(dbEmail);
+          deleteSessionStmt.run(dbEmail);
+        }
+      }
+    }
+
+    db.exec('RELEASE SAVEPOINT sp_sync_users');
   } catch (err) {
-    db.exec('ROLLBACK');
+    try {
+      db.exec('ROLLBACK TO SAVEPOINT sp_sync_users');
+      db.exec('RELEASE SAVEPOINT sp_sync_users');
+    } catch {
+      // Abaikan bila savepoint sudah ditutup
+    }
     throw err;
   }
   appendAuditLog('PENGGUNA_DISINKRONKAN', `Sinkronisasi ${usersArray.length} akun pengguna`, actorEmail);
@@ -675,6 +749,7 @@ export function deleteUserByEmail(email, actorEmail = 'admin@itpln.ac.id') {
   if (!cleanEmail || cleanEmail === String(actorEmail || '').trim().toLowerCase()) return false;
   const db = getDatabase();
   const info = db.prepare('DELETE FROM users WHERE email = ?').run(cleanEmail);
+  db.prepare('DELETE FROM sessions WHERE email = ?').run(cleanEmail);
   if (info.changes > 0) {
     appendAuditLog('PENGGUNA_DIHAPUS', `Akun ${cleanEmail} dihapus oleh ${actorEmail}`, actorEmail);
     return true;
@@ -702,7 +777,7 @@ export function updateUserProfileByEmail(email, changes = {}) {
   return rowToUser(db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail));
 }
 
-export function changeUserPasswordByEmail(email, newPassword) {
+export function changeUserPasswordByEmail(email, newPassword, keepJti = null) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   if (!cleanEmail || !newPassword) return null;
   const existing = findUserByEmail(cleanEmail);
@@ -711,9 +786,14 @@ export function changeUserPasswordByEmail(email, newPassword) {
   const now = new Date().toISOString();
   db.prepare(`
     UPDATE users
-    SET password_hash = ?, updated_at = ?
+    SET password_hash = ?, must_change_password = 0, updated_at = ?
     WHERE email = ?
   `).run(hashPassword(newPassword), now, cleanEmail);
+  if (keepJti) {
+    db.prepare('UPDATE sessions SET revoked_at = ? WHERE email = ? AND jti != ? AND revoked_at IS NULL').run(now, cleanEmail, keepJti);
+  } else {
+    db.prepare('UPDATE sessions SET revoked_at = ? WHERE email = ? AND revoked_at IS NULL').run(now, cleanEmail);
+  }
   appendAuditLog('PASSWORD_DIUBAH', `Kata sandi ${cleanEmail} diperbarui`, cleanEmail);
   return rowToUser(db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail));
 }
@@ -827,15 +907,18 @@ export function readSpiAuditRecords() {
       // Abaikan entri korup
     }
   }
-  const kvFallback = readKvStore('prp_spi_audit_v1', { byForm: {} }).value;
-  if (kvFallback && typeof kvFallback.byForm === 'object') {
-    for (const [fId, entry] of Object.entries(kvFallback.byForm)) {
+  const kvFallback = readKvStore('prp_spi_audit_v1', { byForm: {}, records: {} }).value;
+  const kvMap = (kvFallback?.byForm && typeof kvFallback.byForm === 'object' && Object.keys(kvFallback.byForm).length > 0)
+    ? kvFallback.byForm
+    : (kvFallback?.records && typeof kvFallback.records === 'object' ? kvFallback.records : null);
+  if (kvMap) {
+    for (const [fId, entry] of Object.entries(kvMap)) {
       if (!byForm[fId] || String(entry?.updatedAt || '') > String(byForm[fId].updatedAt || '')) {
         byForm[fId] = entry;
       }
     }
   }
-  return { byForm };
+  return { byForm, records: byForm };
 }
 
 export function upsertSpiAuditRecord(formId, payload = {}, actorEmail = 'spi@itpln.ac.id', ip = '127.0.0.1') {
@@ -893,7 +976,7 @@ export function upsertSpiAuditRecord(formId, payload = {}, actorEmail = 'spi@itp
   );
 
   const fullState = readSpiAuditRecords();
-  fullState.byForm[cleanFormId] = {
+  const entry = {
     formId: cleanFormId,
     period: nextPeriod,
     header: nextHeader,
@@ -901,6 +984,8 @@ export function upsertSpiAuditRecord(formId, payload = {}, actorEmail = 'spi@itp
     updatedBy: actorEmail,
     updatedAt: now,
   };
+  fullState.byForm[cleanFormId] = entry;
+  fullState.records = fullState.byForm;
   writeKvStore('prp_spi_audit_v1', fullState, actorEmail);
   appendAuditLog(
     'SPI_AUDIT_REALTIME',
@@ -908,23 +993,35 @@ export function upsertSpiAuditRecord(formId, payload = {}, actorEmail = 'spi@itp
     actorEmail,
     ip,
   );
-  return fullState.byForm[cleanFormId];
+  return entry;
 }
 
 export function appendAuditLog(action, detail, actor = 'system', ip = '127.0.0.1') {
   const db = getDatabase();
-  const lastRow = db.prepare('SELECT entry_hash FROM audit_logs ORDER BY seq DESC LIMIT 1').get();
-  const prevHash = lastRow?.entry_hash || 'GENESIS_PERFORMA_ITPLN_2026';
-  const at = new Date().toISOString();
-  const id = `aud_${crypto.randomUUID()}`;
-  const entryHash = computeSha256(`${prevHash}|${id}|${action}|${detail}|${actor}|${at}`);
+  db.exec('SAVEPOINT sp_audit_log');
+  try {
+    const lastRow = db.prepare('SELECT entry_hash FROM audit_logs ORDER BY seq DESC LIMIT 1').get();
+    const prevHash = lastRow?.entry_hash || 'GENESIS_PERFORMA_ITPLN_2026';
+    const at = new Date().toISOString();
+    const id = `aud_${crypto.randomUUID()}`;
+    const entryHash = computeSha256(`${prevHash}|${id}|${action}|${detail}|${actor}|${at}`);
 
-  db.prepare(`
-    INSERT INTO audit_logs (id, action, detail, actor, ip, at, prev_hash, entry_hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, String(action), String(detail), String(actor), String(ip || ''), at, prevHash, entryHash);
+    db.prepare(`
+      INSERT INTO audit_logs (id, action, detail, actor, ip, at, prev_hash, entry_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, String(action), String(detail), String(actor), String(ip || ''), at, prevHash, entryHash);
 
-  return { id, action, detail, actor, at, prevHash, entryHash };
+    db.exec('RELEASE SAVEPOINT sp_audit_log');
+    return { id, action, detail, actor, at, prevHash, entryHash };
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK TO SAVEPOINT sp_audit_log');
+      db.exec('RELEASE SAVEPOINT sp_audit_log');
+    } catch {
+      // Abaikan bila savepoint sudah dilepas
+    }
+    throw err;
+  }
 }
 
 export function listAuditLogs(limit = 250) {
@@ -1031,18 +1128,22 @@ export function doesBroadcastMatchUser(broadcast, user) {
   if (user.role === 'superadmin_prp') return true;
   if (broadcast.targetType === 'ALL') return true;
   if (broadcast.targetType === 'ROLE') {
-    return String(user.role || '').toLowerCase() === String(broadcast.targetValue || '').toLowerCase();
+    const tRole = String(broadcast.targetValue || '').trim().toLowerCase();
+    const uRole = String(user.role || '').trim().toLowerCase();
+    if (uRole === tRole) return true;
+    if (uRole === 'dual' && (tRole === 'kpi_only' || tRole === 'iku_only')) return true;
+    return false;
   }
   if (broadcast.targetType === 'USER') {
     const targets = String(broadcast.targetValue || '')
-      .split(',')
+      .split(/[,;\s]+/)
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
     return targets.includes(String(user.email || '').toLowerCase());
   }
   if (broadcast.targetType === 'PIC') {
     const targetPics = String(broadcast.targetValue || '')
-      .split(',')
+      .split(/[,;/+&]|\bdan\b/i)
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
     const userPics = (user.picCodes || []).map((c) => String(c).trim().toUpperCase());
@@ -1089,15 +1190,24 @@ export function deleteBroadcast(broadcastId, actorEmail = 'admin@itpln.ac.id') {
 
 const SERVER_BOOT_ID = `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
+const INTERNAL_KV_KEYS = new Set([
+  'prp_vapid_keys_v1',
+  'prp_web_push_subscriptions_v1',
+  'prp_seed_initialized_v1',
+]);
+
 export function getRealtimeDigest(user = null) {
   const db = getDatabase();
   const kvRows = db
     .prepare('SELECT store_key, version, checksum, updated_at FROM kv_store')
     .all();
 
+  const canReadSpiAudit = Boolean(user && ['superadmin_prp', 'spi'].includes(user.role));
   const kvVersions = {};
   let latestKvAt = '';
   for (const row of kvRows) {
+    if (INTERNAL_KV_KEYS.has(row.store_key)) continue;
+    if (row.store_key === 'prp_spi_audit_v1' && !canReadSpiAudit) continue;
     kvVersions[row.store_key] = {
       version: row.version,
       checksum: row.checksum,

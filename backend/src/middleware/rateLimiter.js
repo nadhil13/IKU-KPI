@@ -1,6 +1,6 @@
 /**
- * Pelindung Anti-Overload, Pembatas Laju (Sliding-Window Rate Limiter),
- * Circuit Breaker Konkurensi, dan Kunci Brute-Force Login.
+ * Pembatas Laju Permintaan (Fixed-Window Rate Limiter per IP),
+ * Pembatas Konkurensi In-Flight, dan Perlindungan Brute-Force Login.
  */
 
 const ipBuckets = new Map();
@@ -10,10 +10,10 @@ let totalInFlight = 0;
 
 export const RATE_LIMIT_CONFIG = Object.freeze({
   windowMs: 60 * 1000,
-  maxReadPerMinute: 360,
-  maxWritePerMinute: 120,
-  maxGlobalInFlight: 150,
-  maxPerIpInFlight: 35,
+  maxReadPerMinute: 1800,
+  maxWritePerMinute: 180,
+  maxGlobalInFlight: 250,
+  maxPerIpInFlight: 60,
   maxLoginFailures: 5,
   loginLockoutMs: 5 * 60 * 1000,
 });
@@ -102,13 +102,17 @@ export function checkLoginLockout(ip, email) {
   const key = `${ip}:${String(email || '').toLowerCase()}`;
   const record = loginAttemptBuckets.get(key);
   if (!record) return { locked: false, remainingAttempts: RATE_LIMIT_CONFIG.maxLoginFailures };
-  if (record.lockedUntil && now < record.lockedUntil) {
-    const retryAfterSec = Math.max(1, Math.ceil((record.lockedUntil - now) / 1000));
-    return {
-      locked: true,
-      retryAfterSec,
-      message: `Terlalu banyak percobaan login gagal. Akun dikunci sementara selama ${retryAfterSec} detik demi keamanan.`,
-    };
+  if (record.lockedUntil) {
+    if (now < record.lockedUntil) {
+      const retryAfterSec = Math.max(1, Math.ceil((record.lockedUntil - now) / 1000));
+      return {
+        locked: true,
+        retryAfterSec,
+        message: `Terlalu banyak percobaan login gagal. Akun dikunci sementara selama ${retryAfterSec} detik demi keamanan.`,
+      };
+    }
+    loginAttemptBuckets.delete(key);
+    return { locked: false, remainingAttempts: RATE_LIMIT_CONFIG.maxLoginFailures };
   }
   if (now > record.resetAt) {
     loginAttemptBuckets.delete(key);
@@ -124,11 +128,14 @@ export function recordLoginFailure(ip, email) {
   const now = Date.now();
   const key = `${ip}:${String(email || '').toLowerCase()}`;
   const existing = loginAttemptBuckets.get(key);
-  const failures = (existing && now <= existing.resetAt ? existing.failures : 0) + 1;
+  const previousActive = existing
+    && now <= existing.resetAt
+    && (!existing.lockedUntil || now < existing.lockedUntil);
+  const failures = (previousActive ? existing.failures : 0) + 1;
   const lockedUntil = failures >= RATE_LIMIT_CONFIG.maxLoginFailures ? now + RATE_LIMIT_CONFIG.loginLockoutMs : null;
   loginAttemptBuckets.set(key, {
     failures,
-    resetAt: now + 10 * 60 * 1000,
+    resetAt: lockedUntil || (now + 10 * 60 * 1000),
     lockedUntil,
   });
   return {

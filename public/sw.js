@@ -4,12 +4,32 @@
  * sekaligus menangani pengiriman notifikasi sistem di luar aplikasi (layar HP / status bar).
  */
 const CACHE_NAME = 'performa-itpln-pwa-v3';
+const MAX_RUNTIME_CACHE_ENTRIES = 60;
 const SHELL_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/logo_pln.png',
 ];
+
+async function trimRuntimeCache(cacheName, maxEntries) {
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    if (keys.length <= maxEntries) return;
+    const excess = keys.length - maxEntries;
+    let deleted = 0;
+    for (const req of keys) {
+      if ( deleted >= excess ) break;
+      const pathname = new URL(req.url).pathname;
+      if (SHELL_ASSETS.includes(pathname)) continue;
+      await cache.delete(req);
+      deleted += 1;
+    }
+  } catch {
+    // Eviksi cache dilewati bila Cache Storage sedang sibuk
+  }
+}
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -45,8 +65,15 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
 
-  // Jangan intercept endpoint API, stream SSE, atau version stamp deploy
-  if (url.pathname.startsWith('/api/') || url.pathname === '/version.json') return;
+  // Jangan intercept endpoint API, stream SSE, version stamp deploy, atau berkas PDF berukuran besar
+  if (
+    url.pathname.startsWith('/api/')
+    || url.pathname === '/version.json'
+    || url.pathname.startsWith('/panduan/')
+    || url.pathname.toLowerCase().endsWith('.pdf')
+  ) {
+    return;
+  }
   if (url.origin !== self.location.origin) return;
 
   const isDocumentOrManifest = request.mode === 'navigate'
@@ -54,13 +81,17 @@ self.addEventListener('fetch', (event) => {
     || url.pathname === '/index.html'
     || url.pathname === '/manifest.json';
 
-  // Network-first (bypass HTTP cache untuk HTML/manifest agar rilis web terbaru instan ke PWA)
   event.respondWith(
     fetch(isDocumentOrManifest ? new Request(request, { cache: 'no-store' }) : request)
       .then((response) => {
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => undefined);
+          caches.open(CACHE_NAME)
+            .then(async (cache) => {
+              await cache.put(request, clone);
+              await trimRuntimeCache(CACHE_NAME, MAX_RUNTIME_CACHE_ENTRIES);
+            })
+            .catch(() => undefined);
         }
         return response;
       })

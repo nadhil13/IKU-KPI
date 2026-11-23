@@ -7,7 +7,7 @@ import { doesBroadcastMatchUser } from './database.js';
 import { filterKpiWorkflowForCaller } from '../modules/kpi/kpiAccessPolicy.js';
 
 const clients = new Map();
-const MAX_CLIENTS_PER_IP = 25;
+const MAX_CLIENTS_PER_IP = 100;
 
 let heartbeatInterval = null;
 

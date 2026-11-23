@@ -47,7 +47,7 @@
   justify-content: center;
   gap: 0.48rem;
   min-height: 40px;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   border-radius: 6px;
   padding: 0.62rem 1.05rem;
   font-size: 0.78rem;
@@ -125,7 +125,7 @@
   height: 36px;
   border-radius: 4px;
   background: #EDF3F6;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   color: #094E68;
   display: grid;
   place-items: center;
@@ -179,11 +179,9 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  border-left: 2px solid #094E68;
+  border: 1px solid #D8E4EA;
+  border-radius: 6px;
   background: #F7FAFB;
-  border-top: 1px solid #D8E4EA;
-  border-right: 1px solid #D8E4EA;
-  border-bottom: 1px solid #D8E4EA;
   color: #072534;
 }
 
@@ -246,7 +244,7 @@
 .tp-fields select,
 .tp-toolbar select {
   width: 100%;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   border-radius: 6px;
   padding: 0.56rem 0.78rem;
   min-height: 40px;
@@ -305,7 +303,7 @@
   align-items: center;
   gap: 0.5rem;
   background: #FFFFFF;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   border-radius: 6px;
   padding: 0 0.75rem;
   min-height: 40px;
@@ -406,7 +404,7 @@
   display: grid;
   place-items: center;
   background: #EDF3F6;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   color: #094E68;
   width: 34px;
   height: 34px;
@@ -434,7 +432,7 @@
   border-radius: 4px;
   padding: 0.22rem 0.55rem;
   background: #EDF3F6;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   color: #072534;
   font-family: var(--ent-mono);
   font-size: 0.62rem;
@@ -447,7 +445,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   background: #FFFFFF;
   border-radius: 5px;
   color: #072534;
@@ -505,7 +503,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) {
   .tp-primary,
   .tp-secondary,
   .tp-fields input,

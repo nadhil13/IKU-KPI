@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   MAX_JSON_BODY_BYTES,
   ACCESS_TOKEN_TTL_SECONDS,
@@ -16,6 +19,7 @@ import {
   getRateLimiterTelemetry,
 } from '../middleware/rateLimiter.js';
 import {
+  getDatabase,
   findUserByEmail,
   listAllUsers,
   verifyUserCredentials,
@@ -89,20 +93,32 @@ function sendJson(res, status, data, extraHeaders = {}) {
   res.end(body);
 }
 
+function safeDecodeURIComponent(raw) {
+  try {
+    return decodeURIComponent(String(raw ?? ''));
+  } catch {
+    throw Object.assign(new Error('Parameter URL tidak valid.'), { status: 400 });
+  }
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let tooLarge = false;
     const chunks = [];
     req.on('data', (chunk) => {
+      if (tooLarge) return;
       size += chunk.length;
       if (size > MAX_JSON_BODY_BYTES) {
+        tooLarge = true;
+        chunks.length = 0;
         reject(Object.assign(new Error('Ukuran payload melebihi batas maksimum keamanan (6 MB).'), { status: 413 }));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge) return;
       if (chunks.length === 0) {
         resolve({});
         return;
@@ -115,7 +131,9 @@ function readJsonBody(req) {
         reject(Object.assign(new Error('Format JSON tidak valid.'), { status: 400 }));
       }
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      if (!tooLarge) reject(err);
+    });
   });
 }
 
@@ -139,7 +157,13 @@ export async function handleApiRequest(req, res) {
     return true;
   }
 
-  const urlObj = new URL(req.url || '/', `http://${req.headers?.host || 'localhost'}`);
+  let urlObj;
+  try {
+    urlObj = new URL(req.url || '/', `http://${req.headers?.host || 'localhost'}`);
+  } catch {
+    sendJson(res, 400, { ok: false, error: 'Format URL permintaan tidak valid.' });
+    return true;
+  }
   const pathname = urlObj.pathname;
   if (!pathname.startsWith('/api/v1')) {
     return false;
@@ -175,7 +199,6 @@ export async function handleApiRequest(req, res) {
   }
 
   try {
-    // 1. GET /api/v1/health
     if (pathname === '/api/v1/health' && req.method === 'GET') {
       const chain = verifyAuditChain();
       sendJson(res, 200, {
@@ -191,7 +214,13 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 2. POST /api/v1/auth/login
+    if (pathname === '/api/v1/openapi.json' && req.method === 'GET') {
+      const specPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../openapi.json');
+      const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
+      sendJson(res, 200, spec);
+      return true;
+    }
+
     if (pathname === '/api/v1/auth/login' && req.method === 'POST') {
       const body = await readJsonBody(req);
       const email = String(body.email || '').trim().toLowerCase();
@@ -257,7 +286,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 3. POST /api/v1/auth/logout
     if (pathname === '/api/v1/auth/logout' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (caller?.jti) {
@@ -273,7 +301,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 4. GET /api/v1/auth/me
     if (pathname === '/api/v1/auth/me' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -284,7 +311,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 4b. POST /api/v1/auth/profile (Pembaruan profil mandiri oleh pengguna terautentikasi)
     if (pathname === '/api/v1/auth/profile' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -311,7 +337,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 4c. POST /api/v1/auth/password (Pembaruan kata sandi mandiri oleh pengguna terautentikasi)
     if (pathname === '/api/v1/auth/password' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -322,26 +347,29 @@ export async function handleApiRequest(req, res) {
       const newPassword = String(body?.newPassword || '');
       const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
       const sysConfig = readKvStore('prp_system_config', {}).value || {};
-      const minLen = Number(sysConfig.passwordMinLength) || 8;
+      const minLen = Number(sysConfig.minimumPasswordLength ?? sysConfig.passwordMinLength) || 8;
       if (newPassword.length < minLen) {
         sendJson(res, 400, { ok: false, error: `Kata sandi baru minimal ${minLen} karakter.` });
         return true;
       }
-      if (!currentPassword) {
+      if (!currentPassword && !caller.mustChangePassword) {
         sendJson(res, 400, { ok: false, error: 'Kata sandi saat ini wajib diisi.' });
         return true;
       }
-      const verified = verifyUserCredentials(caller.email, currentPassword);
-      if (!verified.ok) {
-        sendJson(res, 403, { ok: false, error: 'Kata sandi saat ini tidak sesuai.' });
-        return true;
+      if (currentPassword) {
+        const verified = verifyUserCredentials(caller.email, currentPassword);
+        if (!verified.ok) {
+          sendJson(res, 403, { ok: false, error: 'Kata sandi saat ini tidak sesuai.' });
+          return true;
+        }
       }
-      const updatedUser = changeUserPasswordByEmail(caller.email, newPassword);
+      const updatedUser = changeUserPasswordByEmail(caller.email, newPassword, caller.jti);
+      const syncedUsers = listAllUsers();
+      writeKvStore('prp_users', syncedUsers, caller.email);
       sendJson(res, 200, { ok: true, user: updatedUser });
       return true;
     }
 
-    // 5. GET /api/v1/bootstrap
     if (pathname === '/api/v1/bootstrap' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -380,7 +408,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 5b. GET /api/v1/realtime/digest (Ringan: cek perubahan versi state/broadcast di PWA & serverless)
     if (pathname === '/api/v1/realtime/digest' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -401,7 +428,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 5c. POST /api/v1/notifications/email (Pengiriman gateway email resmi + rekam jejak audit)
     if (pathname === '/api/v1/notifications/email' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -412,8 +438,11 @@ export async function handleApiRequest(req, res) {
         sendJson(res, 403, { ok: false, error: 'Akun Auditor SPI bersifat Hanya Lihat (Read-Only).' });
         return true;
       }
-      const body = sanitizePayload((await readJsonBody(req)) || {});
-      const recipients = Array.isArray(body.toEmails) ? body.toEmails.filter(Boolean).slice(0, 30) : [];
+      const body = (await readJsonBody(req)) || {};
+      const rawRecipients = Array.isArray(body.toEmails)
+        ? body.toEmails
+        : (Array.isArray(body.recipients) ? body.recipients : []);
+      const recipients = rawRecipients.filter(Boolean).slice(0, 30);
       const subject = String(body.subject || '[PERFORMA ITPLN] Pemberitahuan Sistem Kinerja').slice(0, 200);
       const textBody = String(body.body || '').slice(0, 4000);
       const mailId = String(body.id || `mail_${Date.now()}`);
@@ -439,6 +468,7 @@ export async function handleApiRequest(req, res) {
                 subject,
                 text: textBody || subject,
               }),
+              signal: AbortSignal.timeout(8000),
             });
             deliveryStatus = gwRes.ok ? 'SENT_GATEWAY' : 'FAILED_GATEWAY';
           } catch {
@@ -450,6 +480,7 @@ export async function handleApiRequest(req, res) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id: mailId, from: fromAddress, to: recipients, subject, body: textBody, recordedAt }),
+              signal: AbortSignal.timeout(8000),
             });
             deliveryStatus = gwRes.ok ? 'SENT_GATEWAY' : 'FAILED_GATEWAY';
           } catch {
@@ -459,6 +490,9 @@ export async function handleApiRequest(req, res) {
       }
 
       const existingOutbox = readKvStore('prp_email_outbox_v1', []).value;
+      const outboxStatus = deliveryStatus === 'SENT_GATEWAY'
+        ? 'TERKIRIM_GATEWAY'
+        : (deliveryStatus === 'FAILED_GATEWAY' ? 'GAGAL_GATEWAY' : 'TERCATAT_OUTBOX_AUDIT');
       const outboxEntry = {
         id: mailId,
         kind: String(body.kind || 'SYSTEM'),
@@ -468,7 +502,7 @@ export async function handleApiRequest(req, res) {
         body: textBody,
         actionUrl: String(body.actionUrl || '/internal'),
         actorEmail: caller.email,
-        status: deliveryStatus === 'SENT_GATEWAY' ? 'TERKIRIM_GATEWAY' : 'TERCATAT_OUTBOX_AUDIT',
+        status: outboxStatus,
         deliveryStatus,
         sentAt: recordedAt,
       };
@@ -484,6 +518,17 @@ export async function handleApiRequest(req, res) {
         caller.email,
         ip,
       );
+      if (deliveryStatus === 'FAILED_GATEWAY') {
+        sendJson(res, 502, {
+          ok: false,
+          error: 'Gagal mengirim email melalui gateway eksternal, namun pesan telah dicatat pada outbox audit.',
+          id: mailId,
+          recipients,
+          deliveryStatus,
+          recordedAt,
+        });
+        return true;
+      }
       sendJson(res, 200, {
         ok: true,
         id: mailId,
@@ -494,7 +539,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 5d. GET & POST /api/v1/spi/audit (Bagian Inputan & Kolom Khusus SPI Real-Time)
     if (pathname === '/api/v1/spi/audit' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -552,68 +596,110 @@ export async function handleApiRequest(req, res) {
       const clientId = String(req.headers?.['x-client-id'] || body.clientId || '');
       const formId = String(body.formId || 'global').trim();
       const savedEntry = upsertSpiAuditRecord(formId, body, caller.email, ip);
+      if (!savedEntry) {
+        sendJson(res, 400, { ok: false, error: 'Identitas formulir audit SPI tidak valid.' });
+        return true;
+      }
       const fullSpiAudit = readSpiAuditRecords();
 
       // Sinkronkan juga isian Bagian D.5 milik SPI ke prp_kpi_distribution_v1 secara real-time (terisolasi khusus D_5)
+      let latestDist = readKvStore('prp_kpi_distribution_v1', null).value;
       const d5Item = savedEntry?.items?.D_5 || null;
       if (d5Item && formId && formId !== 'global') {
-        const currentDist = readKvStore('prp_kpi_distribution_v1', {
+        const currentDist = latestDist || {
           forms: [],
           submissions: {},
           evidence: {},
           drafts: {},
           adminOverrides: {},
           revisions: {},
-        }).value;
+        };
         const spiSubKey = `${formId}:${caller.email.toLowerCase()}`;
         const prevSub = currentDist.submissions?.[spiSubKey] || null;
-        const unVal = d5Item.unfollowedCount !== undefined ? String(d5Item.unfollowedCount) : (prevSub?.values?.d_5_un ?? '');
-        const totVal = d5Item.totalRecommendations !== undefined ? String(d5Item.totalRecommendations) : (prevSub?.values?.d_5_tot ?? '');
-        const noteText = d5Item.auditNote !== undefined ? String(d5Item.auditNote) : (prevSub?.notes?.D_5 ?? '');
+        const prevDraft = currentDist.drafts?.[spiSubKey] || null;
+        const unVal = d5Item.unfollowedCount !== undefined ? String(d5Item.unfollowedCount) : (prevDraft?.values?.d_5_un ?? prevSub?.values?.d_5_un ?? '');
+        const totVal = d5Item.totalRecommendations !== undefined ? String(d5Item.totalRecommendations) : (prevDraft?.values?.d_5_tot ?? prevSub?.values?.d_5_tot ?? '');
+        const noteText = d5Item.auditNote !== undefined ? String(d5Item.auditNote) : (prevDraft?.notes?.D_5 ?? prevSub?.notes?.D_5 ?? '');
         const unNum = Number(unVal);
         const totNum = Number(totVal);
         const hasValidNums = String(unVal).trim() !== '' && String(totVal).trim() !== '' && Number.isFinite(unNum) && Number.isFinite(totNum) && totNum > 0;
         const unRatio = hasValidNums ? Math.min(1, Math.max(0, unNum / totNum)) : 0;
-        const weightedD5 = hasValidNums ? unRatio * -2.5 : 0;
 
-        const nextSpiSub = {
-          ...(prevSub || {}),
-          formId,
-          email: caller.email.toLowerCase(),
-          unit: caller.unit || 'Satuan Pengawasan Intern (SPI)',
-          picCodes: ['SPI'],
-          assignedIndicatorIds: ['D_5'],
-          values: {
-            d_5_un: unVal,
-            d_5_tot: totVal,
-          },
-          notes: noteText ? { D_5: noteText } : {},
-          status: prevSub?.status || 'SUBMITTED',
-          submittedAt: new Date().toISOString(),
-          sectionScores: [{ code: 'D', title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)', score: weightedD5 }],
-          totalScore: Math.max(0, weightedD5),
-        };
+        const targetForm = (currentDist.forms || []).find((f) => String(f?.id) === formId);
+        let d5Weight = -2.5;
+        if (targetForm && Array.isArray(targetForm.sections)) {
+          for (const sec of targetForm.sections) {
+            const d5Config = (sec.items || []).find((it) => it?.id === 'D_5');
+            if (d5Config && Number.isFinite(Number(d5Config.weight))) {
+              d5Weight = Number(d5Config.weight);
+              break;
+            }
+          }
+        }
+        const weightedD5 = hasValidNums ? Number((unRatio * d5Weight).toFixed(4)) : 0;
+        const isDraftMode = Boolean(body.isDraft || d5Item.isDraft || d5Item.status === 'DRAFT');
+
         const nextDist = {
           ...currentDist,
-          submissions: {
-            ...(currentDist.submissions || {}),
-            [spiSubKey]: nextSpiSub,
-          },
+          submissions: { ...(currentDist.submissions || {}) },
+          drafts: { ...(currentDist.drafts || {}) },
+          evidence: { ...(currentDist.evidence || {}) },
         };
-        if (Array.isArray(d5Item.evidenceList)) {
-          nextDist.evidence = {
-            ...(currentDist.evidence || {}),
-            [spiSubKey]: d5Item.evidenceList.filter((ev) => ev && ev.indicatorId === 'D_5'),
+
+        if (isDraftMode && (!prevSub || prevSub.status === 'DRAFT' || prevSub.status === 'REVISION_REQUESTED')) {
+          nextDist.drafts[spiSubKey] = {
+            ...(prevDraft || {}),
+            formId,
+            email: caller.email.toLowerCase(),
+            unit: caller.unit || 'Satuan Pengawasan Intern (SPI)',
+            picCodes: ['SPI'],
+            values: {
+              d_5_un: unVal,
+              d_5_tot: totVal,
+            },
+            notes: noteText ? { D_5: noteText } : {},
+            updatedAt: new Date().toISOString(),
           };
+        } else {
+          const nextSpiSub = {
+            ...(prevSub || {}),
+            formId,
+            email: caller.email.toLowerCase(),
+            unit: caller.unit || 'Satuan Pengawasan Intern (SPI)',
+            picCodes: ['SPI'],
+            assignedIndicatorIds: ['D_5'],
+            values: {
+              d_5_un: unVal,
+              d_5_tot: totVal,
+            },
+            notes: noteText ? { D_5: noteText } : {},
+            status: prevSub?.status && prevSub.status !== 'DRAFT' ? prevSub.status : 'SUBMITTED',
+            submittedAt: new Date().toISOString(),
+            sectionScores: [{ code: 'D', title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)', score: weightedD5 }],
+            totalScore: weightedD5,
+          };
+          nextDist.submissions[spiSubKey] = nextSpiSub;
+        }
+
+        if (Array.isArray(d5Item.evidenceList)) {
+          nextDist.evidence[spiSubKey] = d5Item.evidenceList.filter((ev) => ev && ev.indicatorId === 'D_5');
         }
         writeKvStore('prp_kpi_distribution_v1', nextDist, caller.email);
+        latestDist = nextDist;
+      }
+
+      const updatedStoresPayload = { prp_spi_audit_v1: fullSpiAudit };
+      const updatedKeysList = ['prp_spi_audit_v1'];
+      if (latestDist) {
+        updatedStoresPayload.prp_kpi_distribution_v1 = latestDist;
+        updatedKeysList.push('prp_kpi_distribution_v1');
       }
 
       publishRealtimeEvent('state:updated', {
-        updatedKeys: ['prp_spi_audit_v1', 'prp_kpi_distribution_v1'],
+        updatedKeys: updatedKeysList,
         actor: { email: caller.email, name: caller.name, role: caller.role, picCodes: caller.picCodes },
         originClientId: clientId,
-        stores: { prp_spi_audit_v1: fullSpiAudit },
+        stores: updatedStoresPayload,
         audit: listAuditLogs(80),
         at: new Date().toISOString(),
       });
@@ -627,7 +713,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 6. POST /api/v1/sync/push
     if (pathname === '/api/v1/sync/push' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -637,8 +722,10 @@ export async function handleApiRequest(req, res) {
 
       const body = await readJsonBody(req);
       const incomingStores = body.stores && typeof body.stores === 'object' ? body.stores : {};
+      const expectedVersions = body.expectedVersions && typeof body.expectedVersions === 'object' ? body.expectedVersions : {};
       const clientId = String(req.headers?.['x-client-id'] || body.clientId || '');
       const updatedKeys = [];
+      const pendingPushNotifications = [];
 
       if (caller.role === 'spi') {
         const storeKeys = Object.keys(incomingStores);
@@ -672,173 +759,237 @@ export async function handleApiRequest(req, res) {
         }
       }
 
-      for (const [storeKey, incomingVal] of Object.entries(incomingStores)) {
-        if (!ALLOWED_SYNC_KEYS.has(storeKey)) continue;
+      const db = getDatabase();
+      db.exec('SAVEPOINT sp_sync_push');
+      try {
+        for (const [storeKey, incomingVal] of Object.entries(incomingStores)) {
+          if (!ALLOWED_SYNC_KEYS.has(storeKey)) continue;
 
-        if (storeKey === 'prp_spi_audit_v1') {
-          if (caller.role !== 'spi') {
-            appendAuditLog(
-              'SECURITY_VIOLATION',
-              `Percobaan tulis bagian khusus SPI (prp_spi_audit_v1) oleh non-SPI (${caller.email})`,
-              caller.email,
-              ip,
-            );
-            sendJson(res, 403, {
-              ok: false,
-              error: 'Akses ditolak: Hanya akun Auditor SPI yang berhak mengisi bagian/kolom khusus SPI.',
-            });
-            return true;
-          }
-          const byForm = (incomingVal?.records && typeof incomingVal.records === 'object'
-            ? incomingVal.records
-            : incomingVal?.byForm) || {};
-          for (const [fId, formEntry] of Object.entries(byForm)) {
-            if (fId && formEntry && typeof formEntry === 'object') {
-              upsertSpiAuditRecord(fId, formEntry, caller.email, ip);
-            }
-          }
-          updatedKeys.push('prp_spi_audit_v1');
-          continue;
-        }
-
-        if (storeKey === 'prp_notifications_v1' || storeKey === 'prp_email_outbox_v1') {
-          if (Array.isArray(incomingVal)) {
-            const existingList = readKvStore(storeKey, []).value;
-            const mergedMap = new Map();
-            (Array.isArray(existingList) ? existingList : []).forEach((item) => {
-              if (item?.id) mergedMap.set(item.id, item);
-            });
-            const newNotificationItems = [];
-            incomingVal.forEach((item) => {
-              if (!item?.id) return;
-              const prev = mergedMap.get(item.id);
-              if (!prev) {
-                mergedMap.set(item.id, item);
-                if (storeKey === 'prp_notifications_v1') {
-                  newNotificationItems.push(item);
-                }
-              } else {
-                const readBy = Array.from(new Set([
-                  ...(Array.isArray(prev.readBy) ? prev.readBy : []),
-                  ...(Array.isArray(item.readBy) ? item.readBy : []),
-                ]));
-                mergedMap.set(item.id, { ...prev, ...item, readBy });
-              }
-            });
-            const mergedList = Array.from(mergedMap.values())
-              .sort((a, b) => String(b.createdAt || b.sentAt || '').localeCompare(String(a.createdAt || a.sentAt || '')))
-              .slice(0, 250);
-            const result = writeKvStore(storeKey, mergedList, caller.email);
-            if (result.changed) {
-              updatedKeys.push(storeKey);
-            }
-            if (newNotificationItems.length > 0) {
-              newNotificationItems.slice(0, 5).forEach((notif) => {
-                dispatchWebPushToTargets(
-                  {
-                    id: notif.id,
-                    title: notif.title || 'Notifikasi PERFORMA ITPLN',
-                    body: notif.message || 'Terdapat pembaruan status pada portal kinerja.',
-                    actionUrl: notif.actionUrl || '/internal',
-                    actionLabel: 'Buka Portal',
-                    tag: `prp-notif-${notif.id}`,
-                  },
-                  {
-                    targetEmails: Array.isArray(notif.targetEmails) ? notif.targetEmails : [],
-                    targetRoles: Array.isArray(notif.targetRoles) ? notif.targetRoles : [],
-                    targetPicCodes: Array.isArray(notif.targetPicCodes) ? notif.targetPicCodes : [],
-                  },
-                ).catch(() => {});
-              });
-            }
-          }
-          continue;
-        }
-
-        if (SUPERADMIN_ONLY_KEYS.has(storeKey)) {
-          if (caller.role !== 'superadmin_prp') {
-            appendAuditLog(
-              'SECURITY_VIOLATION',
-              `Percobaan tulis store ${storeKey} oleh non-superadmin (${caller.email})`,
-              caller.email,
-              ip,
-            );
-            sendJson(res, 403, {
-              ok: false,
-              error: `Akses ditolak: Hanya Superadmin PRP yang berwenang mengubah konfigurasi ${storeKey}.`,
-            });
-            return true;
-          }
-          let valueToPersist = incomingVal;
-          if (storeKey === 'prp_users' && Array.isArray(incomingVal)) {
-            valueToPersist = syncUsersListFromAdmin(incomingVal, caller.email);
-          }
-          const result = writeKvStore(storeKey, valueToPersist, caller.email);
-          if (result.changed) {
-            updatedKeys.push(storeKey);
-            appendAuditLog('SYNC_CONFIG_PRP', `Pembaruan ${storeKey} (v${result.version})`, caller.email, ip);
-          }
-          // Sinkronkan juga sections di prp_kpi_distribution_v1 apabila prp_kpi_config diperbarui dan tidak disertakan di request yang sama
-          if (storeKey === 'prp_kpi_config' && Array.isArray(incomingVal?.sections) && !incomingStores.prp_kpi_distribution_v1) {
-            const existingWorkflow = readKvStore('prp_kpi_distribution_v1', null).value;
-            const syncedWorkflow = syncActiveFormWithPublishedSections(existingWorkflow, incomingVal.sections, caller.email);
-            if (syncedWorkflow) {
-              const wfRes = writeKvStore('prp_kpi_distribution_v1', syncedWorkflow, caller.email);
-              if (wfRes.changed && !updatedKeys.includes('prp_kpi_distribution_v1')) {
-                updatedKeys.push('prp_kpi_distribution_v1');
-              }
-            }
-          }
-          continue;
-        }
-
-        if (storeKey === 'prp_kpi_distribution_v1') {
-          if (caller.role === 'superadmin_prp') {
-            const result = writeKvStore(storeKey, incomingVal, caller.email);
-            if (result.changed) {
-              updatedKeys.push(storeKey);
-              appendAuditLog('KPI_WORKFLOW_PRP', `Sinkronisasi workflow KPI oleh Superadmin PRP (v${result.version})`, caller.email, ip);
-            }
-          } else if (caller.role === 'kpi_only' || caller.role === 'dual') {
-            const existing = readKvStore(storeKey, null).value;
-            const merged = validateAndMergeKpiWorkflowForUnit(existing, incomingVal, caller, ip);
-            const result = writeKvStore(storeKey, merged, caller.email);
-            if (result.changed) {
-              updatedKeys.push(storeKey);
+          if (storeKey === 'prp_spi_audit_v1') {
+            if (caller.role !== 'spi') {
+              db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
+              db.exec('RELEASE SAVEPOINT sp_sync_push');
               appendAuditLog(
-                'KPI_UNIT_SYNC',
-                `Sinkronisasi capaian/bukti KPI unit ${caller.unit || caller.email} (PIC: ${(caller.picCodes || []).join(', ')})`,
+                'SECURITY_VIOLATION',
+                `Percobaan tulis bagian khusus SPI (prp_spi_audit_v1) oleh non-SPI (${caller.email})`,
                 caller.email,
                 ip,
               );
+              sendJson(res, 403, {
+                ok: false,
+                error: 'Akses ditolak: Hanya akun Auditor SPI yang berhak mengisi bagian/kolom khusus SPI.',
+              });
+              return true;
             }
-          } else {
-            sendJson(res, 403, { ok: false, error: 'Akun khusus IKU tidak memiliki akses tulis pada lembar kerja KPI.' });
-            return true;
+            const byForm = (incomingVal?.records && typeof incomingVal.records === 'object'
+              ? incomingVal.records
+              : incomingVal?.byForm) || {};
+            for (const [fId, formEntry] of Object.entries(byForm)) {
+              if (fId && formEntry && typeof formEntry === 'object') {
+                const invalidKeys = Object.keys(formEntry.items || {}).filter((k) => k !== 'D_5');
+                if (invalidKeys.length > 0) {
+                  db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
+                  db.exec('RELEASE SAVEPOINT sp_sync_push');
+                  appendAuditLog(
+                    'SECURITY_VIOLATION',
+                    `Percobaan pengisian indikator ${invalidKeys.join(', ')} di luar Bagian D.5 melalui sync/push oleh SPI (${caller.email}) ditolak.`,
+                    caller.email,
+                    ip,
+                  );
+                  sendJson(res, 403, {
+                    ok: false,
+                    error: 'Akses ditolak: Akun SPI hanya dapat mengisi Bagian D No. 5: Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS).',
+                  });
+                  return true;
+                }
+                upsertSpiAuditRecord(fId, formEntry, caller.email, ip);
+              }
+            }
+            updatedKeys.push('prp_spi_audit_v1');
+            continue;
           }
-          continue;
-        }
 
-        if (storeKey === 'prp_iku_submissions_v1') {
-          if (caller.role === 'superadmin_prp') {
-            const result = writeKvStore(storeKey, incomingVal, caller.email);
+          if (storeKey === 'prp_notifications_v1' || storeKey === 'prp_email_outbox_v1') {
+            if (Array.isArray(incomingVal)) {
+              const existingList = readKvStore(storeKey, []).value;
+              const mergedMap = new Map();
+              (Array.isArray(existingList) ? existingList : []).forEach((item) => {
+                if (item?.id) mergedMap.set(item.id, item);
+              });
+              const newNotificationItems = [];
+              incomingVal.forEach((item) => {
+                if (!item?.id) return;
+                const prev = mergedMap.get(item.id);
+                if (!prev) {
+                  mergedMap.set(item.id, item);
+                  if (storeKey === 'prp_notifications_v1') {
+                    newNotificationItems.push(item);
+                  }
+                } else {
+                  const readBy = Array.from(new Set([
+                    ...(Array.isArray(prev.readBy) ? prev.readBy : []),
+                    ...(Array.isArray(item.readBy) ? item.readBy : []),
+                  ]));
+                  mergedMap.set(item.id, { ...prev, ...item, readBy });
+                }
+              });
+              const mergedList = Array.from(mergedMap.values())
+                .sort((a, b) => String(b.createdAt || b.sentAt || '').localeCompare(String(a.createdAt || a.sentAt || '')))
+                .slice(0, 250);
+              const result = writeKvStore(storeKey, mergedList, caller.email);
+              if (result.changed) {
+                updatedKeys.push(storeKey);
+              }
+              if (newNotificationItems.length > 0) {
+                pendingPushNotifications.push(...newNotificationItems.slice(0, 5));
+              }
+            }
+            continue;
+          }
+
+          if (SUPERADMIN_ONLY_KEYS.has(storeKey)) {
+            if (caller.role !== 'superadmin_prp') {
+              db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
+              db.exec('RELEASE SAVEPOINT sp_sync_push');
+              appendAuditLog(
+                'SECURITY_VIOLATION',
+                `Percobaan tulis store ${storeKey} oleh non-superadmin (${caller.email})`,
+                caller.email,
+                ip,
+              );
+              sendJson(res, 403, {
+                ok: false,
+                error: `Akses ditolak: Hanya Superadmin PRP yang berwenang mengubah konfigurasi ${storeKey}.`,
+              });
+              return true;
+            }
+            let valueToPersist = incomingVal;
+            if (storeKey === 'prp_users' && Array.isArray(incomingVal)) {
+              valueToPersist = syncUsersListFromAdmin(incomingVal, caller.email);
+            }
+            const result = writeKvStore(storeKey, valueToPersist, caller.email);
             if (result.changed) {
               updatedKeys.push(storeKey);
-              appendAuditLog('IKU_WORKFLOW_PRP', `Sinkronisasi submission IKU oleh Superadmin PRP (v${result.version})`, caller.email, ip);
+              appendAuditLog('SYNC_CONFIG_PRP', `Pembaruan ${storeKey} (v${result.version})`, caller.email, ip);
             }
-          } else if (caller.role === 'iku_only' || caller.role === 'dual') {
-            const existing = readKvStore(storeKey, []).value;
-            const merged = validateAndMergeIkuSubmissionsForUnit(existing, incomingVal, caller, ip);
-            const result = writeKvStore(storeKey, merged, caller.email);
-            if (result.changed) {
-              updatedKeys.push(storeKey);
-              appendAuditLog('IKU_UNIT_SYNC', `Sinkronisasi capaian 8 IKU oleh ${caller.email}`, caller.email, ip);
+            // Sinkronkan juga sections di prp_kpi_distribution_v1 apabila prp_kpi_config diperbarui dan tidak disertakan di request yang sama
+            if (storeKey === 'prp_kpi_config' && Array.isArray(incomingVal?.sections) && !incomingStores.prp_kpi_distribution_v1) {
+              const existingWorkflow = readKvStore('prp_kpi_distribution_v1', null).value;
+              const syncedWorkflow = syncActiveFormWithPublishedSections(existingWorkflow, incomingVal.sections, caller.email);
+              if (syncedWorkflow) {
+                const wfRes = writeKvStore('prp_kpi_distribution_v1', syncedWorkflow, caller.email);
+                if (wfRes.changed && !updatedKeys.includes('prp_kpi_distribution_v1')) {
+                  updatedKeys.push('prp_kpi_distribution_v1');
+                }
+              }
             }
-          } else {
-            sendJson(res, 403, { ok: false, error: 'Akun unit KPI tidak memiliki akses tulis pada pengajuan IKU.' });
-            return true;
+            continue;
+          }
+
+          if (storeKey === 'prp_kpi_distribution_v1') {
+            if (caller.role === 'superadmin_prp') {
+              let valueToWrite = incomingVal;
+              const existingRecord = readKvStore(storeKey, null);
+              const expectedVer = Number(expectedVersions[storeKey]);
+              if (
+                existingRecord?.value
+                && typeof existingRecord.value === 'object'
+                && incomingVal
+                && typeof incomingVal === 'object'
+                && Number.isFinite(expectedVer)
+                && expectedVer > 0
+                && existingRecord.version > expectedVer
+              ) {
+                valueToWrite = {
+                  ...existingRecord.value,
+                  ...incomingVal,
+                  submissions: { ...(existingRecord.value.submissions || {}), ...(incomingVal.submissions || {}) },
+                  evidence: { ...(existingRecord.value.evidence || {}), ...(incomingVal.evidence || {}) },
+                  drafts: { ...(existingRecord.value.drafts || {}), ...(incomingVal.drafts || {}) },
+                };
+              }
+              const result = writeKvStore(storeKey, valueToWrite, caller.email);
+              if (result.changed) {
+                updatedKeys.push(storeKey);
+                appendAuditLog('KPI_WORKFLOW_PRP', `Sinkronisasi workflow KPI oleh Superadmin PRP (v${result.version})`, caller.email, ip);
+              }
+            } else if (caller.role === 'kpi_only' || caller.role === 'dual' || caller.role === 'spi') {
+              const existing = readKvStore(storeKey, null).value;
+              const merged = validateAndMergeKpiWorkflowForUnit(existing, incomingVal, caller, ip);
+              const result = writeKvStore(storeKey, merged, caller.email);
+              if (result.changed) {
+                updatedKeys.push(storeKey);
+                appendAuditLog(
+                  'KPI_UNIT_SYNC',
+                  `Sinkronisasi capaian/bukti KPI unit ${caller.unit || caller.email} (PIC: ${(caller.picCodes || []).join(', ') || caller.role.toUpperCase()})`,
+                  caller.email,
+                  ip,
+                );
+              }
+            } else {
+              db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
+              db.exec('RELEASE SAVEPOINT sp_sync_push');
+              sendJson(res, 403, { ok: false, error: 'Akun khusus IKU tidak memiliki akses tulis pada lembar kerja KPI.' });
+              return true;
+            }
+            continue;
+          }
+
+          if (storeKey === 'prp_iku_submissions_v1') {
+            if (caller.role === 'superadmin_prp') {
+              const result = writeKvStore(storeKey, incomingVal, caller.email);
+              if (result.changed) {
+                updatedKeys.push(storeKey);
+                appendAuditLog('IKU_WORKFLOW_PRP', `Sinkronisasi submission IKU oleh Superadmin PRP (v${result.version})`, caller.email, ip);
+              }
+            } else if (caller.role === 'iku_only' || caller.role === 'dual') {
+              const existing = readKvStore(storeKey, []).value;
+              const merged = validateAndMergeIkuSubmissionsForUnit(existing, incomingVal, caller, ip);
+              const result = writeKvStore(storeKey, merged, caller.email);
+              if (result.changed) {
+                updatedKeys.push(storeKey);
+                appendAuditLog('IKU_UNIT_SYNC', `Sinkronisasi capaian 8 IKU oleh ${caller.email}`, caller.email, ip);
+              }
+            } else {
+              db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
+              db.exec('RELEASE SAVEPOINT sp_sync_push');
+              sendJson(res, 403, { ok: false, error: 'Akun unit KPI tidak memiliki akses tulis pada pengajuan IKU.' });
+              return true;
+            }
           }
         }
+        db.exec('RELEASE SAVEPOINT sp_sync_push');
+      } catch (err) {
+        try {
+          db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
+          db.exec('RELEASE SAVEPOINT sp_sync_push');
+        } catch {
+          // Abaikan bila savepoint sudah ditutup
+        }
+        throw err;
+      }
+
+      if (pendingPushNotifications.length > 0) {
+        pendingPushNotifications.forEach((notif) => {
+          dispatchWebPushToTargets(
+            {
+              id: notif.id,
+              title: notif.title || 'Notifikasi PERFORMA ITPLN',
+              body: notif.message || 'Terdapat pembaruan status pada portal kinerja.',
+              actionUrl: notif.actionUrl || '/internal',
+              actionLabel: 'Buka Portal',
+              tag: `prp-notif-${notif.id}`,
+            },
+            {
+              targetType: notif.targetType || '',
+              targetValue: notif.targetValue || '',
+              emailRecipients: Array.isArray(notif.emailRecipients) ? notif.emailRecipients : [],
+              targetEmails: Array.isArray(notif.targetEmails) ? notif.targetEmails : [],
+              targetRoles: Array.isArray(notif.targetRoles) ? notif.targetRoles : [],
+              targetPicCodes: Array.isArray(notif.targetPicCodes) ? notif.targetPicCodes : [],
+            },
+          ).catch(() => {});
+        });
       }
 
       const { stores, meta } = readAllKvStores();
@@ -875,7 +1026,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 7. GET /api/v1/broadcasts
     if (pathname === '/api/v1/broadcasts' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       const list = listBroadcastsForUser(caller);
@@ -883,7 +1033,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 8. POST /api/v1/broadcasts (Superadmin PRP)
     if (pathname === '/api/v1/broadcasts' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller || caller.role !== 'superadmin_prp') {
@@ -938,7 +1087,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 9. POST /api/v1/broadcasts/:id/ack
     const ackMatch = pathname.match(/^\/api\/v1\/broadcasts\/([^/]+)\/ack$/);
     if (ackMatch && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
@@ -946,7 +1094,7 @@ export async function handleApiRequest(req, res) {
         sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk mengonfirmasi siaran.' });
         return true;
       }
-      const broadcastId = decodeURIComponent(ackMatch[1]);
+      const broadcastId = safeDecodeURIComponent(ackMatch[1]);
       const updated = acknowledgeBroadcast(broadcastId, caller);
       if (!updated) {
         sendJson(res, 404, { ok: false, error: 'Siaran tidak ditemukan.' });
@@ -961,7 +1109,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 10. DELETE /api/v1/broadcasts/:id (Superadmin PRP)
     const delMatch = pathname.match(/^\/api\/v1\/broadcasts\/([^/]+)$/);
     if (delMatch && req.method === 'DELETE') {
       const caller = resolveAuthenticatedUser(req, urlObj);
@@ -969,7 +1116,7 @@ export async function handleApiRequest(req, res) {
         sendJson(res, 403, { ok: false, error: 'Hanya Superadmin PRP yang dapat menghentikan siaran.' });
         return true;
       }
-      const broadcastId = decodeURIComponent(delMatch[1]);
+      const broadcastId = safeDecodeURIComponent(delMatch[1]);
       const deleted = deleteBroadcast(broadcastId, caller.email);
       if (!deleted) {
         sendJson(res, 404, { ok: false, error: 'Siaran tidak ditemukan.' });
@@ -980,7 +1127,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 11. DELETE /api/v1/users/:email (Superadmin PRP)
     const delUserMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)$/);
     if (delUserMatch && req.method === 'DELETE') {
       const caller = resolveAuthenticatedUser(req, urlObj);
@@ -988,7 +1134,7 @@ export async function handleApiRequest(req, res) {
         sendJson(res, 403, { ok: false, error: 'Hanya Superadmin PRP yang berwenang menghapus akun pengguna.' });
         return true;
       }
-      const targetEmail = decodeURIComponent(delUserMatch[1]).toLowerCase();
+      const targetEmail = safeDecodeURIComponent(delUserMatch[1]).toLowerCase();
       if (targetEmail === caller.email.toLowerCase()) {
         sendJson(res, 400, { ok: false, error: 'Akun sendiri tidak dapat dihapus.' });
         return true;
@@ -1010,14 +1156,12 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 12. GET /api/v1/push/vapid-public-key
     if (pathname === '/api/v1/push/vapid-public-key' && req.method === 'GET') {
       const publicKey = getVapidPublicKey();
       sendJson(res, 200, { ok: true, publicKey });
       return true;
     }
 
-    // 13. POST /api/v1/push/subscribe
     if (pathname === '/api/v1/push/subscribe' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
@@ -1044,7 +1188,6 @@ export async function handleApiRequest(req, res) {
       return true;
     }
 
-    // 14. POST /api/v1/push/unsubscribe
     if (pathname === '/api/v1/push/unsubscribe' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       const body = await readJsonBody(req);

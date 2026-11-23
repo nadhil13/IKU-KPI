@@ -228,8 +228,12 @@ function mergeRemoteStoreWithLocal(key, remoteVal) {
     if (!localVal || typeof localVal !== 'object') return remoteVal;
 
     if (key === 'prp_spi_audit_v1') {
-      const localRecords = localVal.records && typeof localVal.records === 'object' ? localVal.records : {};
-      const remoteRecords = remoteVal.records && typeof remoteVal.records === 'object' ? remoteVal.records : {};
+      const localRecords = (localVal.records && typeof localVal.records === 'object' && Object.keys(localVal.records).length > 0)
+        ? localVal.records
+        : (localVal.byForm && typeof localVal.byForm === 'object' ? localVal.byForm : {});
+      const remoteRecords = (remoteVal.records && typeof remoteVal.records === 'object' && Object.keys(remoteVal.records).length > 0)
+        ? remoteVal.records
+        : (remoteVal.byForm && typeof remoteVal.byForm === 'object' ? remoteVal.byForm : {});
       const mergedRecords = { ...remoteRecords };
       for (const [fId, locRec] of Object.entries(localRecords)) {
         const remRec = remoteRecords[fId];
@@ -242,6 +246,7 @@ function mergeRemoteStoreWithLocal(key, remoteVal) {
       return {
         ...remoteVal,
         records: mergedRecords,
+        byForm: mergedRecords,
         updatedAt: Date.parse(localVal.updatedAt || '') > Date.parse(remoteVal.updatedAt || '')
           ? localVal.updatedAt
           : (remoteVal.updatedAt || localVal.updatedAt || null),
@@ -619,9 +624,12 @@ async function flushPendingStorePush() {
       if (data.ok && data.stores) {
         applyRemoteStoresToLocal(data.stores, null, data.audit);
       }
+    } else if (res.status >= 500 || res.status === 429) {
+      Object.keys(storesPayload).forEach((k) => pendingStoreKeys.add(k));
     }
   } catch {
-    // Tetap berfungsi secara offline/lokal jika endpoint belum terjangkau
+    // Masukkan kembali ke antrean agar dapat disinkronkan saat koneksi pulih
+    Object.keys(storesPayload).forEach((k) => pendingStoreKeys.add(k));
   }
 }
 
@@ -675,18 +683,22 @@ export function doesBroadcastTargetUserClient(broadcast, user) {
   if (user.role === 'superadmin_prp') return true;
   if (broadcast.targetType === 'ALL') return true;
   if (broadcast.targetType === 'ROLE') {
-    return String(user.role || '').toLowerCase() === String(broadcast.targetValue || '').toLowerCase();
+    const tRole = String(broadcast.targetValue || '').trim().toLowerCase();
+    const uRole = String(user.role || '').trim().toLowerCase();
+    if (uRole === tRole) return true;
+    if (uRole === 'dual' && (tRole === 'kpi_only' || tRole === 'iku_only')) return true;
+    return false;
   }
   if (broadcast.targetType === 'USER') {
     const targets = String(broadcast.targetValue || '')
-      .split(',')
+      .split(/[,;\s]+/)
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
     return targets.includes(String(user.email || '').toLowerCase());
   }
   if (broadcast.targetType === 'PIC') {
     const targetPics = String(broadcast.targetValue || '')
-      .split(',')
+      .split(/[,;/+&]|\bdan\b/i)
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean);
     const userPics = (user.picCodes || []).map((c) => String(c).trim().toUpperCase());
@@ -843,9 +855,14 @@ export function subscribeBroadcasts(callback) {
 }
 
 let listenersMounted = false;
+let activeEngineCleanup = null;
 
 export function connectRealtimeEngine() {
   if (typeof window === 'undefined') return () => {};
+  if (typeof activeEngineCleanup === 'function') {
+    activeEngineCleanup();
+    activeEngineCleanup = null;
+  }
 
   if (!broadcastChannel && typeof BroadcastChannel !== 'undefined') {
     try {
@@ -958,8 +975,13 @@ export function connectRealtimeEngine() {
           lastSyncAt: data.serverTime || new Date().toISOString(),
         });
       }
+      if (pendingStoreKeys.size > 0) {
+        flushPendingStorePush().catch(() => undefined);
+      }
     } catch {
-      // Abaikan saat luring
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        notifyRealtimeStatus({ connected: false, mode: 'local-bus' });
+      }
     } finally {
       digestInFlight = false;
     }
@@ -1006,20 +1028,21 @@ export function connectRealtimeEngine() {
       try {
         const data = JSON.parse(event.data);
         if (!data.broadcast) return;
+        const user = getCurrentUserFromStorage();
+        if (!user || !doesBroadcastTargetUserClient(data.broadcast, user)) {
+          return;
+        }
         const current = readLocalBroadcastsCache().filter((b) => b.id !== data.broadcast.id);
         saveLocalBroadcastsCache([data.broadcast, ...current], false);
         window.dispatchEvent(new CustomEvent('prp-broadcast-incoming-toast', { detail: data.broadcast }));
-        const user = getCurrentUserFromStorage();
-        if (user && doesBroadcastTargetUserClient(data.broadcast, user)) {
-          dispatchOsNotification({
-            id: data.broadcast.id,
-            title: `Siaran PRP: ${data.broadcast.title}`,
-            body: data.broadcast.message,
-            priority: data.broadcast.priority || 'IMPORTANT',
-            url: data.broadcast.actionUrl || '/internal',
-            actionLabel: data.broadcast.actionLabel || 'Buka Lembar Kerja',
-          });
-        }
+        dispatchOsNotification({
+          id: data.broadcast.id,
+          title: `Siaran PRP: ${data.broadcast.title}`,
+          body: data.broadcast.message,
+          priority: data.broadcast.priority || 'IMPORTANT',
+          url: data.broadcast.actionUrl || '/internal',
+          actionLabel: data.broadcast.actionLabel || 'Buka Lembar Kerja',
+        });
       } catch {
         // Abaikan
       }
@@ -1049,7 +1072,8 @@ export function connectRealtimeEngine() {
 
     es.onerror = () => {
       closeSse();
-      notifyRealtimeStatus({ connected: true, mode: 'server-digest' });
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+      notifyRealtimeStatus({ connected: isOnline, mode: isOnline ? 'server-digest' : 'local-bus' });
       if (disposed || reconnectTimer) return;
       const delayMs = Math.min(15000, 2000 * (2 ** Math.min(reconnectAttempts, 3)));
       reconnectAttempts += 1;
@@ -1085,15 +1109,19 @@ export function connectRealtimeEngine() {
     if (disposed) return;
     checkForAppUpdate().catch(() => undefined);
     if (!backendActive || typeof EventSource === 'undefined') {
-      notifyRealtimeStatus({ connected: true, mode: 'local-bus' });
+      notifyRealtimeStatus({ connected: Boolean(backendActive), mode: 'local-bus' });
       return;
     }
     syncFromDigest();
     openSseStream();
   });
 
-  return () => {
+  const cleanup = () => {
+    if (disposed) return;
     disposed = true;
+    if (activeEngineCleanup === cleanup) {
+      activeEngineCleanup = null;
+    }
     clearInterval(digestTimer);
     if (reconnectTimer) clearTimeout(reconnectTimer);
     window.removeEventListener('visibilitychange', handleResume);
@@ -1102,4 +1130,6 @@ export function connectRealtimeEngine() {
     window.removeEventListener('online', handleResume);
     closeSse();
   };
+  activeEngineCleanup = cleanup;
+  return cleanup;
 }

@@ -343,13 +343,17 @@ export default function KPITableDesigner() {
 
   const pushRealtimeStructureNow = useCallback((nextSectionsRaw, feedbackMessage) => {
     const clean = normalizeKpiSections(nextSectionsRaw);
+    const check = validateKpiSections(clean);
+    if (check.issues.some((i) => i.level === 'error')) {
+      return;
+    }
     const actor = currentUser?.email || 'Superadmin PRP';
     try {
       publishKpiSections(clean, { actor, note: feedbackMessage || 'Sinkronisasi baris realtime', snapshot: false });
       syncActiveKpiFormSections(clean, { actor });
       if (feedbackMessage) notify(feedbackMessage);
     } catch {
-      // Abaikan jika gagal tulis
+      notify('Gagal menyinkronkan struktur baris ke penyimpanan lokal.');
     }
   }, [currentUser?.email, notify]);
 
@@ -427,11 +431,21 @@ export default function KPITableDesigner() {
 
   const deleteRowAt = (si, ii, itemLabel = '') => {
     const secCode = normalized[si]?.code || 'A';
-    editItems(
-      si,
-      (items) => items.filter((_, index) => index !== ii),
-      `Baris ${secCode}.${itemLabel || ii + 1} dihapus dan disinkronkan ke form seluruh unit.`,
-    );
+    const targetItem = normalized[si]?.items?.[ii];
+    const rowTitle = targetItem?.indikator ? ` (${targetItem.indikator})` : '';
+    setConfirmState({
+      title: `Hapus Baris Indikator ${secCode}.${itemLabel || ii + 1}`,
+      message: `Hapus baris ${secCode}.${itemLabel || ii + 1}${rowTitle}?${liveSync ? ' Karena Live Sync aktif, penghapusan ini akan langsung disinkronkan ke formulir seluruh unit kerja.' : ''}`,
+      confirmLabel: 'Ya, Hapus Baris',
+      danger: true,
+      onConfirm: () => {
+        editItems(
+          si,
+          (items) => items.filter((_, index) => index !== ii),
+          `Baris ${secCode}.${itemLabel || ii + 1} dihapus dan disinkronkan ke form seluruh unit.`,
+        );
+      },
+    });
   };
 
   const toggleMergeNo = (si, ii, item) => {
@@ -505,19 +519,23 @@ export default function KPITableDesigner() {
       setShowPanel(true);
       return;
     }
-    const actor = currentUser?.email || 'Superadmin PRP';
-    const pub = publishKpiSections(normalized, { actor, snapshot: true, note: `Sinkronisasi Master Tabel Periode ${clean}` });
-    syncPeriodMasterTable(normalized, {
-      period: clean,
-      actor: currentUser,
-      openPeriod: syncOpenPeriod,
-      lockPreviousPeriods: syncLockPrevious,
-    });
-    setHistory(readKpiHistory());
-    setPeriodsList(listKpiPeriodsWithStatus());
-    notify(
-      `Master Tabel KPI Periode ${clean} (v${pub.version}, ${totalRows} baris) berhasil disinkronkan! Data historis periode sebelumnya tetap tersimpan utuh.`,
-    );
+    try {
+      syncPeriodMasterTable(normalized, {
+        period: clean,
+        actor: currentUser,
+        openPeriod: syncOpenPeriod,
+        lockPreviousPeriods: syncLockPrevious,
+        note: `Sinkronisasi Master Tabel Periode ${clean}`,
+      });
+      const latestConfig = readPublishedKpiConfig();
+      setHistory(readKpiHistory());
+      setPeriodsList(listKpiPeriodsWithStatus());
+      notify(
+        `Master Tabel KPI Periode ${clean} (v${latestConfig?.version || 1}, ${totalRows} baris) berhasil disinkronkan. Data historis periode sebelumnya tetap tersimpan utuh.`,
+      );
+    } catch (err) {
+      notify(err?.message || 'Gagal menyinkronkan master tabel periode.');
+    }
   };
 
   const addSubIndicator = (si, ii) => {
@@ -578,6 +596,8 @@ export default function KPITableDesigner() {
   const pickHandlers = (ownerId, localRef, globalRef) => (pickMode && formulaEditable ? {
     onMouseDown: (event) => {
       event.preventDefault();
+    },
+    onClick: () => {
       insertToken(ownerId === selected?.id ? localRef : globalRef);
     },
     title: `Klik untuk menyisipkan ${globalRef}`,
@@ -613,13 +633,17 @@ export default function KPITableDesigner() {
       setShowPanel(true);
       return;
     }
-    const actor = currentUser?.email || 'Superadmin PRP';
-    const pub = publishKpiSections(normalized, { actor, snapshot: true, note: `Sinkronisasi struktur realtime (${totalRows} indikator)` });
-    const synced = syncActiveKpiFormSections(normalized, { actor });
-    setHistory(readKpiHistory());
-    notify(
-      `Struktur tabel KPI (${totalRows} baris indikator, v${pub.version}) berhasil disinkronkan secara realtime ke ${synced?.units?.length || activeUnitCount} akun unit kerja tanpa menghapus isian unit.`,
-    );
+    try {
+      const actor = currentUser?.email || 'Superadmin PRP';
+      const pub = publishKpiSections(normalized, { actor, snapshot: true, note: `Sinkronisasi struktur realtime (${totalRows} indikator)` });
+      const synced = syncActiveKpiFormSections(normalized, { actor });
+      setHistory(readKpiHistory());
+      notify(
+        `Struktur tabel KPI (${totalRows} baris indikator, v${pub.version}) berhasil disinkronkan secara realtime ke ${synced?.units?.length || activeUnitCount} akun unit kerja tanpa menghapus isian unit.`,
+      );
+    } catch (err) {
+      notify(err?.message || 'Gagal menyinkronkan struktur tabel KPI.');
+    }
   };
 
   const distribute = async () => {
@@ -700,9 +724,6 @@ export default function KPITableDesigner() {
               background: selectedPeriodMeta?.isOpenForInput ? '#15803D' : '#B91C1C',
               border: `1.5px solid ${selectedPeriodMeta?.isOpenForInput ? '#14532D' : '#7F1D1D'}`,
               color: '#FFFFFF',
-              boxShadow: selectedPeriodMeta?.isOpenForInput
-                ? '0 2px 6px rgba(21, 128, 61, 0.25)'
-                : '0 2px 6px rgba(185, 28, 28, 0.25)',
             }}
             title={selectedPeriodMeta ? selectedPeriodMeta.statusLabel : 'Periode Baru (belum disinkronkan)'}
           >
@@ -856,7 +877,8 @@ export default function KPITableDesigner() {
                         type="button"
                         title={op.title}
                         disabled={!formulaEditable}
-                        onMouseDown={(event) => { event.preventDefault(); insertToken(op.token); }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => insertToken(op.token)}
                       >
                         {op.label}
                       </button>
@@ -868,7 +890,8 @@ export default function KPITableDesigner() {
                         key={name}
                         type="button"
                         disabled={!formulaEditable}
-                        onMouseDown={(event) => { event.preventDefault(); insertToken(`${name}(`); }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => insertToken(`${name}(`)}
                       >
                         {name}
                       </button>
@@ -882,7 +905,8 @@ export default function KPITableDesigner() {
                         className="ref-chip"
                         disabled={!formulaEditable}
                         title={sub.label}
-                        onMouseDown={(event) => { event.preventDefault(); insertToken(`I${index + 1}`); }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => insertToken(`I${index + 1}`)}
                       >
                         I{index + 1}
                       </button>
@@ -892,7 +916,8 @@ export default function KPITableDesigner() {
                       className="ref-chip"
                       disabled={!formulaEditable}
                       title="Target baris ini"
-                      onMouseDown={(event) => { event.preventDefault(); insertToken('T'); }}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertToken('T')}
                     >
                       T
                     </button>
@@ -901,7 +926,8 @@ export default function KPITableDesigner() {
                       className="ref-chip"
                       disabled={!formulaEditable}
                       title="Bobot baris ini"
-                      onMouseDown={(event) => { event.preventDefault(); insertToken('B'); }}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertToken('B')}
                     >
                       B
                     </button>
@@ -910,7 +936,8 @@ export default function KPITableDesigner() {
                     <button
                       type="button"
                       className="ghost"
-                      onMouseDown={(event) => { event.preventDefault(); setFormula(''); formulaRef.current?.focus(); }}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => { setFormula(''); formulaRef.current?.focus(); }}
                     >
                       <Trash2 size={13} /> Kosongkan
                     </button>
@@ -1295,7 +1322,7 @@ export default function KPITableDesigner() {
                                             className="ghost"
                                             aria-label="Tutup pemilih PIC"
                                             onClick={() => setPicPickerFor(null)}
-                                            style={{ minHeight: '28px', padding: '0.2rem' }}
+                                            style={{ minHeight: '44px', minWidth: '44px', padding: '0.2rem' }}
                                           >
                                             <X size={13} />
                                           </button>

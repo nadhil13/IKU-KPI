@@ -4,6 +4,7 @@ import { AuthProvider } from '../features/auth/context/AuthContext';
 import { useAuth } from '../features/auth/hooks/useAuth';
 import PublicLayout from '../layouts/PublicLayout';
 import InternalLayout from '../layouts/InternalLayout';
+import ErrorBoundary from '../shared/components/ErrorBoundary';
 
 import Home from '../features/landing/pages/Home';
 import Login from '../features/auth/pages/Login';
@@ -86,8 +87,9 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Suspense fallback={<RouteLoadingFallback />}>
-          <Routes>
+        <ErrorBoundary>
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
             {/* Public Routes */}
             <Route path="/" element={<PublicLayout />}>
               <Route index element={<Home />} />
@@ -115,9 +117,10 @@ function App() {
               <Route path="profile" element={<Profile />} />
             </Route>
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </AuthProvider>
   );

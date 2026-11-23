@@ -854,3 +854,66 @@ test('penguncian akses tabel audit SPI (<100% Renbang) & pembukaan otomatis 100%
     /Hanya akun SPI aktif/,
   );
 });
+
+test('regresi matematika KPI, desimal parseIndonesianNumber, efisiensi biaya A_3-A_5, draf D_5 SPI tidak terkunci, dan kompresi history base64', async () => {
+  memory.clear();
+  const { parseIndonesianNumber } = await import(schemaUrl);
+  const { KPI_SECTIONS_CONFIG } = await import('../src/features/kpi/kpiTemplateConfig.js');
+
+  assert.equal(parseIndonesianNumber('0.125'), 0.125);
+  assert.equal(parseIndonesianNumber('1.250'), 1.25);
+  assert.equal(parseIndonesianNumber('1.250.000'), 1250000);
+  assert.equal(parseIndonesianNumber('1.250,5'), 1250.5);
+
+  const tplCheck = validateKpiSections(KPI_SECTIONS_CONFIG);
+  assert.equal(tplCheck.sectionSummaries[0].itemSum, 25);
+  assert.equal(tplCheck.positiveTotal, 100);
+
+  const itemA3 = KPI_SECTIONS_CONFIG[0].items.find((i) => i.id === 'A_3');
+  const efficientA3 = computeKpiItem(itemA3, { a_3_num: '85', a_3_den: '100' }, false);
+  assert.equal(efficientA3.ratioPercent, 100);
+  assert.equal(efficientA3.weightedScore, 3);
+  const inefficientA3 = computeKpiItem(itemA3, { a_3_num: '100', a_3_den: '100' }, false);
+  assert.equal(inefficientA3.ratioPercent, 90);
+  assert.equal(inefficientA3.weightedScore, 2.7);
+
+  const adminPrp = { email: 'admin@itpln.ac.id', name: 'Admin PRP', role: 'superadmin_prp', status: 'Aktif' };
+  const spiUser = { email: 'spi@itpln.ac.id', name: 'Auditor SPI', role: 'spi', status: 'Aktif' };
+  const form = store.distributeKpiForm(KPI_SECTIONS_CONFIG, { period: '2026', actor: adminPrp });
+
+  // Simpan draf D_5 SPI berkali-kali dan unggah bukti tanpa terkunci otomatis
+  store.saveUnitKpiDraft(form.id, spiUser, {
+    values: { d_5_un: '5', d_5_tot: '10' },
+    notes: { D_5: 'Draft awal temuan SPI' },
+  });
+  store.saveUnitKpiDraft(form.id, spiUser, {
+    values: { d_5_un: '4', d_5_tot: '10' },
+    notes: { D_5: 'Draft revisi kedua temuan SPI' },
+  });
+  const spiEv = store.addUnitEvidence(form.id, spiUser, {
+    indicatorId: 'D_5',
+    kind: 'file',
+    label: 'Lampiran LHP SPI',
+    fileName: 'lhp-spi.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 512,
+    dataUrl: `data:application/pdf;base64,${Buffer.from('%PDF-1.4 spi').toString('base64')}`,
+  });
+  assert.ok(spiEv.id);
+
+  // Simpan evaluasi real-time D_5 dengan penalti negatif (-1.25) tidak terpotong jadi 0
+  store.saveSpiIndicatorAudit(form.id, spiUser, 'D_5', {
+    unfollowedCount: '5',
+    totalRecommendations: '10',
+    auditNote: '5 dari 10 rekomendasi belum tindak lanjut',
+  });
+  const spiSub = store.readUnitSubmission(form.id, spiUser.email);
+  assert.equal(spiSub.totalScore, -1.25);
+
+  // Pastikan history snapshot tidak menyimpan salinan dataUrl base64 penuh
+  store.reviewUnitEvidence(form.id, spiUser.email, spiEv.id, 'VERIFIED', 'LHP valid', adminPrp);
+  const subWithHistory = store.readUnitSubmission(form.id, spiUser.email);
+  const snapEv = subWithHistory.history[0]?.snapshot?.evidence?.[0];
+  assert.equal(snapEv.dataUrl, undefined);
+  assert.equal(snapEv.hasBinaryData, true);
+});

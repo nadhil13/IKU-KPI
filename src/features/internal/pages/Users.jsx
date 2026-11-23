@@ -52,6 +52,7 @@ export default function Users() {
   const [resetResult, setResetResult] = useState(null);
   const [newPicCodeInput, setNewPicCodeInput] = useState('');
   const [newPicNameInput, setNewPicNameInput] = useState('');
+  const [visibleLimit, setVisibleLimit] = useState(30);
 
   useEffect(() => {
     const refresh = () => {
@@ -114,8 +115,11 @@ export default function Users() {
   const openCreate = () => {
     setPicCatalog(readMasterPicCatalog());
     setModalError('');
+    const nextId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? `user-${crypto.randomUUID()}`
+      : `user-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
     setEditing({
-      id: `user-${crypto.randomUUID()}`,
+      id: nextId,
       name: '',
       unit: '',
       email: '',
@@ -272,9 +276,9 @@ export default function Users() {
     if (!confirmAction?.user) return;
     const target = confirmAction.user;
     if (confirmAction.type === 'delete') {
-      const latest = readUsers();
-      persist(latest.filter((item) => item.id !== target.id));
       await deleteUserViaBackend(target.email);
+      const latest = readUsers();
+      persist(latest.filter((item) => item.id !== target.id && item.email?.toLowerCase() !== target.email?.toLowerCase()));
       writeAudit('HAPUS_AKUN', `Akun ${target.email} dihapus`, currentUser?.email);
       setPageNotice({ type: 'ok', text: `Akun ${target.email} berhasil dihapus dari daftar akses.` });
     } else if (confirmAction.type === 'reset') {
@@ -441,7 +445,7 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => {
+              {filteredUsers.slice(0, visibleLimit).map((user) => {
                 const isCurrent = currentUser?.email === user.email;
                 return (
                   <tr className={`users-row ${isCurrent ? 'is-current' : ''}`} key={user.id}>
@@ -522,8 +526,40 @@ export default function Users() {
               })}
             </tbody>
           </table>
+          {filteredUsers.length > visibleLimit && (
+            <div style={{ padding: '0.85rem 1.2rem', borderTop: '1px solid #D8E4EA', background: '#F7FAFB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
+              <span style={{ fontSize: '0.76rem', color: '#475569', fontWeight: 600 }}>
+                Menampilkan {Math.min(visibleLimit, filteredUsers.length)} dari {filteredUsers.length} akun
+              </span>
+              <button
+                type="button"
+                className="ent-btn"
+                style={{ minHeight: '44px' }}
+                onClick={() => setVisibleLimit((prev) => prev + 30)}
+              >
+                Tampilkan Lebih Banyak ({filteredUsers.length - visibleLimit} tersisa)
+              </button>
+            </div>
+          )}
           {filteredUsers.length === 0 && (
-            <div className="users-empty">Tidak ada pengguna yang sesuai dengan kata kunci pencarian atau filter peran.</div>
+            <div className="users-empty">
+              <div>Tidak ada pengguna yang sesuai dengan kata kunci pencarian atau filter peran.</div>
+              {(searchQuery || filterRole !== 'all') && (
+                <div style={{ marginTop: '0.85rem' }}>
+                  <button
+                    type="button"
+                    className="ent-btn"
+                    style={{ minHeight: '44px' }}
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFilterRole('all');
+                    }}
+                  >
+                    Reset Pencarian &amp; Filter
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </HorizontalTableViewport>
 
@@ -639,7 +675,7 @@ export default function Users() {
                   <input
                     className="ent-input"
                     aria-label="Email login"
-                    disabled={editing.email === currentUser?.email || usersList.some((base) => base.id === editing.id)}
+                    disabled={(users.some((user) => user.id === editing.id) && editing.email.trim().toLowerCase() === currentUser?.email?.toLowerCase()) || usersList.some((base) => base.id === editing.id)}
                     type="email"
                     placeholder="nama.unit@itpln.ac.id"
                     value={editing.email}

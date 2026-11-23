@@ -10,23 +10,65 @@ export function validateAndMergeIkuSubmissionsForUnit(existingList, incomingList
   const baseArr = Array.isArray(existingList) ? existingList : [];
   const incArr = Array.isArray(incomingList) ? incomingList : [];
   const baseById = new Map(baseArr.map((r) => [r.id, r]));
+  const incomingIds = new Set();
 
   for (const rec of incArr) {
     if (!rec?.id) continue;
+    incomingIds.add(rec.id);
     const prev = baseById.get(rec.id);
-    const ownerEmail = String(rec.ownerEmail || prev?.ownerEmail || '').toLowerCase();
+    const prevOwner = String(prev?.ownerEmail || prev?.owner || '').trim().toLowerCase();
+    const incomingOwner = String(rec.ownerEmail || rec.owner || '').trim().toLowerCase();
+    const ownerEmail = prevOwner || incomingOwner;
+
     if (ownerEmail && ownerEmail !== callerEmail) {
-      if (JSON.stringify(prev) !== JSON.stringify(rec)) {
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(rec)) {
         appendAuditLog('SECURITY_VIOLATION', `Percobaan modifikasi IKU milik ${ownerEmail} oleh ${callerEmail}`, callerEmail, ip);
         throw Object.assign(new Error('Akses ditolak: Tidak dapat mengubah submission IKU milik akun lain.'), { status: 403 });
       }
       continue;
     }
+
+    if (rec._deleted || rec.deleted) {
+      if (prev && ['APPROVED', 'LOCKED'].includes(prev.status)) {
+        appendAuditLog('SECURITY_VIOLATION', `Percobaan hapus IKU terkunci (${rec.id}) oleh ${callerEmail}`, callerEmail, ip);
+        throw Object.assign(new Error('Submission IKU yang sudah disetujui/dikunci tidak dapat dihapus.'), { status: 403 });
+      }
+      baseById.delete(rec.id);
+      continue;
+    }
+
+    if (prev && ['APPROVED', 'LOCKED'].includes(prev.status)) {
+      const prevComparable = JSON.stringify({ ...prev, owner: callerEmail, ownerEmail: callerEmail });
+      const recComparable = JSON.stringify({ ...rec, owner: callerEmail, ownerEmail: callerEmail });
+      if (prevComparable !== recComparable) {
+        appendAuditLog('SECURITY_VIOLATION', `Percobaan ubah IKU terkunci (${rec.id}) oleh ${callerEmail}`, callerEmail, ip);
+        throw Object.assign(new Error('Pelanggaran keamanan: Submission IKU yang sudah disetujui/dikunci tidak dapat diubah oleh unit.'), { status: 403 });
+      }
+      continue;
+    }
+
     if (['APPROVED', 'LOCKED'].includes(rec.status) && prev?.status !== rec.status) {
       appendAuditLog('SECURITY_VIOLATION', `Percobaan self-approve IKU (${rec.id}) oleh ${callerEmail}`, callerEmail, ip);
       throw Object.assign(new Error('Pelanggaran keamanan: Hanya Superadmin PRP yang berhak menyetujui IKU.'), { status: 403 });
     }
-    baseById.set(rec.id, { ...rec, ownerEmail: callerEmail });
+
+    baseById.set(rec.id, {
+      ...rec,
+      owner: callerEmail,
+      ownerEmail: callerEmail,
+    });
   }
+
+  for (const [id, prev] of baseById.entries()) {
+    const prevOwner = String(prev?.ownerEmail || prev?.owner || '').trim().toLowerCase();
+    if (
+      prevOwner === callerEmail
+      && !incomingIds.has(id)
+      && !['SUBMITTED', 'APPROVED', 'LOCKED'].includes(prev?.status)
+    ) {
+      baseById.delete(id);
+    }
+  }
+
   return [...baseById.values()];
 }

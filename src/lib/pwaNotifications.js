@@ -15,6 +15,7 @@ let swRegistration = null;
 let initialized = false;
 let updateAvailableInfo = null;
 let pendingPermissionRequest = null;
+let navigateFromNotificationHandler = null;
 
 function emitPwaState() {
   if (typeof window === 'undefined') return;
@@ -52,7 +53,7 @@ export function setOsNotificationEnabledByUser(enabled) {
   try {
     localStorage.setItem(NOTIF_PREF_KEY, String(Boolean(enabled)));
   } catch {
-    // Abaikan
+    // Penyimpanan diblokir pada mode privat
   }
   emitPwaState();
 }
@@ -87,6 +88,10 @@ export function subscribePwaState(callback) {
 export async function initPwaAndNotifications(onNavigateFromNotification) {
   if (typeof window === 'undefined') return null;
 
+  if (typeof onNavigateFromNotification === 'function') {
+    navigateFromNotificationHandler = onNavigateFromNotification;
+  }
+
   if (!initialized) {
     initialized = true;
 
@@ -104,7 +109,7 @@ export async function initPwaAndNotifications(onNavigateFromNotification) {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data?.type === 'NOTIFICATION_CLICK_NAVIGATE' && event.data?.url) {
-          onNavigateFromNotification?.(event.data.url);
+          navigateFromNotificationHandler?.(event.data.url);
         }
       });
     }
@@ -171,7 +176,7 @@ export function applyPwaUpdateNow() {
       swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
     }
   } catch {
-    // Abaikan
+    // Worker sudah tidak dalam status waiting
   }
   window.location.reload();
 }
@@ -194,7 +199,9 @@ export async function syncWebPushSubscription() {
   if (Notification.permission !== 'granted') return null;
 
   try {
-    const token = localStorage.getItem('prp_access_token') || '';
+    const token = localStorage.getItem('performa_access_token')
+      || localStorage.getItem('prp_access_token')
+      || '';
     const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
     if (!token || !activeUser?.email) return null;
 

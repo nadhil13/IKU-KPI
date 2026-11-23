@@ -23,6 +23,7 @@ import {
 } from '../notificationStore';
 import {
   getActiveBroadcastsForUser,
+  doesBroadcastTargetUserClient,
   sendRealtimeBroadcast,
   acknowledgeRealtimeBroadcast,
   stopRealtimeBroadcast,
@@ -143,7 +144,7 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
     });
     const handleToast = (event) => {
       const bc = event.detail;
-      if (bc && currentUser) {
+      if (bc && currentUser && doesBroadcastTargetUserClient(bc, currentUser)) {
         setIncomingToast(bc);
       }
     };
@@ -341,7 +342,7 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', alignSelf: 'center' }}>
               {b.actionUrl && (
                 <Link
-                  to={b.actionUrl}
+                  to={isSuperadmin && b.actionUrl === '/internal' ? '/internal/kpi' : b.actionUrl}
                   style={{
                     minHeight: '44px',
                     padding: '0.4rem 0.78rem',
@@ -424,6 +425,7 @@ export function BroadcastComposerModal({ open, onClose }) {
   const [sendEmail, setSendEmail] = useState(true);
   const [feedback, setFeedback] = useState('');
   const [sending, setSending] = useState(false);
+  const [confirmStopId, setConfirmStopId] = useState(null);
 
   const allAccounts = readMergedUsers().filter((u) => u.status !== 'Nonaktif');
   const picCatalog = readMasterPicCatalog();
@@ -503,11 +505,12 @@ export function BroadcastComposerModal({ open, onClose }) {
         actorEmail: currentUser?.email || 'admin@itpln.ac.id',
         sendEmail,
         emailSubject: `[SIARAN PRP ITPLN] ${title}`,
+        suppressOsNotification: true,
       });
       setTitle('');
       setMessage('');
       setFeedback(
-        `Siaran "${created.title}" berhasil dikirim secara realtime ke ${formatBroadcastTargetLabel(created)}${sendEmail ? ' dan tercatat di Audit Trail Email Resmi.' : '.'}`,
+        `Siaran "${created.title}" berhasil dikirim secara realtime ke ${formatBroadcastTargetLabel(created)}${sendEmail ? ' dan tercatat pada Outbox Audit Email.' : '.'}`,
       );
     } catch (err) {
       setFeedback(err.message || 'Gagal mengirim siaran.');
@@ -586,7 +589,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                   textTransform: 'uppercase',
                 }}
               >
-                PUSAT KOMANDO REALTIME · DIREKTORAT PRP
+                PUSAT SIARAN INSTRUKSI · DIREKTORAT PRP
               </div>
               <h2
                 style={{
@@ -651,7 +654,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                     padding: '0.42rem 0.82rem',
                     borderRadius: '6px',
                     background: '#EDF3F6',
-                    border: '1px solid #B8CAD4',
+                    border: '1px solid #64748B',
                     color: '#072534',
                     fontSize: '0.74rem',
                     fontWeight: 700,
@@ -840,7 +843,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                 style={{ width: '16px', height: '16px', accentColor: '#094E68' }}
               />
               <span>
-                Sertakan Pengiriman &amp; Rekam Jejak Email Resmi (Audit Trail Email ke Akun Bagian Terkait)
+                Catat pada Outbox Audit Email &amp; Kirim via Gateway (Bila Aktif)
               </span>
             </label>
 
@@ -945,27 +948,69 @@ export function BroadcastComposerModal({ open, onClose }) {
                         <div style={{ fontSize: '0.75rem', color: '#334155', marginTop: '0.1rem' }}>{b.message}</div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => stopRealtimeBroadcast(b.id, currentUser)}
-                        style={{
-                          minHeight: '44px',
-                          padding: '0.35rem 0.7rem',
-                          borderRadius: '6px',
-                          border: '1px solid #FCA5A5',
-                          background: '#FEF2F2',
-                          color: '#991B1B',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                        }}
-                      >
-                        <Trash2 size={13} />
-                        <span>Hentikan</span>
-                      </button>
+                      {confirmStopId === b.id ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              stopRealtimeBroadcast(b.id, currentUser);
+                              setConfirmStopId(null);
+                            }}
+                            style={{
+                              minHeight: '44px',
+                              padding: '0.35rem 0.7rem',
+                              borderRadius: '6px',
+                              border: '1px solid #991B1B',
+                              background: '#991B1B',
+                              color: '#FFFFFF',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Ya, Hentikan
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmStopId(null)}
+                            style={{
+                              minHeight: '44px',
+                              padding: '0.35rem 0.7rem',
+                              borderRadius: '6px',
+                              border: '1px solid #64748B',
+                              background: '#FFFFFF',
+                              color: '#072534',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmStopId(b.id)}
+                          style={{
+                            minHeight: '44px',
+                            padding: '0.35rem 0.7rem',
+                            borderRadius: '6px',
+                            border: '1px solid #FCA5A5',
+                            background: '#FEF2F2',
+                            color: '#991B1B',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                          <span>Hentikan</span>
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -1028,7 +1073,7 @@ export function BroadcastComposerModal({ open, onClose }) {
                             fontFamily: 'var(--ent-mono)',
                           }}
                         >
-                          {mail.status || 'LOGGED_AND_DISPATCHED'}
+                          {mail.status === 'SENT_VIA_GATEWAY' ? 'TERKIRIM VIA GATEWAY' : 'TERCATAT DI OUTBOX AUDIT'}
                         </span>
                         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#094E68' }}>
                           Ke: {(mail.toEmails || []).join(', ')}

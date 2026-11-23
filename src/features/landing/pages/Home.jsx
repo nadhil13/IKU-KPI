@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -11,8 +11,8 @@ gsap.registerPlugin(ScrollTrigger);
 const CORPORATE_PILLARS = [
   { idx: '01', target: 8, suffix: '', pad: true, label: 'Indikator Makro IKU', sub: 'Standar Kepmendikbudristek No. 210/M/2023' },
   { idx: '02', target: 4, suffix: '', pad: true, label: 'Perspektif KPI Unit', sub: 'Keberlanjutan · Mahasiswa · Bisnis · Kepatuhan' },
-  { idx: '03', target: 3, suffix: '', pad: true, label: 'Otoritas Terisolasi', sub: 'PRP Root · Workspace IKU · Workspace KPI' },
-  { idx: '04', target: 100, suffix: '%', pad: false, label: 'Integritas Audit & Eviden', sub: 'Validasi tautan HTTPS & histori snapshot versi' },
+  { idx: '03', target: 5, suffix: '', pad: true, label: 'Peran Otoritas Sistem', sub: 'Superadmin PRP · Peran Ganda · IKU · PIC KPI · Auditor SPI' },
+  { idx: '04', target: 20, suffix: '', pad: true, label: 'Akun Unit & Biro Terdaftar', sub: 'Pemetaan kode PIC per baris indikator & rantai audit SHA-256' },
 ];
 
 const EDITORIAL_INDEX = [
@@ -379,14 +379,14 @@ export default function Home() {
           transition: color 0.25s ease;
         }
         .ed-ledger-row:hover .ed-code {
-          color: #38BDF8;
+          color: #1B9AAA;
         }
         .ed-ledger-row .ed-muted {
           color: #475569;
           transition: color 0.25s ease;
         }
         .ed-ledger-row:hover .ed-muted {
-          color: #94B8C7;
+          color: #C5DEE8;
         }
         .ed-ledger-row .ed-arrow {
           transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -430,10 +430,22 @@ export default function Home() {
           }
           .ed-ledger-row {
             grid-template-columns: 48px 1fr 32px;
-            gap: 0.75rem;
+            row-gap: 0.35rem;
+            column-gap: 0.75rem;
           }
-          .ed-hide-tablet {
-            display: none;
+          .ed-ledger-row .ed-tag-cell {
+            grid-column: 2;
+          }
+          .ed-ledger-row .ed-title-cell {
+            grid-column: 2;
+          }
+          .ed-ledger-row .ed-desc-cell {
+            grid-column: 2;
+          }
+          .ed-ledger-row .ed-arrow-cell {
+            grid-column: 3;
+            grid-row: 1 / span 3;
+            align-self: center;
           }
         }
         @media (max-width: 600px) {
@@ -451,7 +463,15 @@ export default function Home() {
       <section
         id="beranda"
         className="hero-section"
-        style={{ position: 'relative', height: '100dvh', minHeight: '600px', overflow: 'hidden' }}
+        style={{
+          position: 'relative',
+          minHeight: '100dvh',
+          display: 'flex',
+          alignItems: 'center',
+          padding: 'clamp(7rem, 11vw, 9.5rem) 0 clamp(4rem, 7vw, 6rem)',
+          overflow: 'hidden',
+          background: '#062C3D',
+        }}
       >
         <div className="hero-bg" style={{ position: 'absolute', inset: '-10%', zIndex: 0 }}>
           <div
@@ -472,16 +492,16 @@ export default function Home() {
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(180deg, rgba(6, 44, 61, 0.58) 0%, rgba(6, 44, 61, 0.42) 45%, rgba(6, 44, 61, 0.90) 100%)',
+              'linear-gradient(180deg, rgba(6, 44, 61, 0.84) 0%, rgba(6, 44, 61, 0.78) 45%, rgba(6, 44, 61, 0.94) 100%)',
             zIndex: 1,
           }}
         />
 
         <div
           className="container hero-content-wrap home-hero-content"
-          style={{ position: 'relative', zIndex: 10, height: '100%' }}
+          style={{ position: 'relative', zIndex: 10, width: '100%' }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', paddingTop: '2.5rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <div
               className="hero-watermark"
               style={{
@@ -568,7 +588,6 @@ export default function Home() {
                 }}
               >
                 Masuk Ruang Kerja
-                <ArrowRight size={16} strokeWidth={2} />
               </Link>
 
               <Link
@@ -668,20 +687,56 @@ export default function Home() {
               borderRadius: '8px',
               overflow: 'hidden',
               position: 'relative',
-              background: '#EDF3F6',
-              border: '1px solid #D8E4EA',
+              background: '#062C3D',
+              border: '1px solid #094E68',
+              padding: 'clamp(1.75rem, 3.5vw, 2.75rem)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              color: '#FFFFFF',
             }}
           >
-            <div
-              className="card-img-1"
-              style={{
-                position: 'absolute',
-                inset: '-15%',
-                backgroundImage: 'url(/pln_view.jpg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }}
-            />
+            <div>
+              <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', color: '#B8D4E0', marginBottom: '0.75rem' }}>
+                KEPMENDIKBUDRISTEK NO. 210/M/2023
+              </div>
+              <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 'clamp(1.5rem, 2.8vw, 2.25rem)', fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.03em' }}>
+                3 Pilar Transformasi Pendidikan Tinggi
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: '0.85rem', margin: '1.25rem 0' }}>
+              {[
+                { code: 'IKU 01-02', label: 'Kualitas Lulusan & Pengalaman Luar Kampus', target: 'Target 75% - 80%' },
+                { code: 'IKU 03-05', label: 'Kualitas Dosen, Praktisi & Luaran Riset', target: 'Target 75% - 85%' },
+                { code: 'IKU 06-08', label: 'Kemitraan Prodi, Kelas Kolaboratif & Akreditasi', target: 'Target 80% - 90%' },
+              ].map((row) => (
+                <div
+                  key={row.code}
+                  style={{
+                    padding: '0.85rem 1rem',
+                    borderRadius: '6px',
+                    background: '#093B52',
+                    border: '1px solid #1D5E78',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 700, color: '#B8D4E0' }}>{row.code}</div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#FFFFFF', marginTop: '2px' }}>{row.label}</div>
+                  </div>
+                  <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: '4px', background: '#062C3D', color: '#E2F1F7', border: '1px solid #1B9AAA' }}>
+                    {row.target}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', color: '#B8D4E0', letterSpacing: '0.06em' }}>
+              VERIFIKASI BUKTI TAUTAN HTTPS · REKONSILIASI PDDIKTI
+            </div>
           </div>
 
           <div className="clean-float home-text-block">
@@ -722,7 +777,7 @@ export default function Home() {
             </p>
 
             <Link to="/iku-list" className="arch-inline-cta">
-              Katalog 8 Indikator IKU <ArrowUpRight size={14} />
+              Buka Katalog 8 Indikator IKU
             </Link>
           </div>
         </div>
@@ -797,7 +852,7 @@ export default function Home() {
             </p>
 
             <Link to="/guide" className="arch-inline-cta">
-              Pelajari Alur Evaluasi KPI <ArrowUpRight size={14} />
+              Baca Prosedur Evaluasi KPI
             </Link>
           </div>
         </div>
@@ -837,16 +892,16 @@ export default function Home() {
                   <span className="ed-code" style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.82rem', fontWeight: 700 }}>
                     {item.code}
                   </span>
-                  <span className="ed-muted ed-hide-tablet" style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.65rem', letterSpacing: '0.1em' }}>
+                  <span className="ed-muted ed-tag-cell" style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.65rem', letterSpacing: '0.1em' }}>
                     {item.tag}
                   </span>
-                  <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: 'clamp(1.15rem, 2vw, 1.5rem)', fontWeight: 700, letterSpacing: '-0.025em' }}>
+                  <span className="ed-title-cell" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 'clamp(1.15rem, 2vw, 1.5rem)', fontWeight: 700, letterSpacing: '-0.025em' }}>
                     {item.title}
                   </span>
-                  <span className="ed-muted ed-hide-tablet" style={{ fontSize: '0.83rem', lineHeight: 1.55 }}>
+                  <span className="ed-muted ed-desc-cell" style={{ fontSize: '0.83rem', lineHeight: 1.55 }}>
                     {item.desc}
                   </span>
-                  <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <span className="ed-arrow-cell" style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <ArrowUpRight size={20} className="ed-arrow" />
                   </span>
                 </Link>
@@ -935,7 +990,7 @@ export default function Home() {
             borderRadius: '8px',
             border: '1px solid #094E68',
             overflow: 'hidden',
-            minHeight: '420px',
+            minHeight: '380px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -946,30 +1001,6 @@ export default function Home() {
             willChange: 'transform, clip-path',
           }}
         >
-          <div
-            className="closing-portal-bg"
-            style={{
-              position: 'absolute',
-              inset: '-15%',
-              backgroundImage: 'url(/pln_view.jpg)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center 35%',
-              filter: 'contrast(1.06) brightness(0.72) saturate(0.9)',
-              zIndex: 0,
-              willChange: 'transform',
-            }}
-          />
-
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background:
-                'linear-gradient(100deg, rgba(6, 44, 61, 0.95) 0%, rgba(6, 44, 61, 0.82) 55%, rgba(9, 78, 104, 0.52) 100%)',
-              zIndex: 1,
-            }}
-          />
-
           <div style={{ position: 'relative', zIndex: 5, maxWidth: '620px' }}>
             <div
               style={{
@@ -977,7 +1008,7 @@ export default function Home() {
                 fontSize: '0.68rem',
                 fontWeight: 600,
                 letterSpacing: '0.18em',
-                color: '#94B8C7',
+                color: '#C5DEE8',
                 textTransform: 'uppercase',
                 marginBottom: '1.35rem',
               }}
@@ -1010,7 +1041,7 @@ export default function Home() {
                 maxWidth: '540px',
               }}
             >
-              Direktorat PRP, Dekanat, Ketua Program Studi, dan Unit Kerja dapat melaporkan serta memverifikasi capaian melalui satu pintu masuk sesuai otoritas masing-masing.
+              Direktorat PRP, Dekanat, Ketua Program Studi, Unit Pelaksana PIC, dan Auditor SPI dapat melaporkan serta memverifikasi capaian melalui satu pintu masuk sesuai otoritas masing-masing.
             </p>
           </div>
 
@@ -1054,7 +1085,6 @@ export default function Home() {
               }}
             >
               <span>Masuk Sistem</span>
-              <ArrowUpRight size={17} strokeWidth={2.2} />
             </Link>
 
             <div
@@ -1063,10 +1093,10 @@ export default function Home() {
                 fontSize: '0.64rem',
                 fontWeight: 600,
                 letterSpacing: '0.1em',
-                color: '#94B8C7',
+                color: '#C5DEE8',
               }}
             >
-              3 OTORITAS TERISOLASI · JEJAK AUDIT PENUH
+              5 PERAN OTORITAS · RANTAI AUDIT SHA-256
             </div>
           </div>
         </div>

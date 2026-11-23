@@ -21,9 +21,11 @@ function isSessionConsistent(account, sessionUser) {
 
 export function AuthProvider({ children }) {
   const changedPasswordActor = useRef(null);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [submittingPassword, setSubmittingPassword] = useState(false);
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const savedUser = localStorage.getItem('performa_user');
@@ -237,7 +239,6 @@ export function AuthProvider({ children }) {
       const mergedUser = { ...(matchedUser || {}), ...(backendRes.user || {}) };
       delete mergedUser.password;
       const result = finalizeSessionForUser(mergedUser);
-      connectRealtimeEngine();
       return result;
     }
 
@@ -301,6 +302,7 @@ export function AuthProvider({ children }) {
   }, [currentUser?.email, currentUser?.password]);
 
   const logout = () => {
+    const hadBackendToken = Boolean(getAccessToken());
     logoutViaBackend();
     setCurrentUser(null);
     setActiveWorkspace('iku');
@@ -308,6 +310,20 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('performa_user');
     localStorage.removeItem('performa_workspace');
     localStorage.removeItem('performa_context');
+    localStorage.removeItem('performa_access_token');
+    localStorage.removeItem('prp_access_token');
+    localStorage.removeItem('performa_seen_notif_ids_v1');
+    localStorage.removeItem('prp_spi_audit_v1');
+    if (hadBackendToken) {
+      [
+        'prp_kpi_distribution_v1',
+        'prp_iku_submissions_v1',
+        'prp_notifications_v1',
+        'prp_email_outbox_v1',
+        'prp_broadcasts_v1',
+        'prp_audit',
+      ].forEach((k) => localStorage.removeItem(k));
+    }
   };
 
   const canAccess = (portal) => {
@@ -372,12 +388,13 @@ export function AuthProvider({ children }) {
     mockAccounts: MOCK_ACCOUNTS
   };
 
-  const changePassword = (event) => {
+  const changePassword = async (event) => {
     event.preventDefault();
+    const effectiveCurrentPassword = currentPasswordInput || currentUser?.password || '';
     if (
       newPassword.length < minimumPasswordLength()
       || newPassword !== confirmation
-      || (currentUser?.password && newPassword === currentUser.password)
+      || (effectiveCurrentPassword && newPassword === effectiveCurrentPassword)
     ) {
       setPasswordError(`Gunakan password baru minimal ${minimumPasswordLength()} karakter, berbeda dari password lama, dan konfirmasi yang sama.`);
       return;
@@ -387,17 +404,36 @@ export function AuthProvider({ children }) {
       logout();
       return;
     }
-    const next = { ...account, password: newPassword, mustChangePassword: false };
-    localStorage.setItem(
-      'prp_users',
-      JSON.stringify([...getStoredUsers().filter((user) => user.email?.toLowerCase() !== next.email.toLowerCase()), next])
-    );
-    changeOwnPasswordViaBackend(currentUser.password || '', newPassword);
-    setCurrentUser(next);
-    changedPasswordActor.current = next.email;
-    setNewPassword('');
-    setConfirmation('');
+    setSubmittingPassword(true);
     setPasswordError('');
+    try {
+      const res = await changeOwnPasswordViaBackend(effectiveCurrentPassword, newPassword);
+      if (res?.handled && !res.ok) {
+        setPasswordError(res.error || 'Gagal memperbarui kata sandi pada server.');
+        return;
+      }
+      const next = {
+        ...account,
+        ...(res?.user || {}),
+        ...(res?.handled ? {} : { password: newPassword }),
+        mustChangePassword: false,
+      };
+      if (res?.handled) {
+        delete next.password;
+      }
+      localStorage.setItem(
+        'prp_users',
+        JSON.stringify([...getStoredUsers().filter((user) => user.email?.toLowerCase() !== next.email.toLowerCase()), next])
+      );
+      setCurrentUser(next);
+      changedPasswordActor.current = next.email;
+      setCurrentPasswordInput('');
+      setNewPassword('');
+      setConfirmation('');
+      setPasswordError('');
+    } finally {
+      setSubmittingPassword(false);
+    }
   };
 
   useEffect(() => {
@@ -445,6 +481,17 @@ export function AuthProvider({ children }) {
               Demi keamanan otoritas sesi, Anda wajib mengganti kata sandi sementara sebelum mengakses ruang kerja PERFORMA ITPLN.
             </p>
             <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.76rem', fontWeight: 700, color: '#072534' }}>
+              Password saat ini
+              <input
+                className="ent-input"
+                type="password"
+                autoComplete="current-password"
+                placeholder="Masukkan kata sandi saat ini"
+                value={currentPasswordInput}
+                onChange={(e) => setCurrentPasswordInput(e.target.value)}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.76rem', fontWeight: 700, color: '#072534' }}>
               Password baru
               <input
                 className="ent-input"
@@ -476,8 +523,8 @@ export function AuthProvider({ children }) {
               <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={logout}>
                 Keluar
               </button>
-              <button type="submit" className="ent-btn ent-btn-teal" style={{ minHeight: '44px' }}>
-                Simpan Password Baru
+              <button type="submit" className="ent-btn ent-btn-teal" style={{ minHeight: '44px' }} disabled={submittingPassword}>
+                {submittingPassword ? 'Menyimpan...' : 'Simpan Password Baru'}
               </button>
             </div>
           </form>

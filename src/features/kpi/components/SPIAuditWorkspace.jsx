@@ -52,8 +52,10 @@ function fmtNum(value, digits = 2) {
   });
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
+function escapeHtml(value, isExcel = false) {
+  const raw = String(value ?? '');
+  const safe = isExcel && /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+  return safe
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -278,16 +280,16 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
     const rowsHtml = allAuditRows.map((row, idx) => `
       <tr>
         <td>${idx + 1}</td>
-        <td>${escapeHtml(row.codeLabel)}</td>
-        <td>${escapeHtml(row.item.indikator)}</td>
-        <td>${escapeHtml(row.picDisplay)}</td>
-        <td>${escapeHtml(row.contributor?.unit || '-')}</td>
-        <td>${escapeHtml(row.item.bobotDisplay || row.item.bobot)}</td>
+        <td>${escapeHtml(row.codeLabel, true)}</td>
+        <td>${escapeHtml(row.item.indikator, true)}</td>
+        <td>${escapeHtml(row.picDisplay, true)}</td>
+        <td>${escapeHtml(row.contributor?.unit || '-', true)}</td>
+        <td>${escapeHtml(row.item.bobotDisplay || row.item.bobot, true)}</td>
         <td>${row.computed.ratioPercent !== null ? fmtNum(row.computed.ratioPercent, 2) : '-'}</td>
         <td>${row.computed.weightedScore !== null ? fmtNum(row.computed.weightedScore, 2) : '-'}</td>
         <td>${row.evidences.length}</td>
-        <td>${escapeHtml(row.evidences.map((e) => e.label).join('; ') || '-')}</td>
-        <td>${escapeHtml(row.unitNote || '-')}</td>
+        <td>${escapeHtml(row.evidences.map((e) => e.label).join('; ') || '-', true)}</td>
+        <td>${escapeHtml(row.unitNote || '-', true)}</td>
       </tr>`).join('');
 
     const excelDoc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
@@ -513,11 +515,9 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
       {/* Tab Menu Inputan Khusus SPI: Menampilkan Tabel Unit Standar KPIDataEntrySheet (Persis Seperti Unit Lain) */}
       {activeSpiTab === 'spi-form' && renderStandardUnitTableForSpi('Menu Inputan Khusus SPI (Bagian D No. 5)')}
 
-      {/* Tab Tabel Audit KPI (Read-Only) + Tabel Input Bagian D.5 di Bawahnya */}
       {activeSpiTab === 'audit-table' && (
         <>
           {!isAuditUnlocked ? (
-            /* STATE TERKUNCI: VALIDASI RENBANG BELUM 100% ("Akses masih tertutup") */
             <section
               aria-label="Tabel Audit KPI Terkunci - Akses Masih Tertutup"
               style={{
@@ -627,7 +627,6 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
               </div>
             </section>
           ) : (
-            /* STATE TERBUKA OTOMATIS: VALIDASI RENBANG 100% SELESAI */
             <>
               <section
                 aria-label="Kontrol Tampilan Tabel Audit Ringkas & Cetak Laporan Keseluruhan SPI"
@@ -657,9 +656,9 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                           borderRadius: '5px',
                           fontSize: '0.72rem',
                           fontWeight: 600,
-                          background: '#EFF6FF',
-                          color: '#1E3A8A',
-                          border: '1px solid #BFDBFE',
+                          background: '#EDF3F6',
+                          color: '#094E68',
+                          border: '1px solid #64748B',
                         }}
                       >
                         Tampilan Ringkas Khusus SPI (Read-Only)
@@ -679,10 +678,10 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                         type="button"
                         onClick={() => setDisplayFormat('RINGKAS')}
                         style={{
-                          minHeight: '42px',
+                          minHeight: '44px',
                           padding: '0.45rem 0.9rem',
                           borderRadius: '7px',
-                          border: displayFormat === 'RINGKAS' ? '1.5px solid #094E68' : '1px solid #CBD5E1',
+                          border: displayFormat === 'RINGKAS' ? '1.5px solid #094E68' : '1px solid #64748B',
                           background: displayFormat === 'RINGKAS' ? '#094E68' : '#FFFFFF',
                           color: displayFormat === 'RINGKAS' ? '#FFFFFF' : '#072534',
                           fontSize: '0.78rem',
@@ -701,10 +700,10 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                         type="button"
                         onClick={() => setDisplayFormat('CETAK_LAPORAN')}
                         style={{
-                          minHeight: '42px',
+                          minHeight: '44px',
                           padding: '0.45rem 0.9rem',
                           borderRadius: '7px',
-                          border: displayFormat === 'CETAK_LAPORAN' ? '1.5px solid #094E68' : '1px solid #CBD5E1',
+                          border: displayFormat === 'CETAK_LAPORAN' ? '1.5px solid #094E68' : '1px solid #64748B',
                           background: displayFormat === 'CETAK_LAPORAN' ? '#094E68' : '#FFFFFF',
                           color: displayFormat === 'CETAK_LAPORAN' ? '#FFFFFF' : '#072534',
                           fontSize: '0.78rem',
@@ -725,7 +724,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                         type="button"
                         onClick={handlePrintValidatedReport}
                         style={{
-                          minHeight: '40px',
+                          minHeight: '44px',
                           padding: '0.4rem 0.85rem',
                           borderRadius: '7px',
                           border: '1px solid #094E68',
@@ -747,7 +746,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                         type="button"
                         onClick={handleExportExcelSpi}
                         style={{
-                          minHeight: '40px',
+                          minHeight: '44px',
                           padding: '0.4rem 0.85rem',
                           borderRadius: '7px',
                           border: '1px solid #15803D',
@@ -768,7 +767,6 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                   </div>
                 </div>
 
-                {/* Filter Bar */}
                 <div
                   style={{
                     marginTop: '0.85rem',
@@ -789,10 +787,10 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Cari kode, indikator, atau PIC..."
                       style={{
-                        minHeight: '40px',
+                        minHeight: '44px',
                         padding: '0.4rem 0.75rem',
                         borderRadius: '7px',
-                        border: '1px solid #CBD5E1',
+                        border: '1px solid #64748B',
                         fontSize: '0.78rem',
                         minWidth: 'min(100%, 230px)',
                       }}
@@ -803,10 +801,10 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       value={picFilter}
                       onChange={(e) => setPicFilter(e.target.value)}
                       style={{
-                        minHeight: '40px',
+                        minHeight: '44px',
                         padding: '0.4rem 0.7rem',
                         borderRadius: '7px',
-                        border: '1px solid #CBD5E1',
+                        border: '1px solid #64748B',
                         fontSize: '0.78rem',
                         fontWeight: 600,
                       }}
@@ -916,9 +914,9 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                     display: 'inline-block',
                                     padding: '3px 8px',
                                     borderRadius: 5,
-                                    background: '#EFF6FF',
-                                    color: '#1E3A8A',
-                                    border: '1px solid #BFDBFE',
+                                    background: '#EDF3F6',
+                                    color: '#094E68',
+                                    border: '1px solid #64748B',
                                     fontWeight: 700,
                                     fontSize: '0.73rem',
                                   }}
@@ -982,7 +980,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                             type="button"
                                             onClick={() => setPreviewEvidence(ev)}
                                             style={{
-                                              minHeight: '34px',
+                                              minHeight: '44px',
                                               padding: '4px 10px',
                                               borderRadius: 6,
                                               border: '1px solid #094E68',
@@ -1003,7 +1001,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                             type="button"
                                             onClick={() => triggerEvidenceDownload(ev)}
                                             style={{
-                                              minHeight: '34px',
+                                              minHeight: '44px',
                                               padding: '4px 10px',
                                               borderRadius: 6,
                                               border: 'none',
@@ -1029,12 +1027,42 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                             </tr>
                           );
                         })}
+                        {filteredRows.length === 0 && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '2rem 1rem', textAlign: 'center', color: '#475569' }}>
+                              <div style={{ marginBottom: '0.65rem', fontWeight: 600 }}>
+                                Tidak ada baris indikator KPI yang sesuai dengan kata kunci pencarian atau filter PIC.
+                              </div>
+                              {(searchQuery || picFilter !== 'ALL') && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSearchQuery('');
+                                    setPicFilter('ALL');
+                                  }}
+                                  style={{
+                                    minHeight: '44px',
+                                    padding: '0.45rem 0.9rem',
+                                    borderRadius: '6px',
+                                    border: '1px solid #094E68',
+                                    background: '#FFFFFF',
+                                    color: '#094E68',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Reset Pencarian &amp; Filter PIC
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
                 </section>
               ) : (
-                /* OPSI 2: CETAK LAPORAN KESELURUHAN TERVALIDASI */
                 <section
                   aria-label="Cetak Laporan Keseluruhan KPI Tervalidasi Renbang"
                   style={{
@@ -1069,7 +1097,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                       type="button"
                       onClick={handlePrintValidatedReport}
                       style={{
-                        minHeight: '42px',
+                        minHeight: '44px',
                         padding: '0.45rem 0.95rem',
                         borderRadius: '7px',
                         border: 'none',
@@ -1130,6 +1158,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: 4,
+                                      minHeight: '44px',
                                       marginRight: 4,
                                       marginBottom: 4,
                                       padding: '3px 8px',
@@ -1153,6 +1182,37 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                             </td>
                           </tr>
                         ))}
+                        {filteredRows.length === 0 && (
+                          <tr>
+                            <td colSpan={8} style={{ padding: '2rem 1rem', textAlign: 'center', color: '#475569' }}>
+                              <div style={{ marginBottom: '0.65rem', fontWeight: 600 }}>
+                                Tidak ada baris indikator KPI yang sesuai dengan kata kunci pencarian atau filter PIC.
+                              </div>
+                              {(searchQuery || picFilter !== 'ALL') && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSearchQuery('');
+                                    setPicFilter('ALL');
+                                  }}
+                                  style={{
+                                    minHeight: '44px',
+                                    padding: '0.45rem 0.9rem',
+                                    borderRadius: '6px',
+                                    border: '1px solid #094E68',
+                                    background: '#FFFFFF',
+                                    color: '#094E68',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Reset Pencarian &amp; Filter PIC
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1161,7 +1221,6 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
             </>
           )}
 
-          {/* Tabel Standar Pengisian KPI Unit SPI (Bagian D No. 5) di Bawah Tabel Audit Read-Only */}
           {renderStandardUnitTableForSpi('Form Pengisian Khusus SPI di Bawah Tabel Audit Read-Only (Bagian D No. 5)')}
         </>
       )}

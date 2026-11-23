@@ -49,8 +49,16 @@ function persist(records, next, actor, action, reason) {
   window.dispatchEvent(new Event(EVENT));
   return next;
 }
-function normalize(values, submit) {
+const makeIkuId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `iku-${crypto.randomUUID()}`;
+  }
+  return `iku-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+function normalize(values, submit, previousValues = []) {
   if (!Array.isArray(values) || values.length !== 8) throw new Error('Delapan indikator wajib tersedia.');
+  const prevMap = new Map((Array.isArray(previousValues) ? previousValues : []).map((r) => [r.id, r]));
   return IKU_INDICATORS.map(({ id }) => {
     const row = values.find((v) => v.id === id);
     if (!row) throw new Error('Indikator tidak valid.');
@@ -63,6 +71,24 @@ function normalize(values, submit) {
       if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Bukti harus berupa URL HTTPS tanpa kredensial.');
     }
     if (submit && (actual === '' || target === '' || (readSystemConfig().evidenceRequired !== false && !evidence))) throw new Error('Lengkapi aktual, target, dan bukti yang diwajibkan pada setiap indikator.');
+    const prev = prevMap.get(id);
+    const isUnchanged = prev
+      && String(prev.actual ?? '') === String(actual ?? '')
+      && String(prev.target ?? '') === String(target ?? '')
+      && String(prev.evidence ?? '').trim() === evidence;
+    if (!submit && isUnchanged && prev.verification && prev.verification !== 'PENDING') {
+      return {
+        id,
+        actual,
+        target,
+        notes: String(row.notes || ''),
+        evidence,
+        verification: prev.verification,
+        ...(prev.verificationNote ? { verificationNote: prev.verificationNote } : {}),
+        ...(prev.verifiedBy ? { verifiedBy: prev.verifiedBy } : {}),
+        ...(prev.verifiedAt ? { verifiedAt: prev.verifiedAt } : {}),
+      };
+    }
     return { id, actual, target, notes: String(row.notes || ''), evidence, verification: 'PENDING' };
   });
 }
@@ -74,7 +100,7 @@ export function saveIkuSubmission(actor, period, values, submit = false) {
   const owner = actor.email.toLowerCase();
   const previous = records.find((r) => r.owner === owner && r.period === period);
   if (previous && !['DRAFT', 'NEEDS_REVISION'].includes(previous.status)) throw new Error('Submission terkunci; minta PRP membuka revisi.');
-  const next = { ...previous, id: previous?.id || `iku-${crypto.randomUUID()}`, owner, unit: actor.unit || actor.name || owner, period, values: normalize(values, submit), status: submit ? 'SUBMITTED' : previous?.status || 'DRAFT' };
+  const next = { ...previous, id: previous?.id || makeIkuId(), owner, unit: actor.unit || actor.name || owner, period, values: normalize(values, submit, previous?.values), status: submit ? 'SUBMITTED' : previous?.status || 'DRAFT' };
   return persist(records, next, actor, submit ? 'SUBMIT' : 'SAVE_DRAFT', submit ? 'Dikirim oleh pemilik.' : 'Draft disimpan oleh pemilik.');
 }
 export const IKU_TRANSITIONS = { SUBMITTED: ['APPROVED', 'NEEDS_REVISION', 'REJECTED'], APPROVED: ['LOCKED', 'NEEDS_REVISION'], REJECTED: ['NEEDS_REVISION'], LOCKED: ['NEEDS_REVISION'] };

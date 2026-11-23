@@ -1,7 +1,7 @@
 /* Desainer Tabel KPI - Kanvas Spreadsheet Arsitektural ITPLN */
 .kpi-designer-page {
   --line: #D8E4EA;
-  --line-strong: #B8CAD4;
+  --line-strong: #64748B;
   --head: #F7FAFB;
   --accent: #094E68;
   --accent-soft: #EDF3F6;
@@ -113,7 +113,7 @@
 .kpi-designer-page .designer-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; min-width: 0; width: 100%; max-width: 100%; }
 .kpi-designer-page .designer-layout.with-panel { grid-template-columns: minmax(0, 1fr) 340px; }
 .kpi-designer-page .sheet-shell {
-  min-width: 0; width: 100%; max-width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; background: #FFFFFF; overflow: hidden;
+  min-width: 0; width: 100%; max-width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; background: #FFFFFF; overflow: visible;
 }
 
 .kpi-designer-page .formula-bar {
@@ -215,7 +215,7 @@
   border: 0; background: transparent; font: inherit; color: inherit; resize: none; line-height: 1.4;
   field-sizing: content;
 }
-.kpi-designer-page textarea.cell-input { overflow: hidden; white-space: pre-wrap; word-break: break-word; }
+.kpi-designer-page textarea.cell-input { min-height: 44px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
 .kpi-designer-page .cell-input.center { text-align: center; }
 .kpi-designer-page .cell-input.right { text-align: right; font-variant-numeric: tabular-nums; }
 .kpi-designer-page .cell-input:focus,
@@ -436,7 +436,7 @@
   .kpi-designer-page .formula-input { flex-basis: 100%; }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) {
   .kpi-designer-page button,
   .kpi-designer-page .designer-period input,
   .kpi-designer-page .formula-row select,
@@ -449,6 +449,10 @@
   }
   .kpi-designer-page button.link {
     min-height: 0;
+  }
+  .kpi-designer-page .formula-bar {
+    position: static;
+    padding: .5rem .65rem;
   }
   .kpi-designer-page .designer-actions {
     width: 100%;

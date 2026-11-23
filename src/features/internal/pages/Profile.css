@@ -196,7 +196,7 @@
   width: 100%;
   min-height: 40px;
   padding: 0.58rem 0.8rem;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   border-radius: 6px;
   background: #FFFFFF;
   color: #072534;
@@ -230,7 +230,7 @@
   font-weight: 700;
   color: #072534;
   background: #EDF3F6;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   padding: 2px 6px;
   border-radius: 3px;
   letter-spacing: 0.06em;
@@ -314,7 +314,7 @@
   padding: 0.22rem 0.55rem;
   border-radius: 4px;
   background: #F7FAFB;
-  border: 1px solid #B8CAD4;
+  border: 1px solid #64748B;
   color: #475569;
 }
 
@@ -329,7 +329,8 @@
   gap: 0.6rem;
   margin-top: 1.1rem;
   padding: 0.78rem 0.9rem;
-  border-left: 2px solid #094E68;
+  border: 1px solid #D8E4EA;
+  border-radius: 6px;
   background: #F7FAFB;
   color: #334155;
   font-size: 0.74rem;
@@ -383,7 +384,7 @@
 
 .profile-quote .profile-overline,
 .profile-quote .profile-signature {
-  color: #94B8C7;
+  color: #C5DEE8;
 }
 
 .profile-quote p {
@@ -424,7 +425,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) {
   .profile-form input,
   .profile-input-locked,
   .profile-submit {

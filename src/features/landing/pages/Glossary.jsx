@@ -155,8 +155,8 @@ export default function Glossary() {
           z-index: 20;
           margin-top: clamp(2rem, 4vw, 3rem);
           background: #ffffff;
-          border: 1.5px solid #D8E4EA;
-          border-radius: 10px;
+          border: 1.5px solid #64748B;
+          border-radius: 8px;
           box-shadow: 0 10px 24px -12px rgba(7, 37, 52, 0.1);
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
@@ -178,9 +178,6 @@ export default function Glossary() {
         }
         .glos-search-input::placeholder {
           color: #475569;
-        }
-        .glos-search-input:focus {
-          outline: none;
         }
         .glos-clear-btn {
           position: absolute;
@@ -435,8 +432,8 @@ export default function Glossary() {
                 padding: 'clamp(2.5rem, 6vw, 4.5rem) 1.5rem',
                 textAlign: 'center',
                 background: '#F7FAFB',
-                border: '1px solid #D8E4EA',
-                borderRadius: '10px',
+                border: '1px solid #CBD5E1',
+                borderRadius: '8px',
               }}
             >
               <BookMarked size={40} strokeWidth={1.6} color="#094E68" style={{ margin: '0 auto 1rem' }} />

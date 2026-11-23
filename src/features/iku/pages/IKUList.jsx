@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -246,7 +246,6 @@ export default function IKUList() {
       `}</style>
 
       <div style={{ maxWidth: '1320px', margin: '0 auto', padding: '0 clamp(1.25rem, 4vw, 2.5rem)' }}>
-        {/* HERO MASTHEAD */}
         <header style={{ marginBottom: '2.25rem' }}>
           <div className="iku-cat-hero ent-eyebrow" style={{ marginBottom: '1rem' }}>
             KEPMENDIKBUDRISTEK NO. 210/M/2023 · DIREKTORAT PRP ITPLN
@@ -292,10 +291,10 @@ export default function IKUList() {
 
             <div className="iku-cat-hero" style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
               <Link to="/documents" className="ent-btn" style={{ minHeight: 44 }}>
-                Unduh Regulasi PDF <ArrowUpRight size={15} />
+                Unduh Regulasi PDF
               </Link>
               <Link to="/login" className="ent-btn ent-btn-primary" style={{ minHeight: 44 }}>
-                Portal Evaluasi Internal <ArrowRight size={15} />
+                Portal Evaluasi Internal
               </Link>
             </div>
           </div>
@@ -303,7 +302,6 @@ export default function IKUList() {
           <div className="iku-cat-keyline" style={{ height: '2px', background: '#094E68', width: '100%' }} />
         </header>
 
-        {/* FILTER & SEARCH TOOLBAR */}
         <div
           className="iku-cat-hero"
           style={{
@@ -377,7 +375,6 @@ export default function IKUList() {
           </div>
         </div>
 
-        {/* CONNECTED ARCHITECTURAL CATALOG GRID */}
         <div className="iku-ledger-grid">
           {filtered.map((item) => (
             <article id={`iku-${item.id}`} key={item.id} className="iku-ledger-cell iku-cat-card">
@@ -428,9 +425,9 @@ export default function IKUList() {
                 <div
                   style={{
                     padding: '0.85rem 1rem',
-                    borderLeft: '2.5px solid #094E68',
+                    border: '1px solid #CBD5E1',
                     background: '#F7FAFB',
-                    borderRadius: '0 6px 6px 0',
+                    borderRadius: '6px',
                   }}
                 >
                   <div

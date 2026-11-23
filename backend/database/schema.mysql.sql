@@ -1,45 +1,79 @@
--- =============================================================================
--- SKEMA DATABASE PRODUKSI PERFORMA KPI & IKU ITPLN (MariaDB v12 / MySQL 8.4 LTS)
--- Alternatif Kompatibel Environment Server BPTI ITPLN (Kepatuhan CVE 2026)
--- =============================================================================
+-- Skema Basis Data Relasional PERFORMA KPI & IKU ITPLN (MariaDB / MySQL 8.4)
+-- Selaras dengan struktur tabel runtime SQLite WAL di backend/src/services/database.js
 
 SET NAMES utf8mb4;
 SET time_zone = '+07:00';
 
--- 1. Tabel Pengguna & Otorisasi Berbasis Peran + PIC (RBAC & Row-Level Security)
 CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(190) NOT NULL,
   id VARCHAR(64) NOT NULL,
-  code VARCHAR(32) NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  short_name VARCHAR(120) NOT NULL,
-  role VARCHAR(32) NOT NULL,
-  role_title VARCHAR(160) NOT NULL,
-  badge VARCHAR(120) NOT NULL,
-  unit VARCHAR(255) NOT NULL,
-  avatar VARCHAR(32) NOT NULL,
-  status VARCHAR(32) NOT NULL DEFAULT 'Aktif',
-  pic_codes_json JSON NOT NULL,
-  allowed_portals_json JSON NOT NULL,
-  description TEXT NOT NULL,
+  code VARCHAR(32),
   password_hash TEXT NOT NULL,
-  failed_attempts INT NOT NULL DEFAULT 0,
-  locked_until BIGINT NOT NULL DEFAULT 0,
+  name VARCHAR(255) NOT NULL,
+  short_name VARCHAR(120),
+  role VARCHAR(32) NOT NULL,
+  role_title VARCHAR(160),
+  badge VARCHAR(120),
+  allowed_portals_json JSON NOT NULL,
+  pic_codes_json JSON NOT NULL,
+  unit VARCHAR(255),
+  avatar VARCHAR(32),
+  status VARCHAR(32) NOT NULL DEFAULT 'Aktif',
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0,
   updated_at VARCHAR(40) NOT NULL,
   PRIMARY KEY (email),
   KEY idx_users_role_status (role, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2. Tabel Penyimpanan Dokumen Terstruktur (Master Form KPI, Submission, Bukti, Periode)
-CREATE TABLE IF NOT EXISTS kv_store (
-  `key` VARCHAR(120) NOT NULL,
-  `value` JSON NOT NULL,
-  updated_at VARCHAR(40) NOT NULL,
-  updated_by VARCHAR(190) NOT NULL DEFAULT 'system',
-  PRIMARY KEY (`key`)
+CREATE TABLE IF NOT EXISTS sessions (
+  jti VARCHAR(128) NOT NULL,
+  email VARCHAR(190) NOT NULL,
+  role VARCHAR(32) NOT NULL,
+  ip VARCHAR(64),
+  user_agent TEXT,
+  created_at VARCHAR(40) NOT NULL,
+  expires_at BIGINT NOT NULL,
+  revoked_at VARCHAR(40),
+  PRIMARY KEY (jti),
+  KEY idx_sessions_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Tabel Khusus Inputan & Catatan Audit SPI (Real-Time Persistence)
+CREATE TABLE IF NOT EXISTS kv_store (
+  store_key VARCHAR(120) NOT NULL,
+  payload_json JSON NOT NULL,
+  version INT NOT NULL DEFAULT 1,
+  checksum VARCHAR(64) NOT NULL,
+  updated_by VARCHAR(190),
+  updated_at VARCHAR(40) NOT NULL,
+  PRIMARY KEY (store_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS broadcasts (
+  id VARCHAR(96) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  priority VARCHAR(32) NOT NULL DEFAULT 'IMPORTANT',
+  target_type VARCHAR(32) NOT NULL DEFAULT 'ALL',
+  target_value VARCHAR(255) NOT NULL DEFAULT '',
+  action_url VARCHAR(255) NOT NULL DEFAULT '/internal',
+  action_label VARCHAR(120) NOT NULL DEFAULT 'Buka Ruang Kerja',
+  sender_email VARCHAR(190) NOT NULL,
+  sender_name VARCHAR(255) NOT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at VARCHAR(40) NOT NULL,
+  expires_at VARCHAR(40),
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS broadcast_acks (
+  broadcast_id VARCHAR(96) NOT NULL,
+  user_email VARCHAR(190) NOT NULL,
+  user_name VARCHAR(255),
+  unit VARCHAR(255),
+  acked_at VARCHAR(40) NOT NULL,
+  PRIMARY KEY (broadcast_id, user_email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS spi_audit_records (
   form_id VARCHAR(120) NOT NULL,
   period VARCHAR(64) NOT NULL,
@@ -51,45 +85,18 @@ CREATE TABLE IF NOT EXISTS spi_audit_records (
   KEY idx_spi_audit_period (period)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. Tabel Sesi Refresh Token (Rotasi Kriptografis & Anti-Replay)
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-  jti VARCHAR(128) NOT NULL,
-  email VARCHAR(190) NOT NULL,
-  expires_at BIGINT NOT NULL,
-  revoked TINYINT(1) NOT NULL DEFAULT 0,
-  created_at VARCHAR(40) NOT NULL,
-  ip VARCHAR(64) NOT NULL DEFAULT '',
-  PRIMARY KEY (jti),
-  KEY idx_refresh_tokens_email (email, revoked)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 5. Tabel Log Audit Aktivitas Kriptografis
 CREATE TABLE IF NOT EXISTS audit_logs (
+  seq BIGINT NOT NULL AUTO_INCREMENT,
   id VARCHAR(96) NOT NULL,
   action VARCHAR(96) NOT NULL,
   detail TEXT NOT NULL,
   actor VARCHAR(190) NOT NULL,
-  ip VARCHAR(64) NOT NULL DEFAULT '',
+  ip VARCHAR(64),
   at VARCHAR(40) NOT NULL,
-  PRIMARY KEY (id),
+  prev_hash VARCHAR(64) NOT NULL,
+  entry_hash VARCHAR(64) NOT NULL,
+  PRIMARY KEY (seq),
+  UNIQUE KEY uq_audit_logs_id (id),
   KEY idx_audit_logs_at (at),
   KEY idx_audit_logs_action (action)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 6. Tabel Outbox Email Notifikasi Resmi
-CREATE TABLE IF NOT EXISTS email_outbox (
-  id VARCHAR(96) NOT NULL,
-  message_id VARCHAR(255) NOT NULL,
-  subject VARCHAR(255) NOT NULL,
-  body TEXT NOT NULL,
-  recipients_json JSON NOT NULL,
-  kind VARCHAR(64) NOT NULL DEFAULT 'SYSTEM',
-  indicator_code VARCHAR(64) NOT NULL DEFAULT '',
-  period VARCHAR(64) NOT NULL DEFAULT '',
-  actor_email VARCHAR(190) NOT NULL,
-  actor_name VARCHAR(255) NOT NULL,
-  status VARCHAR(64) NOT NULL DEFAULT 'TERKIRIM_TERCATAT',
-  sent_at VARCHAR(40) NOT NULL,
-  PRIMARY KEY (id),
-  KEY idx_email_outbox_sent_at (sent_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -1,0 +1,230 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PERFORMA ITPLN Backend API",
+    "version": "1.0.0",
+    "description": "Spesifikasi REST & SSE Realtime API untuk Sistem Pemantauan 8 IKU Kemendikbudristek dan Evaluasi KPI Operasional Unit Institut Teknologi PLN."
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Endpoint utama API v1"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "HMAC-SHA256"
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Periksa status kesehatan server, rantai audit SHA-256, dan telemetri rate limiter",
+        "responses": {
+          "200": { "description": "Server sehat dan rantai audit terverifikasi" }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "Ambil spesifikasi OpenAPI 3.1.0",
+        "responses": {
+          "200": { "description": "Dokumen spesifikasi OpenAPI JSON" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Autentikasi kredensial email dan kata sandi pengguna",
+        "responses": {
+          "200": { "description": "Berhasil login dan mengembalikan token akses" },
+          "401": { "description": "Kredensial tidak valid" },
+          "403": { "description": "Akun nonaktif" },
+          "429": { "description": "Terkunci sementara karena batas percobaan gagal" }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "Cabut sesi aktif dan hapus cookie akses",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Sesi berhasil ditutup" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Ambil profil akun sesi aktif",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Profil pengguna terautentikasi" },
+          "401": { "description": "Belum terautentikasi" }
+        }
+      }
+    },
+    "/auth/profile": {
+      "post": {
+        "summary": "Perbarui nama tampilan atau unit profil mandiri",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Profil berhasil diperbarui" },
+          "401": { "description": "Belum terautentikasi" }
+        }
+      }
+    },
+    "/auth/password": {
+      "post": {
+        "summary": "Ubah kata sandi akun sendiri dan cabut sesi lain",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Kata sandi berhasil diperbarui" },
+          "400": { "description": "Validasi panjang kata sandi gagal" },
+          "403": { "description": "Kata sandi saat ini tidak sesuai" }
+        }
+      }
+    },
+    "/bootstrap": {
+      "get": {
+        "summary": "Muat state awal aplikasi sesuai isolasi peran dan kode PIC pemanggil",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Data store, daftar pengguna, siaran aktif, dan log audit" },
+          "401": { "description": "Belum terautentikasi" }
+        }
+      }
+    },
+    "/realtime/stream": {
+      "get": {
+        "summary": "Buka aliran Server-Sent Events (SSE) untuk pembaruan state dan siaran realtime",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Aliran text/event-stream aktif" },
+          "401": { "description": "Belum terautentikasi" }
+        }
+      }
+    },
+    "/realtime/digest": {
+      "get": {
+        "summary": "Periksa ringkasan checksum state dan siaran aktif",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Ringkasan versi dan hash state" }
+        }
+      }
+    },
+    "/sync/push": {
+      "post": {
+        "summary": "Sinkronkan perubahan state (KPI, IKU, konfigurasi, pengguna, notifikasi) dalam satu transaksi",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Perubahan berhasil disimpan dan disiarkan" },
+          "403": { "description": "Pelanggaran isolasi peran atau otoritas PIC" }
+        }
+      }
+    },
+    "/spi/audit": {
+      "get": {
+        "summary": "Muat rekaman audit SPI (khusus peran SPI dan Superadmin PRP)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Data audit SPI" },
+          "403": { "description": "Akses ditolak" }
+        }
+      },
+      "post": {
+        "summary": "Simpan evaluasi real-time Bagian D.5 oleh Auditor SPI",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Rekaman audit SPI tersimpan" },
+          "403": { "description": "Hanya akun SPI pada indikator D_5 yang diizinkan" }
+        }
+      }
+    },
+    "/notifications/email": {
+      "post": {
+        "summary": "Catat notifikasi ke outbox audit email dan teruskan ke gateway bila terkonfigurasi",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Tercatat pada outbox atau terkirim via gateway" },
+          "502": { "description": "Gateway eksternal gagal namun tercatat di outbox audit" }
+        }
+      }
+    },
+    "/broadcasts": {
+      "get": {
+        "summary": "Daftar siaran instruksi aktif untuk pengguna saat ini",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Daftar siaran aktif" }
+        }
+      },
+      "post": {
+        "summary": "Terbitkan siaran instruksi baru (khusus Superadmin PRP)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": { "description": "Siaran berhasil diterbitkan" },
+          "403": { "description": "Bukan Superadmin PRP" }
+        }
+      }
+    },
+    "/broadcasts/{id}/ack": {
+      "post": {
+        "summary": "Konfirmasi pembacaan siaran instruksi",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Konfirmasi baca tercatat" },
+          "404": { "description": "Siaran tidak ditemukan" }
+        }
+      }
+    },
+    "/broadcasts/{id}": {
+      "delete": {
+        "summary": "Hentikan dan arsipkan siaran aktif (khusus Superadmin PRP)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Siaran berhasil dihentikan" }
+        }
+      }
+    },
+    "/users/{email}": {
+      "delete": {
+        "summary": "Hapus akun pengguna kustom (khusus Superadmin PRP)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Status penghapusan akun" }
+        }
+      }
+    },
+    "/push/vapid-public-key": {
+      "get": {
+        "summary": "Ambil kunci publik VAPID untuk langganan Web Push",
+        "responses": {
+          "200": { "description": "Kunci publik VAPID" }
+        }
+      }
+    },
+    "/push/subscribe": {
+      "post": {
+        "summary": "Daftarkan endpoint Web Push browser untuk pengguna aktif",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": { "description": "Langganan Web Push tersimpan" },
+          "400": { "description": "Payload subscription tidak lengkap" }
+        }
+      }
+    },
+    "/push/unsubscribe": {
+      "post": {
+        "summary": "Hapus langganan Web Push browser",
+        "responses": {
+          "200": { "description": "Langganan Web Push dihapus" }
+        }
+      }
+    }
+  }
+}

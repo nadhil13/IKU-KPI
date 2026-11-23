@@ -315,6 +315,56 @@ test('Broadcast Realtime Superadmin PRP: penargetan ALL, ROLE, PIC, USER serta k
   assert.equal(ackRes.json.broadcast.acknowledgements.length, 1);
   assert.equal(ackRes.json.broadcast.acknowledgements[0].email, 'bakt@itpln.ac.id');
 
+  // Siapkan form_2026 dan draf BAKT awal pada instance DB pengujian ini sebelum menguji sinkronisasi prp_kpi_config
+  await invokeApi('POST', '/api/v1/sync/push', {
+    token: adminToken,
+    body: {
+      stores: {
+        prp_kpi_distribution_v1: {
+          forms: [
+            {
+              id: 'form_2026',
+              period: '2026',
+              sections: [
+                {
+                  code: 'A',
+                  title: 'PERSPEKTIF KEBERLANJUTAN',
+                  items: [
+                    {
+                      id: 'A_1a',
+                      no: '1',
+                      indikator: 'Pendapatan Vertikal',
+                      pics: ['PPA'],
+                      subrows: [{ key: 'a_1a_num', label: 'Realisasi Maba' }],
+                    },
+                    {
+                      id: 'A_1b',
+                      no: '1b',
+                      indikator: 'Pendapatan Mahasiswa',
+                      pics: ['BAKT', 'BAG'],
+                      subrows: [{ key: 'a_1b_num', label: 'Realisasi Pendapatan' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          submissions: {},
+          evidence: {},
+          drafts: {
+            'form_2026:bakt@itpln.ac.id': {
+              formId: 'form_2026',
+              email: 'bakt@itpln.ac.id',
+              picCodes: ['BAKT'],
+              values: { a_1b_num: '95' },
+              notes: {},
+            },
+          },
+        },
+      },
+    },
+  });
+
   // Superadmin menambah baris indikator baru di prp_kpi_config -> otomatis tersinkron ke form aktif prp_kpi_distribution_v1
   const configSyncRes = await invokeApi('POST', '/api/v1/sync/push', {
     token: adminToken,
@@ -929,7 +979,7 @@ test('Proteksi endpoint /api/v1/bootstrap & SSE tanpa login (401), wajib current
   function mintSessionToken(email, role) {
     const signed = signAccessToken(
       { sub: email, email, role },
-      ACCESS_TOKEN_TTL_SECONDS,
+      { ttlSeconds: ACCESS_TOKEN_TTL_SECONDS },
     );
     return typeof signed === 'string' ? signed : signed.token;
   }
@@ -954,8 +1004,9 @@ test('Proteksi endpoint /api/v1/bootstrap & SSE tanpa login (401), wajib current
   const spiPushNotif = await callApi('POST', '/api/v1/sync/push', {
     token: spiToken,
     body: {
-      key: 'prp_notifications_v1',
-      value: [{ id: 'notif-illegal', title: 'Illegal SPI write' }],
+      stores: {
+        prp_notifications_v1: [{ id: 'notif-illegal', title: 'Illegal SPI write' }],
+      },
     },
   });
   assert.equal(spiPushNotif.status, 403);
@@ -963,7 +1014,7 @@ test('Proteksi endpoint /api/v1/bootstrap & SSE tanpa login (401), wajib current
   const spiSendEmail = await callApi('POST', '/api/v1/notifications/email', {
     token: spiToken,
     body: {
-      recipients: ['bpti@itpln.ac.id'],
+      toEmails: ['bpti@itpln.ac.id'],
       subject: 'Illegal SPI email',
       body: 'Should be blocked',
     },

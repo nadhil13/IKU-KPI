@@ -246,7 +246,7 @@ export default function AboutIKU() {
 
               <div className="about-hero-anim" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <Link to="/iku-list" className="ent-btn ent-btn-primary" style={{ minHeight: '44px', padding: '0.75rem 1.35rem' }}>
-                  Katalog 8 IKU <ArrowRight size={15} />
+                  Katalog 8 IKU
                 </Link>
                 <Link to="/documents" className="ent-btn" style={{ minHeight: '44px', padding: '0.75rem 1.35rem' }}>
                   Unduh Regulasi Resmi
@@ -259,7 +259,7 @@ export default function AboutIKU() {
                 style={{
                   borderRadius: '8px',
                   overflow: 'hidden',
-                  border: '1px solid #BFD2DC',
+                  border: '1px solid #64748B',
                   background: '#EDF3F6',
                 }}
               >
@@ -268,7 +268,7 @@ export default function AboutIKU() {
                   alt="Gedung Kampus Institut Teknologi PLN"
                   style={{
                     width: '100%',
-                    height: 'clamp(260px, 38vw, 420px)',
+                    height: 'clamp(220px, 34vw, 380px)',
                     objectFit: 'cover',
                     display: 'block',
                   }}
@@ -287,7 +287,7 @@ export default function AboutIKU() {
                   }}
                 >
                   <div>
-                    <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.62rem', letterSpacing: '0.1em', color: '#94B8C7', textTransform: 'uppercase' }}>
+                    <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.62rem', letterSpacing: '0.1em', color: '#C5DEE8', textTransform: 'uppercase' }}>
                       CAKUPAN EVALUASI INSTITUSI
                     </div>
                     <div style={{ fontSize: '0.92rem', fontWeight: 700, marginTop: '2px' }}>

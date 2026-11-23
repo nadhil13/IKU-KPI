@@ -65,14 +65,13 @@ export default function Login() {
   const gateStageRef = useRef(null);
   const svgLineIkuRef = useRef(null);
   const svgLineKpiRef = useRef(null);
-  const wheelLockRef = useRef(false);
 
   const matchedByEmail = allAccounts.find((acc) => acc.email.toLowerCase() === email.trim().toLowerCase());
   const activeAccount = matchedByEmail || mockAccounts[selectedIdx] || mockAccounts[2];
 
   const primaryTabIndex = activeAccount.role === 'iku_only'
     ? 0
-    : activeAccount.role === 'kpi_only' || activeAccount.role === 'spi'
+    : activeAccount.role === 'kpi_only' || activeAccount.role === 'spi' || (activeAccount.role === 'dual' && selectedIdx === 1)
       ? 1
       : 2;
 
@@ -108,40 +107,6 @@ export default function Login() {
     setPassword('');
     setErrorMessage('');
   };
-
-  useEffect(() => {
-    const handleWheel = (e) => {
-      if (step !== 'credentials' || loading) return;
-      if (window.innerWidth <= 1024) return;
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (Math.abs(e.deltaY) < 22) return;
-      if (wheelLockRef.current) return;
-
-      wheelLockRef.current = true;
-      setTimeout(() => {
-        wheelLockRef.current = false;
-      }, 520);
-
-      const nextTab = e.deltaY > 0 ? (primaryTabIndex + 1) % 3 : (primaryTabIndex + 2) % 3;
-      const acc = mockAccounts[nextTab];
-      if (acc) {
-        setSelectedIdx(nextTab);
-        setEmail(acc.email);
-        setPassword('');
-        setErrorMessage('');
-      }
-    };
-
-    const el = containerRef.current;
-    if (el) {
-      el.addEventListener('wheel', handleWheel, { passive: true });
-    }
-    return () => {
-      if (el) el.removeEventListener('wheel', handleWheel);
-    };
-  }, [step, loading, mockAccounts, primaryTabIndex]);
 
   useGSAP(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -264,24 +229,29 @@ export default function Login() {
     }
 
     setTimeout(async () => {
-      const result = typeof authenticate === 'function'
-        ? await authenticate(email, password)
-        : login(email, password);
+      try {
+        const result = typeof authenticate === 'function'
+          ? await authenticate(email, password)
+          : login(email, password);
 
-      if (!result.success) {
+        if (!result?.success) {
+          setLoading(false);
+          setErrorMessage(result?.message || 'Gagal melakukan autentikasi. Periksa kembali kredensial Anda.');
+          return;
+        }
+
+        if (result.requiresWorkspaceChoice) {
+          setLoading(false);
+          setPendingDualUser(result.user);
+          transitionToWorkspaceGate();
+          return;
+        }
+
+        performPortalExit('/internal');
+      } catch (err) {
         setLoading(false);
-        setErrorMessage(result.message);
-        return;
+        setErrorMessage(err?.message || 'Terjadi gangguan jaringan saat menghubungi server autentikasi.');
       }
-
-      if (result.requiresWorkspaceChoice) {
-        setLoading(false);
-        setPendingDualUser(result.user);
-        transitionToWorkspaceGate();
-        return;
-      }
-
-      performPortalExit('/internal');
     }, 360);
   };
 
@@ -412,7 +382,7 @@ export default function Login() {
       <style>{`
         .corp-field-wrap {
           position: relative;
-          border-bottom: 1.5px solid #D8E4EA;
+          border-bottom: 1.5px solid #64748B;
           transition: border-color 0.25s ease;
         }
         .corp-field-line {
@@ -508,7 +478,7 @@ export default function Login() {
           text-align: left;
           padding: 1.35rem 1.5rem;
           border-radius: 8px;
-          border: 1.5px solid #D8E4EA;
+          border: 1.5px solid #64748B;
           background: #ffffff;
           color: #072534;
           cursor: pointer;
@@ -598,7 +568,7 @@ export default function Login() {
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(180deg, rgba(6, 44, 61, 0.56) 0%, rgba(6, 44, 61, 0.14) 30%, rgba(6, 44, 61, 0.52) 58%, rgba(6, 44, 61, 0.94) 100%)',
+              'linear-gradient(180deg, rgba(6, 44, 61, 0.86) 0%, rgba(6, 44, 61, 0.78) 38%, rgba(6, 44, 61, 0.88) 68%, rgba(6, 44, 61, 0.96) 100%)',
             zIndex: 1,
           }}
         />
@@ -719,13 +689,13 @@ export default function Login() {
                   style={{
                     fontFamily: 'var(--ent-mono)',
                     fontSize: '0.64rem',
-                    color: '#94B8C7',
+                    color: '#C5DEE8',
                     fontWeight: 700,
                     letterSpacing: '0.08em',
                     textTransform: 'uppercase',
                   }}
                 >
-                  Profil Otoritas Aktif ({primaryTabIndex + 1}/3)
+                  Profil Otoritas Aktif (5 Peran Sistem)
                 </div>
                 <div
                   style={{
@@ -1009,7 +979,7 @@ export default function Login() {
 
                 <div
                   role="group"
-                  aria-label="Pilih skenario akun simulasi"
+                  aria-label="Pilih kategori otoritas akun"
                   className="login-scenario-grid"
                   style={{
                     position: 'relative',
@@ -1018,7 +988,7 @@ export default function Login() {
                     background: '#EDF3F6',
                     padding: '4px',
                     borderRadius: '8px',
-                    border: '1px solid #D8E4EA',
+                    border: '1px solid #64748B',
                   }}
                 >
                   <div
@@ -1096,7 +1066,7 @@ export default function Login() {
                       marginTop: '0.65rem',
                       padding: '0.68rem 0.85rem',
                       background: '#EDF3F6',
-                      border: '1px solid #B8CAD4',
+                      border: '1px solid #64748B',
                       borderRadius: '8px',
                       fontSize: '0.72rem',
                       fontWeight: 700,
@@ -1193,7 +1163,7 @@ export default function Login() {
                           (a) => a.email.toLowerCase() === e.target.value.trim().toLowerCase(),
                         );
                         if (found) {
-                          setSelectedIdx(found.role === 'iku_only' ? 0 : found.role === 'kpi_only' ? 1 : 2);
+                          setSelectedIdx(found.role === 'iku_only' ? 0 : (found.role === 'kpi_only' || found.role === 'spi') ? 1 : 2);
                         }
                       }}
                       placeholder="nama@itpln.ac.id"
@@ -1444,7 +1414,7 @@ export default function Login() {
                   cursor: 'pointer',
                 }}
               >
-                <RotateCcw size={15} /> Kembali &amp; ganti akun pengujian
+                <RotateCcw size={15} /> Kembali &amp; ganti akun masuk
               </button>
             </div>
           )}
