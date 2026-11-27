@@ -12,6 +12,8 @@ import {
   ArrowUpRight,
   Users,
   ShieldAlert,
+  Plus,
+  Settings2,
 } from 'lucide-react';
 import { readMergedUsers } from '../../auth/authAccounts';
 import { useAuth } from '../../auth/hooks/useAuth';
@@ -278,35 +280,29 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
               </div>
 
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <span
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <strong
                     style={{
                       fontFamily: 'var(--ent-mono)',
-                      fontSize: '0.62rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.06em',
-                      padding: '2px 7px',
-                      borderRadius: '4px',
-                      background: tone.badgeBg,
-                      color: tone.badgeText,
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
+                      letterSpacing: '0.05em',
+                      color: tone.titleColor,
                     }}
                   >
                     {tone.label}
-                  </span>
-                  <span
+                  </strong>
+                  <span>·</span>
+                  <strong
                     style={{
                       fontFamily: 'var(--ent-mono)',
-                      fontSize: '0.64rem',
-                      fontWeight: 700,
-                      padding: '2px 7px',
-                      borderRadius: '4px',
-                      background: '#FFFFFF',
-                      border: '1px solid #64748B',
-                      color: '#072534',
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
+                      color: '#094E68',
                     }}
                   >
                     {formatBroadcastTargetLabel(b)}
-                  </span>
+                  </strong>
                   <span style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600 }}>
                     Oleh {b.senderName || 'Superadmin PRP'} ·{' '}
                     {b.createdAt
@@ -399,9 +395,13 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
                     fontSize: '0.72rem',
                     fontWeight: 700,
                     cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
                   }}
                 >
-                  Kelola Siaran
+                  <Settings2 size={14} />
+                  <span>Kelola Siaran</span>
                 </button>
               )}
             </div>
@@ -659,9 +659,13 @@ export function BroadcastComposerModal({ open, onClose }) {
                     fontSize: '0.74rem',
                     fontWeight: 700,
                     cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
                   }}
                 >
-                  + {tpl.label}
+                  <Plus size={13} />
+                  <span>{tpl.label}</span>
                 </button>
               ))}
             </div>
@@ -922,19 +926,17 @@ export function BroadcastComposerModal({ open, onClose }) {
                     >
                       <div style={{ minWidth: 0, flex: '1 1 280px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                          <span
+                          <strong
                             style={{
                               fontFamily: 'var(--ent-mono)',
-                              fontSize: '0.62rem',
-                              fontWeight: 700,
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              background: '#094E68',
-                              color: '#FFFFFF',
+                              fontSize: '0.65rem',
+                              fontWeight: 800,
+                              color: b.priority === 'URGENT' ? '#B91C1C' : '#094E68',
                             }}
                           >
                             {b.priority}
-                          </span>
+                          </strong>
+                          <span>·</span>
                           <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#094E68' }}>
                             {formatBroadcastTargetLabel(b)}
                           </span>
@@ -966,9 +968,13 @@ export function BroadcastComposerModal({ open, onClose }) {
                               fontSize: '0.72rem',
                               fontWeight: 700,
                               cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
                             }}
                           >
-                            Ya, Hentikan
+                            <Trash2 size={13} />
+                            <span>Ya, Hentikan</span>
                           </button>
                           <button
                             type="button"
@@ -983,9 +989,13 @@ export function BroadcastComposerModal({ open, onClose }) {
                               fontSize: '0.72rem',
                               fontWeight: 700,
                               cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
                             }}
                           >
-                            Batal
+                            <X size={13} />
+                            <span>Batal</span>
                           </button>
                         </div>
                       ) : (
@@ -1061,20 +1071,16 @@ export function BroadcastComposerModal({ open, onClose }) {
                   >
                     <div style={{ minWidth: 0, flex: '1 1 260px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <span
+                        <strong
                           style={{
-                            fontSize: '0.6rem',
+                            fontSize: '0.64rem',
                             fontWeight: 800,
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            background: '#F0FDF4',
-                            border: '1px solid #86EFAC',
-                            color: '#14532D',
+                            color: '#166534',
                             fontFamily: 'var(--ent-mono)',
                           }}
                         >
                           {mail.status === 'SENT_VIA_GATEWAY' ? 'TERKIRIM VIA GATEWAY' : 'TERCATAT DI OUTBOX AUDIT'}
-                        </span>
+                        </strong>
                         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#094E68' }}>
                           Ke: {(mail.toEmails || []).join(', ')}
                         </span>

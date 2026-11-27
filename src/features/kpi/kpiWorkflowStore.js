@@ -192,9 +192,7 @@ function inputAllowed(form) {
     || periods.find((p) => p.status === 'Active' && matchesYear(p))
     || periods.find((p) => matchesYear(p));
   const now = new Date();
-  const effectiveEnd = period?.end === '2026-07-31' && period?.status === 'Active' && period?.inputOpen !== false
-    ? '2026-12-31'
-    : period?.end;
+  const effectiveEnd = period?.end;
   const startOk = Boolean(period?.syncedAt && period?.inputOpen === true)
     || !period?.start
     || now >= new Date(`${period.start}T00:00:00`);
@@ -207,13 +205,14 @@ function inputAllowed(form) {
 
 function owner(form, user) {
   const normalizedEmail = user?.email?.toLowerCase();
-  const isSpiUnit = user?.role === 'spi' || normalizedEmail === 'spi@itpln.ac.id';
+  if (user?.role === 'spi' || normalizedEmail === 'spi@itpln.ac.id') {
+    throw new Error('Akun Verifikasi SPI bersifat ketat Hanya Lihat (Read-Only) tanpa wewenang mengedit data.');
+  }
   const isRegisteredUnit = Boolean(normalizedEmail) && (
-    isSpiUnit
-    || form?.units?.some((unit) => unit.email === normalizedEmail)
+    form?.units?.some((unit) => unit.email === normalizedEmail)
     || getKpiUnits().some((unit) => unit.email === normalizedEmail)
   );
-  if (!normalizedEmail || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only' && user.role !== 'dual' && user.role !== 'spi') || !form || !isRegisteredUnit) {
+  if (!normalizedEmail || user.status === 'Nonaktif' || (user.role && user.role !== 'kpi_only' && user.role !== 'dual') || !form || !isRegisteredUnit) {
     throw new Error('Formulir tidak ditujukan ke akun ini.');
   }
   inputAllowed(form);
@@ -852,9 +851,7 @@ export function listKpiPeriodsWithStatus(state = readKpiWorkflow()) {
         deadline: sysDeadline,
       };
     }
-    const effectiveEnd = periodObj.end === '2026-07-31' && periodObj.status === 'Active' && periodObj.inputOpen !== false
-      ? '2026-12-31'
-      : periodObj.end;
+    const effectiveEnd = periodObj.end;
     const startOk = Boolean(periodObj.syncedAt && periodObj.inputOpen === true)
       || !periodObj.start
       || now >= new Date(`${periodObj.start}T00:00:00`);
@@ -1369,7 +1366,7 @@ export function saveUnitKpiByAdmin(formId, targetEmail, actor, {
     }
   });
   const sectionScores = [...sectionBuckets.values()];
-  const totalScore = Math.min(100, Math.max(0, sectionScores.reduce((sum, s) => sum + s.score, 0)));
+  const totalScore = Math.min(100, Math.max(-25, sectionScores.reduce((sum, s) => sum + s.score, 0)));
 
   const now = new Date().toISOString();
   const evList = readUnitEvidence(form.id, normalizedEmail, state);
@@ -2016,7 +2013,7 @@ export function readIntegratedKpiBoard(formId, state = readKpiWorkflow(), { conf
     return { code: section.code, title: section.title, score: sectionScore, isPenaltySection: Boolean(section.isPenaltySection) };
   });
 
-  const totalScore = Math.min(100, Math.max(0, sectionScores.reduce((sum, s) => sum + s.score, 0)));
+  const totalScore = Math.min(100, Math.max(-25, sectionScores.reduce((sum, s) => sum + s.score, 0)));
 
   const unitStatuses = (form.units || []).map((unit) => {
     const key = submissionKey(form.id, unit.email);
@@ -2173,9 +2170,7 @@ export function submitUnitKpi(formId, user, values, options = {}) {
     submittedAt: new Date().toISOString(),
     revisionNote: '',
     sectionScores,
-    totalScore: user.role === 'spi'
-      ? Math.min(100, Math.max(-25, rawTotalScore))
-      : Math.min(100, Math.max(0, rawTotalScore)),
+    totalScore: Math.min(100, Math.max(-25, rawTotalScore)),
   };
   record.history = history(previous, 'SUBMITTED', 'Dikirim unit ke sistem pusat PRP', user, evidence);
   record.history[record.history.length - 1].snapshot = clone({
@@ -2519,10 +2514,8 @@ export function setRenbangFinalValidation(formId, isValidated, actor, { approveA
   return evaluateRenbangValidationStatus(form.id, readKpiWorkflow());
 }
 
-function spiActorGuard(user) {
-  if (!user || user.role !== 'spi' || user.status === 'Nonaktif') {
-    throw new Error('Hanya akun SPI aktif yang berhak mengisi bagian atau kolom audit SPI.');
-  }
+function spiActorGuard() {
+  throw new Error('Akun Verifikasi SPI bersifat ketat Hanya Lihat (Read-Only) tanpa wewenang mengedit data, mengubah status, maupun mengisi umpan balik.');
 }
 
 export function readSpiAuditStore() {

@@ -576,7 +576,7 @@ export default function InternalLayout() {
     {
       idx: '01',
       id: 'overview',
-      label: 'Ikhtisar Eksekutif',
+      label: 'Dashboard Eksekutif KPI',
       to: '/internal/admin',
       active: isExactPath('/internal/admin'),
     },
@@ -646,7 +646,7 @@ export default function InternalLayout() {
     const list = [];
     if (isSuperadminPrp) {
       list.push(
-        { code: 'PRP.01', group: 'PRP Control Center', label: 'Ikhtisar Eksekutif PRP', run: () => { enterPRP(); navigate('/internal/admin'); } },
+        { code: 'PRP.01', group: 'PRP Control Center', label: 'Dashboard Eksekutif KPI & Pusat Kendali PRP', run: () => { enterPRP(); navigate('/internal/admin'); } },
         { code: 'PRP.02', group: 'PRP Control Center', label: 'Desainer Tabel & Formula KPI', run: () => { enterPRP(); navigate('/internal/admin/governance?tab=kpi-builder'); } },
         { code: 'PRP.03', group: 'PRP Control Center', label: 'Pusat Review Submission Unit', run: () => { enterPRP(); navigate('/internal/admin/governance?tab=submissions'); } },
         { code: 'PRP.04', group: 'PRP Control Center', label: 'Periode & Tenggat Evaluasi', run: () => { enterPRP(); navigate('/internal/admin/governance?tab=periods'); } },
@@ -673,15 +673,19 @@ export default function InternalLayout() {
     }
     if (!isIkuOnly) {
       list.push({
-        code: 'KPI.00',
-        group: 'Ruang Kerja KPI',
-        label: isSpiAuditor ? 'Tabel Audit KPI (Read-Only)' : 'Lembar Kerja KPI Operasional Unit',
+        code: isSpiAuditor ? 'SPI.01' : 'KPI.00',
+        group: isSpiAuditor ? 'Satuan Pengawas Internal' : 'Ruang Kerja KPI',
+        label: isSpiAuditor ? 'Verifikasi SPI (Read-Only & Unduh Evidence)' : 'Lembar Kerja KPI Operasional Unit',
         run: () => handleSelectWorkspaceMenu('kpi'),
       });
     }
     if (!isSpiAuditor) {
       list.push(
         { code: 'ORG.01', group: 'Organisasi', label: 'Struktur Organisasi & Unit PIC', run: () => navigate('/internal/team') },
+        { code: 'DOC.01', group: 'Referensi', label: 'Dokumen & Regulasi Resmi', run: () => navigate('/internal/documents') }
+      );
+    } else {
+      list.push(
         { code: 'DOC.01', group: 'Referensi', label: 'Dokumen & Regulasi Resmi', run: () => navigate('/internal/documents') }
       );
     }
@@ -692,12 +696,12 @@ export default function InternalLayout() {
     const q = cmdQuery.trim().toLowerCase();
     if (!q) return list;
     return list.filter((item) => `${item.code} ${item.group} ${item.label}`.toLowerCase().includes(q));
-  }, [isSuperadminPrp, isKpiOnly, isIkuOnly, isSpiAuditor, cmdQuery, enterPRP, navigate, handleSelectWorkspaceMenu]);
+  }, [isSuperadminPrp, isKpiOnly, isIkuOnly, isDual, isSpiAuditor, cmdQuery, enterPRP, navigate, handleSelectWorkspaceMenu]);
 
   const breadcrumb = useMemo(() => {
     const p = location.pathname;
     if (p === '/internal/admin') {
-      return { code: 'PRP.01', group: 'PRP Control Center', current: 'Ikhtisar Eksekutif' };
+      return { code: 'PRP.01', group: 'PRP Control Center', current: 'Dashboard Eksekutif KPI' };
     }
     if (p.startsWith('/internal/admin/governance')) {
       const tabMap = {
@@ -725,12 +729,19 @@ export default function InternalLayout() {
     if (p.startsWith('/internal/profile')) {
       return { code: 'ACC.SES', group: 'Sesi Aktif', current: 'Profil & Keamanan Akun' };
     }
+    if (isSpiAuditor) {
+      return {
+        code: 'SPI.VER',
+        group: 'Satuan Pengawas Internal',
+        current: 'Verifikasi SPI',
+      };
+    }
     return {
       code: effectiveWorkspace === 'kpi' ? 'WS.KPI' : 'WS.IKU',
       group: effectiveWorkspace === 'kpi' ? 'Ruang Kerja KPI' : 'Ruang Kerja IKU',
       current: effectiveWorkspace === 'kpi' ? 'Evaluasi Operasional Unit & Fakultas' : 'Capaian 8 IKU Kementerian',
     };
-  }, [location.pathname, currentGovTab, effectiveWorkspace, showPRP]);
+  }, [location.pathname, currentGovTab, effectiveWorkspace, showPRP, isSpiAuditor]);
 
   if (!currentUser) {
     return null;
@@ -1353,12 +1364,12 @@ export default function InternalLayout() {
               </div>
             )}
 
-            {/* Konteks ruang kerja KPI operasional unit / Audit SPI. */}
+            {/* Konteks ruang kerja KPI operasional unit / Verifikasi SPI. */}
             {showKPI && (
               <div className="sidebar-stagger nav-context-item">
                 <div className="corp-nav-section-label">
-                  <span>{isSpiAuditor ? 'AUDIT SPI & INPUT REAL-TIME' : 'MODUL KPI UNIT'}</span>
-                  <span>{isSpiAuditor ? '[AUDIT]' : '[MIKRO]'}</span>
+                  <span>{isSpiAuditor ? 'SATUAN PENGAWAS INTERNAL' : 'MODUL KPI UNIT'}</span>
+                  <span>{isSpiAuditor ? 'READ-ONLY' : '[MIKRO]'}</span>
                 </div>
                 <ul className="corp-nav-ul">
                   {isSpiAuditor ? (
@@ -1369,101 +1380,49 @@ export default function InternalLayout() {
                           onMouseEnter={handleNavItemEnter}
                           onClick={() => {
                             closeMobileSidebar();
-                            const params = new URLSearchParams(location.search);
-                            params.set('spiView', 'audit-table');
-                            navigate(`/internal?${params.toString()}`);
+                            navigate('/internal');
                           }}
                           data-nav-active={
-                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
-                            && searchParams.get('spiView') !== 'spi-form'
+                            isExactPath('/internal') || isExactPath('/internal/kpi')
                               ? 'true'
                               : undefined
                           }
                           className={`corp-nav-item ${
-                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
-                            && searchParams.get('spiView') !== 'spi-form'
+                            isExactPath('/internal') || isExactPath('/internal/kpi')
                               ? 'active'
                               : ''
                           }`}
                           style={{ alignItems: 'center' }}
                         >
-                          {telemetry.spiValidationStatus?.isValidated100 ? (
-                            <ShieldCheck size={15} strokeWidth={1.85} className="corp-item-icon" />
-                          ) : (
-                            <Lock size={15} strokeWidth={1.85} className="corp-item-icon" />
-                          )}
-                          <span style={{ flex: 1, textAlign: 'left', lineHeight: 1.25 }}>
-                            <span style={{ display: 'block' }}>Tabel Audit KPI (Read-Only)</span>
+                          <ShieldCheck size={15} strokeWidth={1.85} className="corp-item-icon" />
+                          <span style={{ flex: 1, textAlign: 'left', lineHeight: 1.3 }}>
+                            <span style={{ display: 'block', fontWeight: 700 }}>Verifikasi SPI</span>
                             <span
                               style={{
                                 display: 'block',
                                 fontSize: '0.66rem',
                                 fontWeight: 700,
-                                color: telemetry.spiValidationStatus?.isValidated100 ? '#15803D' : '#B91C1C',
+                                color: '#094E68',
                                 marginTop: '2px',
                               }}
                             >
-                              {telemetry.spiValidationStatus?.isValidated100
-                                ? 'Terbuka (100% Tervalidasi)'
-                                : 'Akses masih tertutup'}
+                              Hanya Lihat &amp; Unduh Bukti
                             </span>
-                          </span>
-                          <span
-                            style={{
-                              padding: '2px 7px',
-                              borderRadius: '5px',
-                              fontSize: '0.62rem',
-                              fontWeight: 800,
-                              background: telemetry.spiValidationStatus?.isValidated100 ? '#15803D' : '#B91C1C',
-                              color: '#FFFFFF',
-                              border: telemetry.spiValidationStatus?.isValidated100
-                                ? '1px solid #14532D'
-                                : '1px solid #7F1D1D',
-                            }}
-                          >
-                            {telemetry.spiValidationStatus?.isValidated100 ? 'TERBUKA' : 'TERKUNCI'}
                           </span>
                         </button>
                       </li>
                       <li>
-                        <button
-                          type="button"
+                        <Link
+                          to="/internal/documents"
+                          onClick={closeMobileSidebar}
                           onMouseEnter={handleNavItemEnter}
-                          onClick={() => {
-                            closeMobileSidebar();
-                            const params = new URLSearchParams(location.search);
-                            params.set('spiView', 'spi-form');
-                            navigate(`/internal?${params.toString()}`);
-                          }}
-                          data-nav-active={
-                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
-                            && searchParams.get('spiView') === 'spi-form'
-                              ? 'true'
-                              : undefined
-                          }
-                          className={`corp-nav-item ${
-                            (isExactPath('/internal') || isExactPath('/internal/kpi'))
-                            && searchParams.get('spiView') === 'spi-form'
-                              ? 'active'
-                              : ''
-                          }`}
+                          data-nav-active={isActivePrefix('/internal/documents') ? 'true' : undefined}
+                          aria-current={isActivePrefix('/internal/documents') ? 'page' : undefined}
+                          className={`corp-nav-item ${isActivePrefix('/internal/documents') ? 'active' : ''}`}
                         >
                           <FileText size={15} strokeWidth={1.85} className="corp-item-icon" />
-                          <span style={{ flex: 1, textAlign: 'left' }}>Inputan SPI (Bagian D.5)</span>
-                          <span
-                            style={{
-                              padding: '2px 7px',
-                              borderRadius: '5px',
-                              fontSize: '0.62rem',
-                              fontWeight: 800,
-                              background: '#15803D',
-                              color: '#FFFFFF',
-                              border: '1px solid #14532D',
-                            }}
-                          >
-                            REAL-TIME
-                          </span>
-                        </button>
+                          <span>Panduan &amp; Referensi</span>
+                        </Link>
                       </li>
                     </>
                   ) : (
@@ -1736,15 +1695,7 @@ export default function InternalLayout() {
                   cursor: 'pointer',
                 }}
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '1px',
-                    background: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#047857' : '#0E7480',
-                  }}
-                />
+                <RefreshCw size={13} aria-hidden="true" />
                 <span>
                   {rtStatus.mode === 'server-sse'
                     ? 'SSE AKTIF'
@@ -1924,9 +1875,13 @@ export default function InternalLayout() {
                             fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
                           }}
                         >
-                          Tandai Semua Dibaca
+                          <CheckCircle2 size={13} />
+                          <span>Tandai Semua Dibaca</span>
                         </button>
                       )}
                       {isSuperadminPrp && (
@@ -2028,49 +1983,39 @@ export default function InternalLayout() {
                             }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              <span
+                              <strong
                                 style={{
                                   fontFamily: 'var(--ent-mono)',
-                                  fontSize: '0.61rem',
+                                  fontSize: '0.62rem',
                                   fontWeight: 800,
-                                  padding: '1px 5px',
-                                  borderRadius: '4px',
-                                  background: isRev ? '#FEF3C7' : '#EDF3F6',
                                   color: isRev ? '#92400E' : '#094E68',
                                 }}
                               >
                                 {kindLabel}
-                              </span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              </strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                                 {notif.emailAuditId && (
-                                  <span
+                                  <strong
                                     style={{
-                                      fontSize: '0.59rem',
-                                      fontWeight: 700,
-                                      padding: '1px 5px',
-                                      borderRadius: '4px',
-                                      background: '#F0FDF4',
-                                      border: '1px solid #86EFAC',
-                                      color: '#14532D',
+                                      fontSize: '0.6rem',
+                                      fontWeight: 800,
+                                      color: '#166534',
                                     }}
                                   >
                                     Email Tercatat
-                                  </span>
+                                  </strong>
                                 )}
                                 {!notif.isRead && (
-                                  <span
+                                  <strong
                                     style={{
-                                      fontSize: '0.58rem',
+                                      fontSize: '0.6rem',
                                       fontWeight: 800,
                                       fontFamily: 'var(--ent-mono)',
-                                      padding: '1px 5px',
-                                      borderRadius: '4px',
-                                      background: '#991B1B',
-                                      color: '#FFFFFF',
+                                      color: '#B91C1C',
                                     }}
                                   >
                                     BARU
-                                  </span>
+                                  </strong>
                                 )}
                               </div>
                             </div>
@@ -2441,20 +2386,16 @@ export default function InternalLayout() {
                     Saat akun Anda masih login, instruksi siaran PRP dan penambahan baris KPI baru akan muncul langsung di layar HP walaupun browser sedang di latar belakang.
                   </span>
                 </div>
-                <span
+                <strong
                   style={{
-                    fontSize: '0.66rem',
-                    fontWeight: 700,
-                    padding: '3px 8px',
-                    borderRadius: '4px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
                     fontFamily: 'var(--ent-mono)',
-                    background: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#ECFDF5' : '#EDF3F6',
-                    border: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '1px solid #86EFAC' : '1px solid #B8CAD4',
-                    color: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#047857' : '#094E68',
+                    color: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#166534' : '#094E68',
                   }}
                 >
                   {pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? 'AKTIF DI LAYAR HP' : 'BELUM DIAKTIFKAN'}
-                </span>
+                </strong>
               </div>
 
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -2702,9 +2643,10 @@ export default function InternalLayout() {
                 type="button"
                 onClick={() => setCmdOpen(false)}
                 className="arch-kbd"
-                style={{ cursor: 'pointer', minHeight: '44px', minWidth: '44px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ cursor: 'pointer', minHeight: '44px', minWidth: '44px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
               >
-                ESC
+                <X size={12} />
+                <span>ESC</span>
               </button>
             </div>
 
@@ -2837,9 +2779,9 @@ export default function InternalLayout() {
             <div
               style={{
                 padding: '0.85rem 1rem',
-                borderLeft: '2.5px solid #094E68',
+                border: '1px solid #CBD5E1',
                 background: '#F7FAFB',
-                borderRadius: '0 6px 6px 0',
+                borderRadius: '6px',
                 fontSize: '0.78rem',
                 color: '#334155',
                 lineHeight: 1.55,
@@ -2857,7 +2799,8 @@ export default function InternalLayout() {
                 className="ent-btn ent-btn-primary"
                 style={{ minHeight: '44px' }}
               >
-                Tutup Dialog
+                <X size={15} />
+                <span>Tutup Dialog</span>
               </button>
             </div>
           </div>

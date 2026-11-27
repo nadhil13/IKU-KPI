@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Settings2, Upload, RotateCcw } from 'lucide-react';
+import { Calendar, ClipboardCheck, Download, History, Plus, RotateCcw, Settings2, Table2, Upload } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -21,11 +21,11 @@ const DEFAULT_PERIODS = [
 ];
 
 const TABS = [
-  { idx: '01', id: 'kpi-builder', label: 'Desainer Tabel KPI', desc: 'Struktur & formula' },
-  { idx: '02', id: 'submissions', label: 'Pusat Review Unit', desc: 'Inbox IKU & KPI' },
-  { idx: '03', id: 'periods', label: 'Periode & Tenggat', desc: 'Siklus akademik' },
-  { idx: '04', id: 'audit', label: 'Audit Trail', desc: 'Jejak aktivitas' },
-  { idx: '05', id: 'settings', label: 'Kebijakan Sistem', desc: 'Parameter global' },
+  { idx: '01', id: 'kpi-builder', label: 'Desainer Tabel KPI', desc: 'Struktur & formula', icon: Table2 },
+  { idx: '02', id: 'submissions', label: 'Pusat Review Unit', desc: 'Inbox IKU & KPI', icon: ClipboardCheck },
+  { idx: '03', id: 'periods', label: 'Periode & Tenggat', desc: 'Siklus akademik', icon: Calendar },
+  { idx: '04', id: 'audit', label: 'Audit Trail', desc: 'Jejak aktivitas', icon: History },
+  { idx: '05', id: 'settings', label: 'Kebijakan Sistem', desc: 'Parameter global', icon: Settings2 },
 ];
 
 const VALID_TAB_IDS = new Set(TABS.map((t) => t.id));
@@ -138,22 +138,17 @@ function PeriodRow({ period, globalDeadline, onUpdate }) {
             />
             <span>Input dibuka</span>
           </label>
-          <span
+          <strong
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              padding: '3px 9px',
-              borderRadius: '5px',
+              fontFamily: 'var(--ent-mono)',
               fontSize: '0.68rem',
               fontWeight: 800,
-              letterSpacing: '0.02em',
-              background: period.status === 'Active' && period.inputOpen !== false ? '#15803D' : '#B91C1C',
-              border: `1.5px solid ${period.status === 'Active' && period.inputOpen !== false ? '#14532D' : '#7F1D1D'}`,
-              color: '#FFFFFF',
+              letterSpacing: '0.03em',
+              color: period.status === 'Active' && period.inputOpen !== false ? '#166534' : '#B91C1C',
             }}
           >
             {period.status === 'Active' && period.inputOpen !== false ? 'AKTIF (TERBUKA)' : 'TIDAK AKTIF (TERTUTUP)'}
-          </span>
+          </strong>
         </div>
       </div>
     </div>
@@ -209,9 +204,13 @@ export default function PRPGovernance() {
     );
   });
 
-  /** Unduh audit terfilter sebagai berkas JSON atau CSV (CSV aman untuk koma/kutip). */
+  /** Unduh audit terfilter sebagai berkas JSON atau CSV (CSV aman untuk koma/kutip & formula injection). */
   const downloadAudit = (format) => {
-    const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const cell = (value) => {
+      const raw = String(value ?? '');
+      const safe = /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
     const body =
       format === 'csv'
         ? ['waktu,aksi,pelaku,detail', ...filteredAudit.map((item) => [item.at, item.action, item.actor, item.detail].map(cell).join(','))].join('\r\n')
@@ -774,12 +773,9 @@ export default function PRPGovernance() {
         .gov-feedback-banner {
           margin-bottom: 0.85rem;
           padding: 0.75rem 1rem;
-          border-left: 3px solid #094E68;
+          border: 1px solid #094E68;
           background: #F7FAFB;
-          border-top: 1px solid #D8E4EA;
-          border-right: 1px solid #D8E4EA;
-          border-bottom: 1px solid #D8E4EA;
-          border-radius: 0 6px 6px 0;
+          border-radius: 6px;
           color: #072534;
           font-size: 0.8rem;
           font-weight: 600;
@@ -878,7 +874,7 @@ export default function PRPGovernance() {
       <div className="gov-layout">
         <div className="gov-tabs gov-reveal">
           <div ref={tabBarRef} role="tablist" aria-label="Sub-modul tata kelola PRP" className="gov-tabs-list">
-            {TABS.map(({ idx, id, label }) => {
+            {TABS.map(({ idx, id, label, icon: TabIcon }) => {
               const isSelected = activeTab === id;
               return (
                 <button
@@ -891,6 +887,7 @@ export default function PRPGovernance() {
                   className={`gov-tab ${isSelected ? 'active' : ''}`}
                   onClick={() => selectTab(id)}
                 >
+                  {TabIcon && <TabIcon size={14} />}
                   <span className="gov-tab-idx">{idx}</span>
                   <span>{label}</span>
                 </button>
@@ -938,7 +935,8 @@ export default function PRPGovernance() {
                   </span>
                 </div>
                 <Link to="/internal/iku-submissions" className="gov-button gov-button-primary">
-                  Buka Review Submission IKU
+                  <ClipboardCheck size={14} />
+                  <span>Buka Review Submission IKU</span>
                 </Link>
               </div>
               <AllSubmissionsTable onReviewKpi={(target) => setKpiSelected({ ...target })} />
@@ -956,7 +954,8 @@ export default function PRPGovernance() {
                   <span>Hanya satu periode yang dapat berstatus Aktif untuk pengisian KPI dan IKU secara serentak</span>
                 </div>
                 <button type="button" className="gov-button gov-button-primary" onClick={addPeriod}>
-                  + Tambah Periode Baru
+                  <Plus size={14} />
+                  <span>Tambah Periode Baru</span>
                 </button>
               </div>
               {periods.map((period) => (

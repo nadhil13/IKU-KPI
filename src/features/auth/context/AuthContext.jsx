@@ -288,8 +288,8 @@ export function AuthProvider({ children }) {
     if (!currentUser?.email) return undefined;
     let cleanup = () => {};
     let active = true;
-    if (!getAccessToken()) {
-      loginViaBackend(currentUser.email, currentUser.password || 'password').then(() => {
+    if (!getAccessToken() && currentUser.password) {
+      loginViaBackend(currentUser.email, currentUser.password).then(() => {
         if (active) cleanup = connectRealtimeEngine();
       });
     } else {

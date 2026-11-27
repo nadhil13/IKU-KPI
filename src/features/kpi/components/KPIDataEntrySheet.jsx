@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   RotateCcw, FileSpreadsheet, Printer, SlidersHorizontal, Send, LockKeyhole,
-  CheckCircle2, AlertTriangle, Clock3, History, RefreshCcw, ShieldCheck,
+  CheckCircle2, AlertTriangle, Clock3, History, RefreshCcw, ShieldCheck, Layers, Users,
   Upload, Link2, Eye, Trash2, X, ExternalLink, FileText, Image as ImageIcon, Download,
   MessageSquareWarning, MailCheck, Save, PenLine, XCircle
 } from 'lucide-react';
@@ -44,6 +44,7 @@ import {
   formatIndonesianNumber,
   computeKpiItem, subscribeKpiConfig, readPublishedKpiConfig, normalizeKpiSections, buildKpiCellDirectory,
   canUserEditKpiItem, getUserPicCodes, formatPicDisplay, normalizePicCodes, readKpiValidationRules, createId,
+  getKpiAchievementMeta, resolveItemPicRoles, isUserCoPicOnKpiItem,
 } from '../kpiSchema';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -160,8 +161,8 @@ export default function KPIDataEntrySheet(props) {
     return readKpiWorkflow();
   }, [revision, shouldEnsureDefault]);
 
-  const isUnit = (currentUser?.role === 'kpi_only' || currentUser?.role === 'dual' || (currentUser?.role === 'spi' && props.spiUnitInputMode)) && !props.sectionsOverride;
-  const isSpiMode = currentUser?.role === 'spi' && !props.spiUnitInputMode;
+  const isUnit = (currentUser?.role === 'kpi_only' || currentUser?.role === 'dual') && !props.sectionsOverride;
+  const isSpiMode = currentUser?.role === 'spi';
   const isAdminPrp = currentUser?.role === 'superadmin_prp';
 
   const adminFormId = props.adminUnitContext?.formId;
@@ -402,19 +403,15 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
               {evidence.ownerUnit ? ` · Diunggah oleh ${evidence.ownerUnit}` : ''}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             <span
               style={{
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                padding: '4px 9px',
-                borderRadius: '6px',
-                background: statusInfo.bg,
-                border: `1px solid ${statusInfo.border}`,
+                fontSize: '0.74rem',
+                fontWeight: 800,
                 color: statusInfo.color,
               }}
             >
-              {statusInfo.label}
+              Status: {statusInfo.label}
             </span>
             {evidence.kind === 'file' && evidence.dataUrl && (
               <a
@@ -559,7 +556,8 @@ export function EvidencePreviewModal({ evidence, onClose, adminActions = null })
                     <span>Simpan Perubahan Bukti</span>
                   </button>
                   <button type="button" className="clean-btn" style={{ minHeight: '44px' }} onClick={() => setEditOpen(false)}>
-                    Batal
+                    <X size={13} />
+                    <span>Batal</span>
                   </button>
                 </div>
               </div>
@@ -795,12 +793,8 @@ function RowEvidenceAndNotesCell({
                   </div>
                   <span
                     style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 700,
-                      padding: '1px 6px',
-                      borderRadius: '4px',
-                      background: statusMeta.bg,
-                      border: `1px solid ${statusMeta.border}`,
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
                       color: statusMeta.color,
                       whiteSpace: 'nowrap',
                     }}
@@ -970,7 +964,8 @@ function RowEvidenceAndNotesCell({
                         <span>Kirim Revisi Bukti</span>
                       </button>
                       <button type="button" className="clean-mini-btn" onClick={() => setActiveEvPanel(null)}>
-                        Batal
+                        <X size={11} />
+                        <span>Batal</span>
                       </button>
                     </div>
                   </div>
@@ -1060,7 +1055,8 @@ function RowEvidenceAndNotesCell({
                         <span>Simpan Bukti</span>
                       </button>
                       <button type="button" className="clean-mini-btn" onClick={() => setActiveEvPanel(null)}>
-                        Batal
+                        <X size={11} />
+                        <span>Batal</span>
                       </button>
                     </div>
                   </div>
@@ -1071,17 +1067,15 @@ function RowEvidenceAndNotesCell({
         ) : (
           <div
             style={{
-              fontSize: '0.7rem',
-              color: canEditRow && !isLocked ? '#78350F' : '#475569',
-              background: canEditRow && !isLocked ? '#FFFBEB' : '#F7FAFB',
-              border: `1px solid ${canEditRow && !isLocked ? '#FCD34D' : '#D8E4EA'}`,
-              borderRadius: '6px',
-              padding: '0.38rem 0.55rem',
+              fontSize: '0.71rem',
+              fontWeight: 700,
+              color: canEditRow && !isLocked ? '#92400E' : '#475569',
+              padding: '0.15rem 0',
             }}
           >
             {canEditRow && !isLocked
               ? 'Wajib lampirkan bukti dokumen (PDF/Gambar) atau tautan Drive.'
-              : 'Belum ada bukti capaian yang diunggah PIC.'}
+              : 'Belum ada bukti capaian yang diunggah PIC Utama.'}
           </div>
         )}
       </div>
@@ -1138,7 +1132,8 @@ function RowEvidenceAndNotesCell({
                     setSelectedFile(null);
                   }}
                 >
-                  Batal
+                  <X size={11} />
+                  <span>Batal</span>
                 </button>
               </div>
 
@@ -1179,7 +1174,8 @@ function RowEvidenceAndNotesCell({
               )}
 
               <button type="button" className="clean-btn clean-btn-primary" style={{ minHeight: '44px', padding: '0.35rem 0.65rem', fontSize: '0.72rem' }} onClick={handleSaveEvidence}>
-                Simpan Bukti Baris {sectionCode}.{item.no}
+                <Save size={13} />
+                <span>Simpan Bukti Baris {sectionCode}.{item.no}</span>
               </button>
             </div>
           )}
@@ -1293,7 +1289,8 @@ function RowEvidenceAndNotesCell({
                       setRevComposerOpen(false);
                     }}
                   >
-                    Selesai
+                    <CheckCircle2 size={11} />
+                    <span>Selesai</span>
                   </button>
                 )}
                 <button
@@ -1301,7 +1298,8 @@ function RowEvidenceAndNotesCell({
                   className="clean-mini-btn"
                   onClick={() => setRevComposerOpen(false)}
                 >
-                  Batal
+                  <X size={11} />
+                  <span>Batal</span>
                 </button>
               </div>
             </div>
@@ -1405,6 +1403,19 @@ function KPIEntryContent({
     return ids;
   }, [governedSections, isUnitMode, unitUser, isAdminUnitReview, adminUnitPics, adminUnitProxy]);
 
+  const coPicItemIds = useMemo(() => {
+    const ids = new Set();
+    if (!isUnitMode || !unitUser) return ids;
+    governedSections.forEach((sec) => {
+      sec.items.forEach((item) => {
+        if (!editableItemIds.has(item.id) && isUserCoPicOnKpiItem(item, unitUser)) {
+          ids.add(item.id);
+        }
+      });
+    });
+    return ids;
+  }, [governedSections, isUnitMode, unitUser, editableItemIds]);
+
   const editableSubKeys = useMemo(() => {
     const keys = new Set();
     governedSections.forEach((sec) => {
@@ -1446,7 +1457,7 @@ function KPIEntryContent({
       if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && containerRef.current) {
         const escapeAttr = (val) => (typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
           ? CSS.escape(String(val ?? ''))
-          : String(val ?? '').replace(/["\\\]\[]/g, '\\$&'));
+          : String(val ?? '').replace(/["\\[\]]/g, '\\$&'));
         requestAnimationFrame(() => {
           addedIds.forEach((id) => {
             const rowEl = containerRef.current?.querySelector(`[data-kpi-row-id="${escapeAttr(id)}"]`);
@@ -1674,6 +1685,8 @@ function KPIEntryContent({
             } else {
               merged[sub.key] = '';
             }
+          } else if (coPicItemIds.has(item.id)) {
+            merged[sub.key] = integratedBoard?.values?.[sub.key] ?? '';
           } else {
             merged[sub.key] = '';
           }
@@ -1681,7 +1694,7 @@ function KPIEntryContent({
       });
     });
     return merged;
-  }, [isAdminUnitReview, readOnly, valuesOverride, emptyDefaults, integratedBoard, isUnitMode, values, governedSections, editableItemIds]);
+  }, [isAdminUnitReview, readOnly, valuesOverride, emptyDefaults, integratedBoard, isUnitMode, values, governedSections, editableItemIds, coPicItemIds]);
 
   const isSimulationFillRef = useRef(false);
 
@@ -1788,7 +1801,7 @@ function KPIEntryContent({
     const timer = setTimeout(() => {
       const escapeAttr = (val) => (typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
         ? CSS.escape(String(val ?? ''))
-        : String(val ?? '').replace(/["\\\]\[]/g, '\\$&'));
+        : String(val ?? '').replace(/["\\[\]]/g, '\\$&'));
       const selector = focusItem
         ? `[data-kpi-row-id="${escapeAttr(focusItem)}"]`
         : `[data-kpi-section-code="${escapeAttr(focusSection)}"]`;
@@ -1820,6 +1833,7 @@ function KPIEntryContent({
     let picTotalInputs = 0;
     let picCompletedIndicators = 0;
     let picTotalIndicators = 0;
+    let coPicTotalIndicators = 0;
     let picScoreTotal = 0;
     const missingEvidenceIndicators = [];
     const incompleteFormulaIndicators = [];
@@ -1834,6 +1848,8 @@ function KPIEntryContent({
       const computedItems = sec.items.map((item) => {
         totalIndicatorsCount += 1;
         const canEditRow = editableItemIds.has(item.id);
+        const isCoPicRow = coPicItemIds.has(item.id);
+        if (isCoPicRow) coPicTotalIndicators += 1;
         const result = computeKpiItem(item, effectiveValues, sec.isPenaltySection, governedSections);
         result.parsedSubs.forEach((sub) => {
           if (sub.isFilled) totalFilledInputs += 1;
@@ -1862,7 +1878,7 @@ function KPIEntryContent({
             missingEvidenceIndicators.push(`${sec.code}.${item.no}`);
           }
         }
-        return { ...item, ...result, canEditRow };
+        return { ...item, ...result, canEditRow, isCoPicRow };
       });
 
       if (sec.isPenaltySection) {
@@ -1901,11 +1917,12 @@ function KPIEntryContent({
       picTotalInputs,
       picCompletedIndicators,
       picTotalIndicators,
-      picNetScore: Math.min(100, Math.max(0, picScoreTotal)),
+      coPicTotalIndicators,
+      picNetScore: Math.min(100, Math.max(-25, picScoreTotal)),
       missingEvidenceIndicators,
       incompleteFormulaIndicators,
     };
-  }, [effectiveValues, governedSections, orderedKeys, editableItemIds, ownEvidenceByItem, isUnitMode]);
+  }, [effectiveValues, governedSections, orderedKeys, editableItemIds, coPicItemIds, ownEvidenceByItem, isUnitMode]);
 
   const lastMetricsJsonRef = useRef('');
   useEffect(() => {
@@ -2595,8 +2612,13 @@ function KPIEntryContent({
       itemRev ? `<div style="color:#92400E;"><strong>Revisi PRP:</strong> ${esc(itemRev)}</div>` : '',
     ].filter(Boolean).join('') || '-';
 
+    const picRoles = resolveItemPicRoles(item);
+    const picLabel = picRoles.primaryPic
+      ? (picRoles.coPics.length ? `Utama: ${picRoles.primaryPic} | Co-PIC: ${picRoles.coPics.join(', ')}` : picRoles.primaryPic)
+      : (formatPicDisplay(item.pics, item.picDisplay) || '-');
+
     return {
-      picText: formatPicDisplay(item.pics, item.picDisplay) || '-',
+      picText: picLabel,
       evAndNoteText: partsPlain,
       evAndNoteHtml: isExcel ? partsHtml : esc(partsPlain),
     };
@@ -2657,9 +2679,10 @@ function KPIEntryContent({
 
       sec.items.forEach((item) => {
         const subCount = item.parsedSubs.length;
+        const capMeta = getKpiAchievementMeta(item.ratioPercent, { isPenaltySection: sec.isPenaltySection });
         const capStr =
           item.ratioPercent !== null
-            ? `${formatIndonesianNumber(Math.min(100, Math.max(0, item.ratioPercent)), 2)}%`
+            ? `${formatIndonesianNumber(Math.max(0, item.ratioPercent), 2)}%`
             : isExcel
               ? ''
               : '-';
@@ -2723,7 +2746,7 @@ function KPIEntryContent({
                   <td rowspan="${targetRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#072534;">${esc(firstTargetText)}</td>
                   <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; color:#475569;">${esc(item.satuan)}</td>
                   <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:600; color:#094E68;">${esc(picText)}</td>
-                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(capStr)}</td>
+                  <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:${capMeta.color};">${esc(capStr)}</td>
                   <td rowspan="${subCount}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(skorStr)}</td>
                   <td rowspan="${subCount}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; color:#334155;">${evAndNoteHtml}</td>
                 </tr>
@@ -3074,6 +3097,23 @@ ${sectionSummaryHtml}
       ? calculated.sections
       : calculated.sections.filter((sec) => sec.code === activeSectionTab);
     const base = byTab.length ? byTab : calculated.sections;
+    if (isUnitMode && rowScopeFilter === 'CO_PIC') {
+      return base
+        .map((sec) => {
+          const coItems = sec.items.filter((item) => item.isCoPicRow);
+          const coWeight = coItems.reduce((sum, it) => sum + (Number(it.bobot) || 0), 0);
+          return {
+            ...sec,
+            items: coItems,
+            totalWeight: coWeight,
+            weightDisplay: formatIndonesianNumber(coWeight, 2),
+            secScore: coItems.reduce((sum, it) => sum + (it.weightedScore || 0), 0),
+            secCompleted: coItems.filter((it) => it.ratioPercent !== null).length,
+            secTotalItems: coItems.length,
+          };
+        })
+        .filter((sec) => sec.items.length > 0);
+    }
     if (isUnitMode || rowScopeFilter === 'MY_PIC') {
       return base
         .map((sec) => {
@@ -3406,10 +3446,10 @@ ${sectionSummaryHtml}
             {isSpiMode ? <Eye size={17} /> : <WorkflowIcon size={17} />}
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
               <strong style={{ color: isSpiMode ? '#072534' : workflowStatusTone.color, fontSize: '0.86rem' }}>
                 {isSpiMode
-                  ? 'Mode Audit SPI (Hanya Lihat & Unduh Bukti)'
+                  ? 'Verifikasi SPI (Auditor Read-Only & Unduh Bukti)'
                   : isAdminUnitReview
                     ? `Mode Review & Edit Unit PRP: ${adminUnitContext.unitName || adminUnitContext.email}`
                     : isAdminPrp && !isUnitMode
@@ -3421,40 +3461,29 @@ ${sectionSummaryHtml}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '0.68rem',
+                    gap: '4px',
+                    fontSize: '0.73rem',
                     fontWeight: 800,
-                    padding: '3px 9px',
-                    borderRadius: '5px',
-                    background: periodStatusMeta.isLocked ? '#B91C1C' : '#15803D',
-                    border: `1.5px solid ${periodStatusMeta.isLocked ? '#7F1D1D' : '#14532D'}`,
-                    color: '#FFFFFF',
-                    fontFamily: 'JetBrains Mono, monospace',
-                    letterSpacing: '0.02em',
+                    color: periodStatusMeta.isLocked ? '#B91C1C' : '#166534',
                   }}
                 >
-                  {periodStatusMeta.isLocked ? <LockKeyhole size={11} /> : <CheckCircle2 size={11} />}
-                  PERIODE {periodStatusMeta.year}: {periodStatusMeta.isLocked ? 'TIDAK AKTIF (TERKUNCI)' : 'AKTIF (TERBUKA)'}
+                  {periodStatusMeta.isLocked ? <LockKeyhole size={12} /> : <CheckCircle2 size={12} />}
+                  Periode {periodStatusMeta.year}: {periodStatusMeta.isLocked ? 'Tidak Aktif (Terkunci)' : 'Aktif (Terbuka)'}
                 </span>
               )}
               {isUnitMode && (
                 <span
                   style={{
-                    fontSize: '0.68rem',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    background: '#EDF3F6',
-                    border: '1px solid #B8CAD4',
-                    color: '#072534',
-                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: '0.73rem',
+                    fontWeight: 800,
+                    color: '#094E68',
                   }}
                 >
-                  PIC: {userPicCodes.join(', ') || 'BELUM DITAUTKAN'}
+                  · Unit Kerja: {userPicCodes.join(', ') || 'Belum Ditautkan'}
                 </span>
               )}
               {isLocked && !isSpiMode && !isAdminPrp && !isAdminUnitReview && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.68rem', color: '#475569' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>
                   <LockKeyhole size={12} /> Data terkunci
                 </span>
               )}
@@ -3655,8 +3684,9 @@ ${sectionSummaryHtml}
                       textAlign: 'center',
                     }}
                   >
-                    <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem', fontWeight: 700 }}>
-                      {tab.label}
+                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem', fontWeight: 700 }}>
+                      <Layers size={12} />
+                      <span>{tab.label}</span>
                     </div>
                     <div style={{ fontSize: '0.62rem', color: isSelected ? '#094E68' : '#475569', fontWeight: 600 }}>
                       {tab.sub}
@@ -3685,6 +3715,9 @@ ${sectionSummaryHtml}
                   type="button"
                   onClick={() => setRowScopeFilter('MY_PIC')}
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
                     minHeight: '44px',
                     padding: '0.35rem 0.75rem',
                     borderRadius: '6px',
@@ -3696,13 +3729,17 @@ ${sectionSummaryHtml}
                     cursor: 'pointer',
                   }}
                 >
-                  Indikator Unit Ini ({calculated.picTotalIndicators})
+                  <ShieldCheck size={13} />
+                  <span>Indikator PIC Utama ({calculated.picTotalIndicators})</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setRowScopeFilter('ALL')}
                 style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
                   minHeight: '44px',
                   padding: '0.35rem 0.75rem',
                   borderRadius: '6px',
@@ -3714,27 +3751,80 @@ ${sectionSummaryHtml}
                   cursor: 'pointer',
                 }}
               >
-                Semua Indikator ({calculated.totalIndicatorsCount})
+                <Layers size={13} />
+                <span>Semua Indikator ({calculated.totalIndicatorsCount})</span>
+              </button>
+            </div>
+          ) : calculated.coPicTotalIndicators > 0 ? (
+            <div
+              role="group"
+              aria-label="Filter PIC Utama vs Co-PIC"
+              style={{
+                display: 'inline-flex',
+                background: '#EDF3F6',
+                padding: '3px',
+                borderRadius: '8px',
+                border: '1px solid #D8E4EA',
+                gap: '2px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setRowScopeFilter('MY_PIC')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  minHeight: '44px',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '6px',
+                  border: rowScopeFilter !== 'CO_PIC' ? '1px solid #B8CAD4' : '1px solid transparent',
+                  background: rowScopeFilter !== 'CO_PIC' ? '#FFFFFF' : 'transparent',
+                  color: rowScopeFilter !== 'CO_PIC' ? '#166534' : '#334155',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <ShieldCheck size={13} />
+                <span>Tugas PIC Utama ({calculated.picTotalIndicators})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRowScopeFilter('CO_PIC')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  minHeight: '44px',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '6px',
+                  border: rowScopeFilter === 'CO_PIC' ? '1px solid #B8CAD4' : '1px solid transparent',
+                  background: rowScopeFilter === 'CO_PIC' ? '#FFFFFF' : 'transparent',
+                  color: rowScopeFilter === 'CO_PIC' ? '#094E68' : '#334155',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <Users size={13} />
+                <span>Info Kolaborasi Co-PIC ({calculated.coPicTotalIndicators})</span>
               </button>
             </div>
           ) : (
-            <div
+            <span
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.35rem',
-                padding: '0.42rem 0.75rem',
-                borderRadius: '8px',
-                background: '#F0FDF4',
-                border: '1px solid #86EFAC',
-                color: '#14532D',
-                fontSize: '0.72rem',
-                fontWeight: 700,
+                color: '#166534',
+                fontSize: '0.75rem',
+                fontWeight: 800,
               }}
             >
               <ShieldCheck size={14} />
-              <span>Khusus Unit Anda ({calculated.picTotalIndicators} Indikator PIC)</span>
-            </div>
+              <span>Tugas PIC Utama Anda: {calculated.picTotalIndicators} Indikator</span>
+            </span>
           )}
 
           {!isSpiMode && (
@@ -3883,12 +3973,8 @@ ${sectionSummaryHtml}
               <span style={{ color: '#D8E4EA' }} aria-hidden="true">|</span>
               <span
                 style={{
-                  padding: '0.35rem 0.85rem',
-                  borderRadius: '6px',
-                  background: '#FFFFFF',
-                  border: '1px solid #D8E4EA',
                   color: '#072534',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   fontFamily: 'Outfit, sans-serif',
                 }}
               >
@@ -3971,7 +4057,8 @@ ${sectionSummaryHtml}
                     style={{ minHeight: '44px', padding: '0.35rem 0.8rem', background: '#F0FDF4', color: '#14532D', borderColor: '#86EFAC' }}
                     onClick={() => handleSaveSectionRevision(sec.code, '', true)}
                   >
-                    Tandai Selesai
+                    <CheckCircle2 size={13} />
+                    <span>Tandai Selesai</span>
                   </button>
                 )}
                 <button
@@ -3980,7 +4067,8 @@ ${sectionSummaryHtml}
                   style={{ minHeight: '44px', padding: '0.35rem 0.8rem' }}
                   onClick={() => setSectionRevComposer({ code: null, text: '', targetColumn: 'Semua Kolom Baris' })}
                 >
-                  Batal
+                  <X size={13} />
+                  <span>Batal</span>
                 </button>
               </div>
             </div>
@@ -4026,13 +4114,16 @@ ${sectionSummaryHtml}
                 const rowCount = item.parsedSubs.length;
                 const progressPct =
                   item.ratioPercent !== null ? Math.min(100, Math.max(0, item.ratioPercent)) : 0;
+                const capMeta = getKpiAchievementMeta(item.ratioPercent, { isPenaltySection: sec.isPenaltySection });
                 const hasSplitTargets = Array.isArray(item.subrowTargets);
                 const canEditRow = item.canEditRow;
                 const isRowInputDisabled = isLocked || ((isUnitMode || isAdminUnitReview) && !canEditRow);
-                const rowPics = normalizePicCodes(item.pics);
+                const picRoles = resolveItemPicRoles(item);
+                const rowPics = picRoles.allPics;
                 const picDisplayLabel = formatPicDisplay(rowPics, item.picDisplay) || 'Semua Unit';
                 const isHighlightedForReview = highlightedPicsSet.size > 0
-                  && rowPics.some((code) => highlightedPicsSet.has(code.toLowerCase()));
+                  && Boolean(picRoles.primaryPic)
+                  && highlightedPicsSet.has(picRoles.primaryPic.toLowerCase());
                 const isNewlySyncedRow = newlySyncedItemIds.has(item.id);
                 const contributor = contributorMapOverride?.[item.id] || integratedBoard?.contributorsByItem?.[item.id] || null;
 
@@ -4109,32 +4200,22 @@ ${sectionSummaryHtml}
                                   {isNewlySyncedRow && (
                                     <span
                                       style={{
-                                        fontSize: '0.62rem',
+                                        fontSize: '0.65rem',
                                         fontWeight: 800,
-                                        fontFamily: 'JetBrains Mono, monospace',
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        background: '#094E68',
-                                        color: '#FFFFFF',
-                                        letterSpacing: '0.04em',
+                                        color: '#094E68',
                                       }}
                                     >
-                                      BARU (REALTIME PRP)
+                                      · Baru (Realtime PRP)
                                     </span>
                                   )}
                                 </div>
                                 {item.extraNote && (
                                   <div
                                     style={{
-                                      marginTop: '0.45rem',
+                                      marginTop: '0.35rem',
                                       fontSize: '0.69rem',
-                                      fontWeight: 600,
-                                      color: '#334155',
-                                      background: '#F7FAFB',
-                                      border: '1px solid #D8E4EA',
-                                      padding: '3px 7px',
-                                      borderRadius: '4px',
-                                      display: 'inline-block',
+                                      fontWeight: 700,
+                                      color: '#475569',
                                     }}
                                   >
                                     {item.extraNote}
@@ -4165,34 +4246,36 @@ ${sectionSummaryHtml}
                                   background: '#FFFFFF',
                                 }}
                               >
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.25rem' }}>
-                                    {rowPics.length > 0 ? rowPics.map((code) => {
-                                      const isUserMatch = userPicCodes.some((u) => u.toLowerCase() === code.toLowerCase())
-                                        || highlightedPicsSet.has(code.toLowerCase());
-                                      return (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.22rem', lineHeight: 1.3 }}>
+                                  {picRoles.primaryPic ? (
+                                    <>
+                                      <strong
+                                        style={{
+                                          fontSize: '0.73rem',
+                                          fontWeight: 800,
+                                          color: '#094E68',
+                                          fontFamily: 'JetBrains Mono, monospace',
+                                        }}
+                                      >
+                                        Utama: {picRoles.primaryPic}
+                                      </strong>
+                                      {picRoles.coPics.length > 0 && (
                                         <span
-                                          key={code}
                                           style={{
-                                            fontSize: '0.66rem',
-                                            fontWeight: 700,
-                                            fontFamily: 'JetBrains Mono, monospace',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                            background: isUserMatch ? '#094E68' : '#EDF3F6',
-                                            color: isUserMatch ? '#FFFFFF' : '#072534',
-                                            border: `1px solid ${isUserMatch ? '#094E68' : '#B8CAD4'}`,
+                                            fontSize: '0.65rem',
+                                            fontWeight: 600,
+                                            color: '#475569',
                                           }}
                                         >
-                                          {code}
+                                          Co-PIC: {picRoles.coPics.join(', ')}
                                         </span>
-                                      );
-                                    }) : (
-                                      <span style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 600 }}>
-                                        {picDisplayLabel}
-                                      </span>
-                                    )}
-                                  </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 700 }}>
+                                      {picDisplayLabel}
+                                    </span>
+                                  )}
 
                                   {isUnitMode && (
                                     <span
@@ -4200,33 +4283,25 @@ ${sectionSummaryHtml}
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '3px',
-                                        fontSize: '0.63rem',
-                                        fontWeight: 700,
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        background: canEditRow ? '#F0FDF4' : '#F7FAFB',
-                                        border: `1px solid ${canEditRow ? '#86EFAC' : '#D8E4EA'}`,
-                                        color: canEditRow ? '#14532D' : '#475569',
+                                        fontSize: '0.65rem',
+                                        fontWeight: 800,
+                                        color: canEditRow ? '#166534' : item.isCoPicRow ? '#094E68' : '#475569',
                                       }}
                                     >
                                       {!canEditRow && <LockKeyhole size={10} />}
-                                      {canEditRow ? 'Hak Input Anda' : 'View Only'}
+                                      {canEditRow ? 'PIC Utama (Input Aktif)' : item.isCoPicRow ? 'Co-PIC (Kolaborasi Info)' : 'Hanya Lihat'}
                                     </span>
                                   )}
 
                                   {!isUnitMode && isHighlightedForReview && (
                                     <span
                                       style={{
-                                        fontSize: '0.63rem',
-                                        fontWeight: 700,
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        background: '#F0FDF4',
-                                        border: '1px solid #86EFAC',
-                                        color: '#14532D',
+                                        fontSize: '0.65rem',
+                                        fontWeight: 800,
+                                        color: '#166534',
                                       }}
                                     >
-                                      Tugas Unit Ini
+                                      Tugas PIC Utama Unit Ini
                                     </span>
                                   )}
                                 </div>
@@ -4287,7 +4362,8 @@ ${sectionSummaryHtml}
                                 style={{ marginTop: '0.3rem', width: '100%', fontSize: '0.65rem' }}
                                 onClick={() => handleCellChange(sub.key, coPicValue)}
                               >
-                                Pakai isian rekan PIC ({coPicValue})
+                                <CheckCircle2 size={11} />
+                                <span>Pakai isian rekan PIC ({coPicValue})</span>
                               </button>
                             )}
                           </td>
@@ -4363,13 +4439,18 @@ ${sectionSummaryHtml}
                                     fontFamily: 'Outfit, sans-serif',
                                     fontSize: '1.02rem',
                                     fontWeight: 800,
-                                    color: item.ratioPercent !== null ? '#072534' : '#475569',
+                                    color: capMeta.color,
                                   }}
                                 >
                                   {item.ratioPercent !== null
-                                    ? `${formatIndonesianNumber(Math.min(100, Math.max(0, item.ratioPercent)), 2)}%`
+                                    ? `${formatIndonesianNumber(Math.max(0, item.ratioPercent), 2)}%`
                                     : '-'}
                                 </div>
+                                {item.ratioPercent !== null && (
+                                  <div style={{ fontSize: '0.64rem', fontWeight: 800, color: capMeta.color, marginTop: '1px' }}>
+                                    {capMeta.label}
+                                  </div>
+                                )}
 
                                 <div
                                   style={{
@@ -4385,7 +4466,7 @@ ${sectionSummaryHtml}
                                     style={{
                                       width: `${progressPct}%`,
                                       height: '100%',
-                                      background: '#0E7480',
+                                      background: item.ratioPercent !== null ? capMeta.color : '#0E7480',
                                       transition: 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
                                     }}
                                   />
@@ -4489,10 +4570,9 @@ ${sectionSummaryHtml}
           {isUnitMode ? (
             <span
               style={{
-                padding: '0.35rem 0.85rem',
-                borderRadius: '6px',
-                background: '#062C3D',
-                color: '#FFFFFF',
+                color: '#094E68',
+                fontWeight: 800,
+                fontSize: '0.9rem',
               }}
             >
               Total Skor Unit PIC Anda: {formatIndonesianNumber(calculated.picNetScore, 2)} Poin
@@ -4500,10 +4580,9 @@ ${sectionSummaryHtml}
           ) : (
             <span
               style={{
-                padding: '0.35rem 0.85rem',
-                borderRadius: '6px',
-                background: '#062C3D',
-                color: '#FFFFFF',
+                color: '#094E68',
+                fontWeight: 800,
+                fontSize: '0.9rem',
               }}
             >
               Skor Institusi Terpusat: {formatIndonesianNumber(calculated.netTotalScore, 2)} / 100 Poin
@@ -4568,7 +4647,8 @@ ${sectionSummaryHtml}
                 style={{ minHeight: '44px' }}
                 onClick={() => setActionConfirmDialog(null)}
               >
-                Batal
+                <X size={14} />
+                <span>Batal</span>
               </button>
               <button
                 type="button"
@@ -4585,7 +4665,8 @@ ${sectionSummaryHtml}
                   fn?.();
                 }}
               >
-                {actionConfirmDialog.confirmLabel}
+                {actionConfirmDialog.danger ? <Trash2 size={14} /> : <CheckCircle2 size={14} />}
+                <span>{actionConfirmDialog.confirmLabel}</span>
               </button>
             </div>
           </div>

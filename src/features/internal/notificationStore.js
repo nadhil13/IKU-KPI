@@ -205,7 +205,9 @@ export function pushRealtimeNotification({
     try {
       if (!suppressOsNotification) {
         const activeUser = JSON.parse(localStorage.getItem('performa_user') || 'null');
-        if (activeUser && doesNotificationMatchUser(notif, activeUser)) {
+        const isSelfActor = activeUser?.email
+          && String(activeUser.email).toLowerCase() === String(resolvedActorEmail).toLowerCase();
+        if (activeUser && !isSelfActor && doesNotificationMatchUser(notif, activeUser)) {
           dispatchOsNotification({
             id: notif.id,
             title: `[${notif.kind}] ${notif.title}`,
@@ -294,6 +296,10 @@ export function subscribeNotifications(callback) {
 }
 
 export function buildMailtoHref({ toEmails = [], subject = '', body = '' } = {}) {
-  const recipients = (Array.isArray(toEmails) ? toEmails : [toEmails]).filter(Boolean).join(',');
-  return `mailto:${encodeURIComponent(recipients)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const recipients = (Array.isArray(toEmails) ? toEmails : [toEmails])
+    .map((addr) => String(addr || '').trim())
+    .filter(Boolean)
+    .map((addr) => encodeURIComponent(addr))
+    .join(',');
+  return `mailto:${recipients}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

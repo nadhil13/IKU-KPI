@@ -187,7 +187,8 @@ export function savePushSubscription(subscription, caller = null) {
   } catch {
     throw Object.assign(new Error('Endpoint Web Push harus berupa URL yang valid.'), { status: 400 });
   }
-  const isLocalhost = parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1';
+  const isLocalhost = (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1')
+    && process.env.NODE_ENV !== 'production';
   if (parsedUrl.protocol !== 'https:' && !(parsedUrl.protocol === 'http:' && isLocalhost)) {
     throw Object.assign(new Error('Endpoint Web Push wajib menggunakan protokol HTTPS.'), { status: 400 });
   }

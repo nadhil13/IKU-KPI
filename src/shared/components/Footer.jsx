@@ -47,17 +47,11 @@ export default function Footer() {
             </p>
             <div
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.45rem',
-                padding: '0.28rem 0.65rem',
-                borderRadius: '4px',
-                background: '#093B52',
-                border: '1px solid #1D5E78',
                 fontFamily: 'var(--ent-mono)',
-                fontSize: '0.62rem',
-                color: '#E2F1F7',
-                letterSpacing: '0.06em',
+                fontSize: '0.66rem',
+                fontWeight: 700,
+                color: '#B8D4E0',
+                letterSpacing: '0.08em',
                 textTransform: 'uppercase',
               }}
             >

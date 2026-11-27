@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Building2, Database, GitBranch, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { Building2, Check, Database, GitBranch, Pencil, Plus, RotateCcw, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { MOCK_ACCOUNTS } from '../../auth/authAccounts';
@@ -349,24 +349,20 @@ export default function TeamPIC() {
             Setiap kode organisasi baru yang ditambahkan di halaman ini otomatis tersedia pada kolom PIC Desainer Tabel KPI.
           </span>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.55rem 0.85rem' }}>
           {MASTER_KPI_PICS.map((entry) => (
-            <span
+            <strong
               key={entry.code}
               title={entry.name}
               style={{
                 fontFamily: 'var(--ent-mono)',
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                padding: '0.2rem 0.5rem',
-                borderRadius: '4px',
-                background: '#EDF3F6',
-                border: '1px solid #D8E4EA',
+                fontSize: '0.72rem',
+                fontWeight: 800,
                 color: '#094E68',
               }}
             >
               {entry.code}
-            </span>
+            </strong>
           ))}
         </div>
       </div>
@@ -429,8 +425,12 @@ export default function TeamPIC() {
             </label>
           </div>
           <div className="tp-form-actions">
-            <button type="button" className="tp-secondary" onClick={() => setEditor(null)}>Batal</button>
-            <button type="submit" className="tp-primary">Simpan Organisasi</button>
+            <button type="button" className="tp-secondary" onClick={() => setEditor(null)}>
+              <X size={15} /> Batal
+            </button>
+            <button type="submit" className="tp-primary">
+              <Check size={15} /> Simpan Organisasi
+            </button>
           </div>
         </form>
       )}
@@ -482,20 +482,16 @@ export default function TeamPIC() {
                     </td>
                     <td>
                       {item.code ? (
-                        <span
+                        <strong
                           style={{
                             fontFamily: 'var(--ent-mono)',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            padding: '0.2rem 0.5rem',
-                            borderRadius: '4px',
-                            background: '#EDF3F6',
-                            border: '1px solid #D8E4EA',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
                             color: '#094E68',
                           }}
                         >
                           {item.code}
-                        </span>
+                        </strong>
                       ) : (
                         <span style={{ color: '#475569', fontSize: '0.76rem' }}>Tanpa kode</span>
                       )}
@@ -544,7 +540,7 @@ export default function TeamPIC() {
               style={{ minHeight: '44px' }}
               onClick={() => setVisibleLimit((prev) => prev + 40)}
             >
-              Tampilkan Lebih Banyak ({visible.length - visibleLimit} tersisa)
+              <Plus size={15} /> Tampilkan Lebih Banyak ({visible.length - visibleLimit} tersisa)
             </button>
           </div>
         )}
@@ -571,7 +567,7 @@ export default function TeamPIC() {
                     setFilter('all');
                   }}
                 >
-                  Reset Pencarian &amp; Filter
+                  <RotateCcw size={15} /> Reset Pencarian &amp; Filter
                 </button>
               </div>
             )}
@@ -626,7 +622,7 @@ export default function TeamPIC() {
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
               <button type="button" className="tp-secondary" style={{ minHeight: '44px' }} onClick={() => setPendingDelete(null)}>
-                Batal
+                <X size={14} /> Batal
               </button>
               <button
                 type="button"

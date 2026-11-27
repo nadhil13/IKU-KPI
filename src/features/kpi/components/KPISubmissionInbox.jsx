@@ -29,7 +29,6 @@ import {
   getEditableItemsForUser,
   evaluateRenbangValidationStatus,
   setRenbangFinalValidation,
-  readSpiAuditForForm,
   MAX_EVIDENCE_FILE_BYTES,
   ALLOWED_EVIDENCE_MIME_TYPES,
 } from '../kpiWorkflowStore';
@@ -258,7 +257,11 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
 
   const handleDownloadEvidenceManifestCsv = () => {
     if (!filteredVaultEvidence.length) return;
-    const escCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const escCsv = (val) => {
+      const raw = String(val ?? '');
+      const safe = /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
     const headers = ['No', 'Unit Kerja', 'Email PIC', 'Kode PIC', 'Status Submission', 'Indikator', 'Jenis Bukti', 'Judul Dokumen', 'Nama Berkas / Tautan HTTPS', 'Status Verifikasi', 'Catatan PRP'];
     const rows = filteredVaultEvidence.map((ev, idx) => [
       idx + 1,
@@ -374,16 +377,14 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             </div>
           </div>
 
-          {/* Panel Kontrol Validasi Final 100% Renbang & Pembukaan Otomatis Akses Audit SPI */}
           {(() => {
             const renbangStatus = evaluateRenbangValidationStatus(latestForm.id, state);
-            const spiRecord = readSpiAuditForForm(latestForm.id, state);
             return (
               <div
                 style={{
                   padding: '0.95rem 1.3rem',
                   borderTop: '1px solid #D8E4EA',
-                  background: renbangStatus.isValidated100 ? '#F0FDF4' : '#FEF2F2',
+                  background: renbangStatus.isValidated100 ? '#F0FDF4' : '#F7FAFB',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '0.65rem',
@@ -391,35 +392,30 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
                       <span
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '0.35rem',
-                          padding: '0.32rem 0.7rem',
-                          borderRadius: '6px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          letterSpacing: '0.015em',
-                          background: renbangStatus.isValidated100 ? '#15803D' : '#B91C1C',
-                          color: '#FFFFFF',
-                          border: renbangStatus.isValidated100 ? '1.5px solid #14532D' : '1.5px solid #7F1D1D',
+                          fontSize: '0.76rem',
+                          fontWeight: 800,
+                          color: renbangStatus.isValidated100 ? '#166534' : '#92400E',
                         }}
                       >
-                        {renbangStatus.isValidated100 ? <Unlock size={13} /> : <Lock size={13} />}
+                        {renbangStatus.isValidated100 ? <CheckCircle2 size={14} /> : <Lock size={14} />}
                         {renbangStatus.isValidated100
-                          ? 'AKSES TABEL AUDIT SPI: TERBUKA OTOMATIS (VALIDASI RENBANG 100%)'
-                          : 'AKSES TABEL AUDIT SPI: TERKUNCI ("Akses masih tertutup")'}
+                          ? 'Status Pengesahan Final Renbang: Tervalidasi 100%'
+                          : 'Status Pengesahan Final Renbang: Dalam Proses Konsolidasi'}
                       </span>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>
-                        Progres Validasi Renbang: {renbangStatus.validatedUnits}/{renbangStatus.totalUnits} Unit ({renbangStatus.progressPercent}%)
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#072534', fontVariantNumeric: 'tabular-nums' }}>
+                        · Progres persetujuan: {renbangStatus.validatedUnits}/{renbangStatus.totalUnits} Unit ({renbangStatus.progressPercent}%)
                       </span>
                     </div>
                     <span style={{ fontSize: '0.75rem', color: '#334155' }}>
                       {renbangStatus.isValidated100
-                        ? 'Seluruh data KPI periode ini telah berstatus tervalidasi final 100% oleh Renbang. Akun SPI kini dapat melihat Tabel Audit KPI (Read-Only).'
-                        : 'Selama validasi Renbang belum mencapai 100%, akun SPI tidak dapat memantau data unit yang baru terisi sebagian. Setujui seluruh unit atau klik tombol pengesahan final di kanan untuk membuka akses SPI.'}
+                        ? 'Seluruh pengajuan KPI periode ini telah disahkan final oleh Renbang/PRP. Auditor pada menu Verifikasi SPI memantau data dan evidence secara Read-Only.'
+                        : 'Setujui pengajuan unit kerja atau klik tombol pengesahan final di kanan untuk menetapkan status Validasi Final 100% periode ini.'}
                     </span>
                   </div>
 
@@ -434,88 +430,34 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               note: 'Validasi Final 100% disahkan oleh Admin Renbang / PRP',
                             });
                             setState(readKpiWorkflow());
-                            setSavedNotice('Validasi Final 100% Renbang disahkan. Tabel Audit KPI pada akun SPI kini terbuka otomatis.');
+                            setSavedNotice('Validasi Final 100% Renbang berhasil disahkan untuk periode aktif.');
                           })}
-                          style={{
-                            minHeight: '44px',
-                            padding: '0.5rem 1rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #14532D',
-                            background: '#15803D',
-                            color: '#FFFFFF',
-                            fontSize: '0.78rem',
-                            fontWeight: 600,
-                            letterSpacing: '0.01em',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.45rem',
-                          }}
+                          className="ent-btn ent-btn-teal"
+                          style={{ minHeight: '44px' }}
                         >
                           <CheckCircle2 size={15} />
-                          <span style={{ color: '#FFFFFF' }}>Sahkan Validasi Final 100% Renbang (Buka Akses Audit SPI)</span>
+                          <span>Sahkan Validasi Final 100% Renbang</span>
                         </button>
                       ) : (
                         <button
                           type="button"
                           onClick={() => mutate(() => {
                             setRenbangFinalValidation(latestForm.id, false, currentUser, {
-                              note: 'Validasi dibuka kembali oleh Renbang, akses SPI dikunci sementara',
+                              note: 'Status validasi final dibuka kembali oleh Renbang/PRP',
                             });
                             setState(readKpiWorkflow());
-                            setSavedNotice('Akses Tabel Audit KPI pada akun SPI dikunci kembali ("Akses masih tertutup").');
+                            setSavedNotice('Status Validasi Final 100% dibuka kembali untuk penyesuaian unit.');
                           })}
-                          style={{
-                            minHeight: '44px',
-                            padding: '0.5rem 1rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #7F1D1D',
-                            background: '#B91C1C',
-                            color: '#FFFFFF',
-                            fontSize: '0.78rem',
-                            fontWeight: 600,
-                            letterSpacing: '0.01em',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.45rem',
-                          }}
+                          className="ent-btn"
+                          style={{ minHeight: '44px', borderColor: '#B91C1C', color: '#B91C1C', background: '#FFFFFF' }}
                         >
-                          <Lock size={15} />
-                          <span style={{ color: '#FFFFFF' }}>Kunci Kembali Akses Audit SPI</span>
+                          <Unlock size={15} />
+                          <span>Buka Kembali Pengesahan Final</span>
                         </button>
                       )}
                     </div>
                   )}
                 </div>
-
-                {spiRecord.items?.D_5 && (
-                  <div
-                    style={{
-                      padding: '0.6rem 0.85rem',
-                      borderRadius: '8px',
-                      background: '#FFFFFF',
-                      border: '1px solid #CBD5E1',
-                      fontSize: '0.74rem',
-                      color: '#1E293B',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: '0.5rem',
-                    }}
-                  >
-                    <div>
-                      <strong>Pantauan Real-Time Inputan SPI (Bagian D.5 · Tindaklanjut Rekomendasi Audit &amp; Temuan):</strong>{' '}
-                      Belum Ditindaklanjuti: <strong>{spiRecord.items.D_5.unfollowedCount || '0'}</strong> ·{' '}
-                      Jumlah Rekomendasi: <strong>{spiRecord.items.D_5.totalRecommendations || '0'}</strong>
-                      {spiRecord.items.D_5.auditNote ? ` · Keterangan SPI: "${spiRecord.items.D_5.auditNote}"` : ''}
-                    </div>
-                    <span style={{ fontSize: '0.7rem', color: '#15803D', fontWeight: 800 }}>
-                      Diperbarui SPI: {spiRecord.updatedAt ? new Date(spiRecord.updatedAt).toLocaleString('id-ID') : '-'}
-                    </span>
-                  </div>
-                )}
               </div>
             );
           })()}
@@ -671,6 +613,9 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     type="button"
                     onClick={() => setBoardViewMode('confirmed')}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
                       minHeight: '44px',
                       padding: '0.35rem 0.85rem',
                       borderRadius: '6px',
@@ -682,12 +627,16 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                       cursor: 'pointer',
                     }}
                   >
-                    Tabel Final Terkonfirmasi ({boardMetrics.approvedCount} Unit Disetujui/Dikunci)
+                    <CheckCircle2 size={14} />
+                    <span>Tabel Final Terkonfirmasi ({boardMetrics.approvedCount} Unit Disetujui/Dikunci)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setBoardViewMode('live')}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
                       minHeight: '44px',
                       padding: '0.35rem 0.85rem',
                       borderRadius: '6px',
@@ -699,11 +648,12 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                       cursor: 'pointer',
                     }}
                   >
-                    Semua Progres Realtime (Termasuk Draft &amp; Revisi)
+                    <Layers size={14} />
+                    <span>Semua Progres Realtime (Termasuk Draft &amp; Revisi)</span>
                   </button>
                 </div>
                 {resolvedBoardMode === 'confirmed' && boardMetrics.approvedCount === 0 && (
-                  <span style={{ fontSize: '0.73rem', fontWeight: 600, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '6px', padding: '0.4rem 0.7rem' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#92400E' }}>
                     Belum ada unit yang dikonfirmasi (Disetujui / Dikunci). Beralih ke tab Progres Realtime atau konfirmasi unit di tabel bawah.
                   </span>
                 )}
@@ -776,7 +726,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               className="ent-btn ent-btn-primary"
               onClick={() => mutate(() => ensureDefaultKpiDistribution(KPI_SECTIONS_CONFIG))}
             >
-              Inisialisasi Formulir 29 Indikator &amp; PIC ITPLN
+              <Plus size={14} />
+              <span>Inisialisasi Formulir 29 Indikator &amp; PIC ITPLN</span>
             </button>
           </div>
         )}
@@ -845,32 +796,19 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                           <small style={{ color: '#475569' }}>{u.email}</small>
                         </td>
                         <td style={{ padding: '0.75rem 0.85rem' }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
-                            {(u.picCodes || []).length > 0 ? (u.picCodes || []).map((code) => (
-                              <span
-                                key={code}
-                                style={{
-                                  fontSize: '0.65rem',
-                                  fontWeight: 700,
-                                  fontFamily: 'JetBrains Mono, monospace',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  background: '#EDF3F6',
-                                  border: '1px solid #B8CAD4',
-                                  color: '#072534',
-                                }}
-                              >
-                                {code}
-                              </span>
-                            )) : <span style={{ color: '#475569' }}>-</span>}
-                            <span style={{ fontSize: '0.69rem', color: '#475569', marginLeft: '0.2rem' }}>
-                              ({assignedCount} baris)
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                            {(u.picCodes || []).length > 0 ? (
+                              <strong style={{ fontSize: '0.72rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: '#094E68' }}>
+                                {(u.picCodes || []).join(', ')}
+                              </strong>
+                            ) : <span style={{ color: '#475569' }}>-</span>}
+                            <span style={{ fontSize: '0.69rem', color: '#475569' }}>
+                              ({assignedCount} baris PIC Utama)
                             </span>
                           </div>
                         </td>
                         <td style={{ padding: '0.75rem 0.85rem' }}>
                           <span className={badgeFor(effectiveStatus)}>
-                            <span className="ent-badge-dot" />
                             {labels[effectiveStatus] || 'Belum submit'}
                           </span>
                         </td>
@@ -895,7 +833,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             className="gov-button"
                             onClick={() => updateSelected({ formId: f.id, email: u.email })}
                           >
-                            {r ? 'Tinjau, Edit & Revisi' : 'Kelola & Edit Unit'}
+                            <PenLine size={13} />
+                            <span>{r ? 'Tinjau, Edit & Revisi' : 'Kelola & Edit Unit'}</span>
                           </button>
                         </td>
                       </tr>
@@ -915,7 +854,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                           setFilter('');
                         }}
                       >
-                        Reset Pencarian &amp; Filter
+                        <X size={14} />
+                        <span>Reset Pencarian &amp; Filter</span>
                       </button>
                     )}
                   </div>
@@ -937,7 +877,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         setFilter('');
                       }}
                     >
-                      Reset Pencarian &amp; Filter
+                      <X size={14} />
+                      <span>Reset Pencarian &amp; Filter</span>
                     </button>
                   )}
                 </div>
@@ -960,30 +901,17 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         <small style={{ color: '#475569', fontSize: '0.72rem' }}>{u.email}</small>
                       </div>
                       <span className={badgeFor(effectiveStatus)}>
-                        <span className="ent-badge-dot" />
                         {labels[effectiveStatus] || 'Belum submit'}
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem', alignItems: 'center' }}>
-                      {(u.picCodes || []).map((code) => (
-                        <span
-                          key={code}
-                          style={{
-                            fontSize: '0.64rem',
-                            fontWeight: 700,
-                            fontFamily: 'JetBrains Mono, monospace',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: '#EDF3F6',
-                            border: '1px solid #B8CAD4',
-                            color: '#072534',
-                          }}
-                        >
-                          {code}
-                        </span>
-                      ))}
-                      <span style={{ fontSize: '0.7rem', color: '#475569' }}>({assignedCount} indikator PIC)</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                      {(u.picCodes || []).length > 0 && (
+                        <strong style={{ fontSize: '0.72rem', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace', color: '#094E68' }}>
+                          {(u.picCodes || []).join(', ')}
+                        </strong>
+                      )}
+                      <span style={{ fontSize: '0.7rem', color: '#475569' }}>({assignedCount} indikator PIC Utama)</span>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', paddingTop: '0.2rem' }}>
@@ -997,7 +925,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         style={{ minHeight: '44px' }}
                         onClick={() => updateSelected({ formId: f.id, email: u.email })}
                       >
-                        {r ? 'Tinjau, Edit & Revisi' : 'Kelola & Edit Unit'}
+                        <PenLine size={13} />
+                        <span>{r ? 'Tinjau, Edit & Revisi' : 'Kelola & Edit Unit'}</span>
                       </button>
                     </div>
                   </article>
@@ -1040,20 +969,16 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                       {item.at ? new Date(item.at).toLocaleString('id-ID') : '-'}
                     </td>
                     <td style={{ padding: '0.68rem 1.15rem' }}>
-                      <span
+                      <strong
                         style={{
-                          fontSize: '0.65rem',
-                          fontWeight: 700,
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
                           fontFamily: 'JetBrains Mono, monospace',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          background: '#EDF3F6',
-                          border: '1px solid #B8CAD4',
                           color: '#094E68',
                         }}
                       >
                         {item.action}
-                      </span>
+                      </strong>
                     </td>
                     <td style={{ padding: '0.68rem 1.15rem', fontWeight: 600, color: '#072534' }}>
                       {item.actor || 'Sistem'}
@@ -1301,7 +1226,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             disabled={!note.trim()}
                             onClick={() => saveUnitEditsNow('NEEDS_REVISION')}
                           >
-                            Kirim Revisi ke Unit
+                            <MessageSquareWarning size={14} />
+                            <span>Kirim Revisi ke Unit</span>
                           </button>
                         </>
                       ) : (
@@ -1315,7 +1241,10 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             onClick={() => runUnitTransition(status)}
                           >
                             {status === 'APPROVED' && <Check size={14} />}
-                            {actionLabel(record.status, status)}
+                            {status === 'LOCKED' && <Lock size={14} />}
+                            {status === 'NEEDS_REVISION' && (record.status === 'LOCKED' ? <Unlock size={14} /> : <MessageSquareWarning size={14} />)}
+                            {status === 'REJECTED' && <X size={14} />}
+                            <span>{actionLabel(record.status, status)}</span>
                           </button>
                         ))
                       )}
@@ -1333,7 +1262,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                             });
                           }}
                         >
-                          Reset Data Unit ke Semula
+                          <Trash2 size={14} />
+                          <span>Reset Data Unit ke Semula</span>
                         </button>
                       )}
                     </div>
@@ -1522,7 +1452,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                               <span>Simpan Bukti Unit</span>
                             </button>
                             <button type="button" className="ent-btn" style={{ minHeight: '44px', fontSize: '0.72rem' }} onClick={() => setNewUnitEv(null)}>
-                              Batal
+                              <X size={13} />
+                              <span>Batal</span>
                             </button>
                           </div>
                         </div>
@@ -1648,7 +1579,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                     currentUser,
                                   ))}
                                 >
-                                  Verifikasi Bukti
+                                  <CheckCircle2 size={12} /> Verifikasi Bukti
                                 </button>
                               )}
                               {e.status !== 'REJECTED' && (
@@ -1660,7 +1591,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                   title={note.trim() ? '' : 'Tuliskan alasan penolakan pada kolom catatan terlebih dahulu'}
                                   onClick={() => mutate(() => reviewUnitEvidence(form.id, targetEmail, e.id, 'REJECTED', note, currentUser))}
                                 >
-                                  Tolak Bukti
+                                  <X size={12} /> Tolak Bukti
                                 </button>
                               )}
                               <button
@@ -1703,7 +1634,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                     <Send size={12} /> Kirim Revisi Bukti
                                   </button>
                                   <button type="button" className="ent-btn" style={{ minHeight: '44px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
-                                    Batal
+                                    <X size={12} /> Batal
                                   </button>
                                 </div>
                               </div>
@@ -1796,7 +1727,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                                     <Save size={12} /> Simpan Perubahan Bukti
                                   </button>
                                   <button type="button" className="ent-btn" style={{ minHeight: '44px', fontSize: '0.71rem' }} onClick={() => setEvActionPanel(null)}>
-                                    Batal
+                                    <X size={12} /> Batal
                                   </button>
                                 </div>
                               </div>
@@ -1935,7 +1866,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setPendingUnlock(null)}>
-                  Batal
+                  <X size={14} /> Batal
                 </button>
                 <button
                   type="button"
@@ -1959,7 +1890,8 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     });
                   }}
                 >
-                  {pendingUnlock.confirmLabel || 'Ya, Buka Kunci'}
+                  {pendingUnlock.danger ? <X size={14} /> : <Check size={14} />}
+                  <span>{pendingUnlock.confirmLabel || 'Ya, Buka Kunci'}</span>
                 </button>
               </div>
             </div>
@@ -2009,7 +1941,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setPendingResetUnit(null)}>
-                  Batal
+                  <X size={14} /> Batal
                 </button>
                 <button
                   type="button"
@@ -2024,7 +1956,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                     });
                   }}
                 >
-                  Ya, Reset Data Unit
+                  <Trash2 size={14} /> Ya, Reset Data Unit
                 </button>
               </div>
             </div>

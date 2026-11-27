@@ -226,7 +226,30 @@ test('Otorisasi server ketat per baris PIC KPI, proteksi lintas unit, dan rantai
   });
   assert.equal(illegalRowPush.status, 403);
 
-  // 3. BAKT berhasil menyimpan draf & bukti resmi pada baris A_1b miliknya sendiri
+  // 2b. Co-PIC (BAG pada A_1b, di mana primaryPic adalah BAKT) dilarang menginput angka A_1b (403)
+  const bagLogin = await invokeApi('POST', '/api/v1/auth/login', {
+    body: { email: 'bag@itpln.ac.id', password: 'password' },
+  });
+  assert.equal(bagLogin.status, 200);
+  const bagCoPicPush = await invokeApi('POST', '/api/v1/sync/push', {
+    token: bagLogin.json.accessToken,
+    body: {
+      stores: {
+        prp_kpi_distribution_v1: {
+          ...sampleWorkflow,
+          drafts: {
+            'form_2026:bag@itpln.ac.id': {
+              values: { a_1b_num: '88' },
+              notes: {},
+            },
+          },
+        },
+      },
+    },
+  });
+  assert.equal(bagCoPicPush.status, 403);
+
+  // 3. BAKT (PIC Utama A_1b) berhasil menyimpan draf & bukti resmi pada baris A_1b miliknya sendiri
   const validBaktPush = await invokeApi('POST', '/api/v1/sync/push', {
     token: baktToken,
     body: {
@@ -671,16 +694,17 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   assert.ok(ppaDist.submissions['form_privacy_2026:ppa@itpln.ac.id']);
   assert.equal(ppaDist.submissions['form_privacy_2026:bpka@itpln.ac.id'], undefined);
 
-  // 4. Penguncian Akses Tabel Audit SPI ("Akses masih tertutup") selama validasi Renbang belum 100%
-  const spiBootLocked = await invokeApi('GET', '/api/v1/bootstrap', { token: spiToken });
-  assert.equal(spiBootLocked.status, 200);
-  const spiDistLocked = spiBootLocked.json.stores.prp_kpi_distribution_v1;
-  assert.equal(spiDistLocked.forms[0].renbangValidationSummary.isValidated100, false);
-  assert.equal(spiDistLocked.forms[0].renbangValidationSummary.statusLabel, 'Akses masih tertutup');
-  assert.equal(spiDistLocked.submissions['form_privacy_2026:ppa@itpln.ac.id'], undefined);
-  assert.equal(spiDistLocked.submissions['form_privacy_2026:bpka@itpln.ac.id'], undefined);
+  // 4. Verifikasi SPI (Auditor View-Only): melihat data komprehensif lintas unit & evidence seperti Admin,
+  //    sambil tetap menampilkan ringkasan progres validasi Renbang (0% -> 50% -> 100%)
+  const spiBootInitial = await invokeApi('GET', '/api/v1/bootstrap', { token: spiToken });
+  assert.equal(spiBootInitial.status, 200);
+  const spiDistInitial = spiBootInitial.json.stores.prp_kpi_distribution_v1;
+  assert.equal(spiDistInitial.forms[0].renbangValidationSummary.isValidated100, false);
+  assert.ok(spiDistInitial.submissions['form_privacy_2026:ppa@itpln.ac.id']);
+  assert.ok(spiDistInitial.submissions['form_privacy_2026:bpka@itpln.ac.id']);
+  assert.ok(spiDistInitial.evidence['form_privacy_2026:ppa@itpln.ac.id']);
+  assert.ok(spiDistInitial.evidence['form_privacy_2026:bpka@itpln.ac.id']);
 
-  // 4b. Jika baru 1 dari 2 unit yang divalidasi Renbang (50%), akses SPI tetap terkunci
   const halfValidatedWorkflow = {
     ...seedWorkflow,
     submissions: {
@@ -699,9 +723,7 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   const spiDistHalf = spiBootHalf.json.stores.prp_kpi_distribution_v1;
   assert.equal(spiDistHalf.forms[0].renbangValidationSummary.isValidated100, false);
   assert.equal(spiDistHalf.forms[0].renbangValidationSummary.progressPercent, 50);
-  assert.equal(spiDistHalf.submissions['form_privacy_2026:ppa@itpln.ac.id'], undefined);
 
-  // 4c. Begitu Renbang memvalidasi 100% seluruh unit (PPA & BPKA APPROVED), Tabel Audit SPI otomatis terbuka
   const fullValidatedWorkflow = {
     ...seedWorkflow,
     submissions: {
@@ -728,7 +750,7 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   assert.ok(spiDistUnlocked.submissions['form_privacy_2026:ppa@itpln.ac.id']);
   assert.ok(spiDistUnlocked.submissions['form_privacy_2026:bpka@itpln.ac.id']);
 
-  // 4d. SPI dilarang mencampuri isian Admin/Renbang maupun unit (403)
+  // 4d. Akun Verifikasi SPI dibatasi ketat Read-Only: ditolak (403) mengedit data, status, maupun umpan balik audit
   const spiMutateAttempt = await invokeApi('POST', '/api/v1/sync/push', {
     token: spiToken,
     body: {
@@ -739,8 +761,7 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
   });
   assert.equal(spiMutateAttempt.status, 403);
 
-  // 4e. SPI hanya dapat mengisi Bagian D No. 5 (Tindaklanjut Rekomendasi Audit & Temuan) secara real-time ke database
-  const spiAuditSave = await invokeApi('POST', '/api/v1/spi/audit', {
+  const spiAuditFeedbackAttempt = await invokeApi('POST', '/api/v1/spi/audit', {
     token: spiToken,
     body: {
       formId: 'form_privacy_2026',
@@ -750,32 +771,13 @@ test('Isolasi Privasi Data Antar-Unit (Unit Data Privacy), Otoritas Read-Only Au
           indicatorId: 'D_5',
           unfollowedCount: '0',
           totalRecommendations: '12',
-          verificationStatus: 'SESUAI_BUKTI',
-          auditNote: 'Seluruh 12 rekomendasi audit & temuan (SPI, PJM, KAP, WBS) telah ditindaklanjuti 100%.',
-          followUpStatus: 'CLOSED',
-          evidenceChecked: true,
+          auditNote: 'Umpan balik SPI kini ditutup ketat Read-Only',
         },
       },
     },
   });
-  assert.equal(spiAuditSave.status, 200);
-  assert.equal(spiAuditSave.json.ok, true);
-  assert.equal(spiAuditSave.json.record.items.D_5.unfollowedCount, '0');
-  assert.equal(spiAuditSave.json.record.items.D_5.totalRecommendations, '12');
+  assert.equal(spiAuditFeedbackAttempt.status, 403);
 
-  // SPI ditolak 403 bila mencoba mengisi indikator di luar Bagian D.5 (misal A_1a)
-  const spiInvalidIndicatorAttempt = await invokeApi('POST', '/api/v1/spi/audit', {
-    token: spiToken,
-    body: {
-      formId: 'form_privacy_2026',
-      items: {
-        A_1a: { indicatorId: 'A_1a', auditNote: 'Bukan bagian SPI' },
-      },
-    },
-  });
-  assert.equal(spiInvalidIndicatorAttempt.status, 403);
-
-  // Non-SPI (Admin maupun Unit) ditolak 403 bila mencoba mengisi kolom/bagian milik SPI
   const adminWriteSpiAttempt = await invokeApi('POST', '/api/v1/spi/audit', {
     token: adminToken,
     body: {

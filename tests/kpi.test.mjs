@@ -762,20 +762,23 @@ test('Reject bukti otomatis membuka NEEDS_REVISION, kirim ulang mempertahankan V
   );
 });
 
-test('penguncian akses tabel audit SPI (<100% Renbang) & pembukaan otomatis 100% + input real-time khusus SPI', () => {
+test('Verifikasi SPI ketat Read-Only (tanpa wewenang edit/status/umpan balik) namun dapat membaca komprehensif seperti Admin', () => {
   memory.clear();
   const {
     distributeKpiForm,
     evaluateRenbangValidationStatus,
     setRenbangFinalValidation,
+    saveUnitKpiDraft,
+    submitUnitKpi,
+    addUnitEvidence,
     saveSpiAuditHeader,
     saveSpiIndicatorAudit,
-    readSpiAuditForForm,
+    readIntegratedKpiBoard,
   } = store;
 
   const adminPrp = { email: 'admin@itpln.ac.id', name: 'Admin Renbang PRP', role: 'superadmin_prp', status: 'Aktif' };
-  const spiUser = { email: 'spi@itpln.ac.id', name: 'Auditor SPI ITPLN', role: 'spi', status: 'Aktif' };
-  const ppaUser = { email: 'ppa@itpln.ac.id', name: 'Operator PPA', role: 'kpi_only', status: 'Aktif', picCodes: ['PPA'] };
+  const spiUser = { email: 'spi@itpln.ac.id', name: 'Verifikasi SPI ITPLN', role: 'spi', status: 'Aktif', picCodes: [] };
+  const ppaUser = { email: 'ppa@itpln.ac.id', name: 'Unit PPA', role: 'kpi_only', status: 'Aktif', picCodes: ['PPA'] };
 
   const form = distributeKpiForm(
     [
@@ -791,6 +794,8 @@ test('penguncian akses tabel audit SPI (<100% Renbang) & pembukaan otomatis 100%
             indikator: 'Kesesuaian Kurikulum',
             bobot: 50,
             targetNum: 100,
+            primaryPic: 'PPA',
+            coPics: [],
             pics: ['PPA'],
             picDisplay: 'PPA',
             formulaExpr: 'I1/T*100',
@@ -802,7 +807,9 @@ test('penguncian akses tabel audit SPI (<100% Renbang) & pembukaan otomatis 100%
             indikator: 'Laporan Keuangan',
             bobot: 50,
             targetNum: 100,
-            pics: ['BAKT'],
+            primaryPic: 'BAKT',
+            coPics: ['BAG'],
+            pics: ['BAKT', 'BAG'],
             picDisplay: 'BAKT',
             formulaExpr: 'I1/T*100',
             subrows: [{ key: 'a1b_val', label: 'Realisasi' }],
@@ -813,51 +820,61 @@ test('penguncian akses tabel audit SPI (<100% Renbang) & pembukaan otomatis 100%
     { period: '2026', actor: adminPrp },
   );
 
-  // 1. Awal distribusi: validasi Renbang 0% -> Akses Tabel Audit SPI wajib terkunci ("Akses masih tertutup")
+  // PPA mengisi dan mengunggah bukti
+  saveUnitKpiDraft(form.id, ppaUser, { values: { a1_val: '114' }, notes: { A_1a: 'Melampaui target 114%' } });
+  addUnitEvidence(form.id, ppaUser, {
+    indicatorId: 'A_1a',
+    kind: 'link',
+    label: 'SK Kurikulum',
+    url: 'https://drive.itpln.ac.id/sk-kurikulum',
+  });
+  submitUnitKpi(form.id, ppaUser, { a1_val: '114' }, { notes: { A_1a: 'Melampaui target 114%' } });
+
+  // SPI dapat membaca papan terintegrasi beserta bukti dukung unit
+  const board = readIntegratedKpiBoard(form.id, undefined, { confirmedOnly: false });
+  assert.equal(board.values.a1_val, '114');
+  assert.equal(board.evidenceByItem.A_1a.length, 1);
+
+  // Validasi Renbang tercatat rapi sebagai informasi progres
   const initialVal = evaluateRenbangValidationStatus(form.id);
   assert.equal(initialVal.isValidated100, false);
-  assert.equal(initialVal.statusLabel, 'Akses masih tertutup');
-
-  // 2. Saat Renbang mengesahkan validasi final 100%, Tabel Audit SPI otomatis terbuka
   const unlockedVal = setRenbangFinalValidation(form.id, true, adminPrp, { note: 'Seluruh data KPI tervalidasi Renbang' });
   assert.equal(unlockedVal.isValidated100, true);
   assert.equal(unlockedVal.progressPercent, 100);
 
-  // 3. SPI hanya dapat mengisi Bagian D No. 5 (Tindaklanjut Rekomendasi Audit & Temuan) secara real-time
-  saveSpiIndicatorAudit(form.id, spiUser, 'D_5', {
-    unfollowedCount: '0',
-    totalRecommendations: '15',
-    verificationStatus: 'SESUAI_BUKTI',
-    auditNote: 'Seluruh 15 rekomendasi audit & temuan (SPI, PJM, KAP, WBS) selesai ditindaklanjuti.',
-    followUpStatus: 'CLOSED',
-    evidenceChecked: true,
-  });
-
-  const savedSpi = readSpiAuditForForm(form.id);
-  assert.equal(savedSpi.items.D_5.unfollowedCount, '0');
-  assert.equal(savedSpi.items.D_5.totalRecommendations, '15');
-  assert.equal(savedSpi.items.D_5.evidenceChecked, true);
-
-  // 4. SPI dilarang mengisi indikator lain di luar Bagian D.5 (misal A_1a)
+  // SPI dilarang keras mengedit data, mengunggah bukti, maupun mengisi form umpan balik audit
   assert.throws(
-    () => saveSpiIndicatorAudit(form.id, spiUser, 'A_1a', { auditNote: 'Bukan bagian SPI' }),
-    /Bagian D No\. 5/,
-  );
-
-  // 5. Akun non-SPI (Admin maupun Unit) dilarang mengisi bagian/kolom milik SPI
-  assert.throws(
-    () => saveSpiIndicatorAudit(form.id, adminPrp, 'D_5', { auditNote: 'Diubah Admin' }),
-    /Hanya akun SPI aktif/,
+    () => saveUnitKpiDraft(form.id, spiUser, { values: { a1_val: '50' } }),
+    /Read-Only/i,
   );
   assert.throws(
-    () => saveSpiAuditHeader(form.id, ppaUser, { generalSummary: 'Diubah Unit' }),
-    /Hanya akun SPI aktif/,
+    () => submitUnitKpi(form.id, spiUser, { a1_val: '50' }),
+    /Read-Only/i,
+  );
+  assert.throws(
+    () => addUnitEvidence(form.id, spiUser, { indicatorId: 'A_1a', kind: 'link', url: 'https://itpln.ac.id/x' }),
+    /Read-Only/i,
+  );
+  assert.throws(
+    () => saveSpiIndicatorAudit(form.id, spiUser, 'D_5', { auditNote: 'Tidak diizinkan' }),
+    /Read-Only/i,
+  );
+  assert.throws(
+    () => saveSpiAuditHeader(form.id, spiUser, { generalSummary: 'Tidak diizinkan' }),
+    /Read-Only/i,
   );
 });
 
-test('regresi matematika KPI, desimal parseIndonesianNumber, efisiensi biaya A_3-A_5, draf D_5 SPI tidak terkunci, dan kompresi history base64', async () => {
+test('capaian >100% tidak dikunci, ambang warna Hijau/Kuning/Merah, sinkronisasi koordinat Excel E/F/G, PIC Utama vs Co-PIC, dan penalti D_5 WBS', async () => {
   memory.clear();
-  const { parseIndonesianNumber } = await import(schemaUrl);
+  const {
+    parseIndonesianNumber,
+    getKpiAchievementMeta,
+    computeKpiExcelRowMap,
+    canUserEditKpiItem,
+    isUserCoPicOnKpiItem,
+    normalizeKpiSections,
+  } = await import(schemaUrl);
   const { KPI_SECTIONS_CONFIG } = await import('../src/features/kpi/kpiTemplateConfig.js');
 
   assert.equal(parseIndonesianNumber('0.125'), 0.125);
@@ -865,11 +882,86 @@ test('regresi matematika KPI, desimal parseIndonesianNumber, efisiensi biaya A_3
   assert.equal(parseIndonesianNumber('1.250.000'), 1250000);
   assert.equal(parseIndonesianNumber('1.250,5'), 1250.5);
 
-  const tplCheck = validateKpiSections(KPI_SECTIONS_CONFIG);
+  const normalizedSections = normalizeKpiSections(KPI_SECTIONS_CONFIG);
+  const tplCheck = validateKpiSections(normalizedSections);
   assert.equal(tplCheck.sectionSummaries[0].itemSum, 25);
   assert.equal(tplCheck.positiveTotal, 100);
 
-  const itemA3 = KPI_SECTIONS_CONFIG[0].items.find((i) => i.id === 'A_3');
+  // 1. Batas maksimal capaian riil TIDAK dikunci di 100% (misal 114%), sedangkan skor tetap dibatasi bobot baris
+  const itemA1a = normalizedSections[0].items.find((i) => i.id === 'A_1a');
+  const overAchieved = computeKpiItem(
+    {
+      ...itemA1a,
+      bobot: 4,
+      targetNum: 100,
+      calcType: 'custom',
+      formulaExpr: 'I1/T*100',
+      subrows: [{ key: 'val_114', label: 'Realisasi' }],
+    },
+    { val_114: '114' },
+    false,
+  );
+  assert.equal(overAchieved.ratioPercent, 114);
+  assert.equal(overAchieved.weightedScore, 4);
+
+  // 2. Logika pewarnaan status ambang batas: >=100% Hijau (#166534), 90-99% Kuning (#92400E), <90% Merah (#B91C1C)
+  assert.equal(getKpiAchievementMeta(114).tier, 'green');
+  assert.equal(getKpiAchievementMeta(100).color, '#166534');
+  assert.equal(getKpiAchievementMeta(95).tier, 'yellow');
+  assert.equal(getKpiAchievementMeta(90).color, '#92400E');
+  assert.equal(getKpiAchievementMeta(89.9).tier, 'red');
+  assert.equal(getKpiAchievementMeta(89.9).color, '#B91C1C');
+
+  // 3. Pemetaan koordinat baris/kolom Excel (E=Isian, F=Bobot, G=Target, serta rentang SUM(E3:E4))
+  const excelSampleSections = normalizeKpiSections([
+    {
+      id: 'S_EX',
+      code: 'A',
+      title: 'Tes Koordinat Excel',
+      totalWeight: 10,
+      items: [
+        {
+          id: 'EX_1',
+          no: '1',
+          indikator: 'Indikator Rentang Excel',
+          bobot: 10,
+          targetNum: 100,
+          primaryPic: 'PPA',
+          calcType: 'custom',
+          formulaExpr: 'SUM(E3:E4)/G3*100',
+          subrows: [
+            { key: 'ex_k1', label: 'Semester Ganjil' },
+            { key: 'ex_k2', label: 'Semester Genap' },
+          ],
+        },
+      ],
+    },
+  ]);
+  const excelMap = computeKpiExcelRowMap(excelSampleSections);
+  assert.equal(excelMap.sectionRowById.get('S_EX'), 2);
+  assert.equal(excelMap.itemStartRowById.get('EX_1'), 3);
+  assert.deepEqual(excelMap.itemSubRowsById.get('EX_1'), [3, 4]);
+  const excelComputed = computeKpiItem(
+    excelSampleSections[0].items[0],
+    { ex_k1: '60', ex_k2: '54' },
+    false,
+    excelSampleSections,
+  );
+  assert.equal(excelComputed.ratioPercent, 114);
+  assert.equal(excelComputed.weightedScore, 10);
+
+  // 4. Pemisahan PIC Utama vs Co-PIC pada indikator kolaborasi (A_1b: primaryPic BAKT, coPics BAG)
+  const itemA1b = normalizedSections[0].items.find((i) => i.id === 'A_1b');
+  const baktUser = { email: 'bakt@itpln.ac.id', name: 'Unit BAKT', role: 'kpi_only', status: 'Aktif', picCodes: ['BAKT'] };
+  const bagUser = { email: 'bag@itpln.ac.id', name: 'Unit BAG', role: 'kpi_only', status: 'Aktif', picCodes: ['BAG'] };
+  const spiUser = { email: 'spi@itpln.ac.id', name: 'Verifikasi SPI', role: 'spi', status: 'Aktif', picCodes: [] };
+  assert.equal(canUserEditKpiItem(itemA1b, baktUser), true);
+  assert.equal(canUserEditKpiItem(itemA1b, bagUser), false);
+  assert.equal(isUserCoPicOnKpiItem(itemA1b, bagUser), true);
+  assert.equal(canUserEditKpiItem(itemA1b, spiUser), false);
+
+  // 5. Efisiensi biaya A_3 dan penalti negatif D_5 oleh PIC Utama WBS + kompresi history base64
+  const itemA3 = normalizedSections[0].items.find((i) => i.id === 'A_3');
   const efficientA3 = computeKpiItem(itemA3, { a_3_num: '85', a_3_den: '100' }, false);
   assert.equal(efficientA3.ratioPercent, 100);
   assert.equal(efficientA3.weightedScore, 3);
@@ -878,42 +970,36 @@ test('regresi matematika KPI, desimal parseIndonesianNumber, efisiensi biaya A_3
   assert.equal(inefficientA3.weightedScore, 2.7);
 
   const adminPrp = { email: 'admin@itpln.ac.id', name: 'Admin PRP', role: 'superadmin_prp', status: 'Aktif' };
-  const spiUser = { email: 'spi@itpln.ac.id', name: 'Auditor SPI', role: 'spi', status: 'Aktif' };
-  const form = store.distributeKpiForm(KPI_SECTIONS_CONFIG, { period: '2026', actor: adminPrp });
+  const wbsUser = { email: 'wbs@itpln.ac.id', name: 'Unit WBS', unit: 'Whistleblowing System (WBS)', role: 'kpi_only', status: 'Aktif', picCodes: ['WBS'] };
+  localStorage.setItem('prp_users', JSON.stringify([wbsUser]));
+  const form = store.distributeKpiForm(normalizedSections, { period: '2026', actor: adminPrp });
 
-  // Simpan draf D_5 SPI berkali-kali dan unggah bukti tanpa terkunci otomatis
-  store.saveUnitKpiDraft(form.id, spiUser, {
+  store.saveUnitKpiDraft(form.id, wbsUser, {
     values: { d_5_un: '5', d_5_tot: '10' },
-    notes: { D_5: 'Draft awal temuan SPI' },
+    notes: { D_5: '5 dari 10 rekomendasi tindak lanjut berjalan' },
   });
-  store.saveUnitKpiDraft(form.id, spiUser, {
-    values: { d_5_un: '4', d_5_tot: '10' },
-    notes: { D_5: 'Draft revisi kedua temuan SPI' },
-  });
-  const spiEv = store.addUnitEvidence(form.id, spiUser, {
+  const wbsEv = store.addUnitEvidence(form.id, wbsUser, {
     indicatorId: 'D_5',
     kind: 'file',
-    label: 'Lampiran LHP SPI',
-    fileName: 'lhp-spi.pdf',
+    label: 'Rekap Tindak Lanjut WBS',
+    fileName: 'tindak-lanjut-wbs.pdf',
     mimeType: 'application/pdf',
     fileSize: 512,
-    dataUrl: `data:application/pdf;base64,${Buffer.from('%PDF-1.4 spi').toString('base64')}`,
+    dataUrl: `data:application/pdf;base64,${Buffer.from('%PDF-1.4 wbs').toString('base64')}`,
   });
-  assert.ok(spiEv.id);
+  assert.ok(wbsEv.id);
 
-  // Simpan evaluasi real-time D_5 dengan penalti negatif (-1.25) tidak terpotong jadi 0
-  store.saveSpiIndicatorAudit(form.id, spiUser, 'D_5', {
-    unfollowedCount: '5',
-    totalRecommendations: '10',
-    auditNote: '5 dari 10 rekomendasi belum tindak lanjut',
-  });
-  const spiSub = store.readUnitSubmission(form.id, spiUser.email);
-  assert.equal(spiSub.totalScore, -1.25);
+  const wbsSub = store.submitUnitKpi(
+    form.id,
+    wbsUser,
+    { d_5_un: '5', d_5_tot: '10' },
+    { notes: { D_5: '5 dari 10 rekomendasi belum selesai' } },
+  );
+  assert.equal(wbsSub.totalScore, -1.25);
 
-  // Pastikan history snapshot tidak menyimpan salinan dataUrl base64 penuh
-  store.reviewUnitEvidence(form.id, spiUser.email, spiEv.id, 'VERIFIED', 'LHP valid', adminPrp);
-  const subWithHistory = store.readUnitSubmission(form.id, spiUser.email);
-  const snapEv = subWithHistory.history[0]?.snapshot?.evidence?.[0];
+  store.reviewUnitEvidence(form.id, wbsUser.email, wbsEv.id, 'VERIFIED', 'Dokumen WBS valid', adminPrp);
+  const subWithHistory = store.readUnitSubmission(form.id, wbsUser.email);
+  const snapEv = subWithHistory.history.at(-1)?.snapshot?.evidence?.[0];
   assert.equal(snapEv.dataUrl, undefined);
   assert.equal(snapEv.hasBinaryData, true);
 });

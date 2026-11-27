@@ -7,9 +7,10 @@
 - **Arah Visual**: *Swiss Architectural Editorial* berpadu palet resmi lambang kampus ITPLN (sayap kiri *Prussian Petrol Navy* dan sayap kanan *Electric Turquoise Teal* di atas kanvas putih bersih).
 - **Mandat Skema Warna (`R-21`)**: Aplikasi mengunci kanvas utama terang (*Light-Only Institutional Editorial Canvas*) sesuai identitas resmi dokumen akademik dan tata kelola mutu ITPLN, dengan blok jangkar gelap (*ITPLN Midnight Petrol* `#062C3D`) khusus pada penutup portal dan `Footer`.
 - **Three Dials (`R-37`)**:
-  - **ENERGY: `4 / 10`** (Tenang, otoritatif, dan berfokus pada keterbacaan tabel evaluasi kinerja tanpa pendaran lampu neon atau efek kaca berlapis).
-  - **RHYTHM: `6 / 10`** (Perpaduan ruang baca editorial yang lega pada halaman panduan publik dan grid buku besar *ledger* 1px yang padat namun terstruktur pada lembar kerja KPI/IKU).
-  - **MOTION: `3 / 10`** (Transisi fungsional singkat saat pergantian tab/halaman dan indikator progres baca; tanpa pembajakan roda gulir, tanpa tirai penutup layar penuh, tanpa kemiringan 3D, dan patuh penuh pada `prefers-reduced-motion`).
+  - `Dial: ENERGY 1 / RHYTHM 2 / MOTION 1`
+  - **ENERGY: `1` (Calm / Tenang & Otoritatif)**: Berfokus pada keterbacaan tabel evaluasi kinerja dan metrik eksekutif tanpa pendaran lampu neon, *glow*, atau efek kaca berlapis.
+  - **RHYTHM: `2` (Balanced / Terstruktur dengan Variasi Fungsional)**: Memadukan ruang baca editorial yang lega pada halaman panduan publik, ringkasan agregat eksekutif, dan grid buku besar *ledger* 1px yang padat namun rapi pada lembar kerja KPI/IKU.
+  - **MOTION: `1` (Calm / Transisi Fungsional Ringkas)**: Hanya menggunakan indikator fokus/hover dan transisi antarmuka singkat tanpa pembajakan roda gulir, tanpa tirai penutup layar penuh, tanpa kemiringan 3D, serta patuh penuh pada `prefers-reduced-motion`.
 
 ---
 
@@ -34,10 +35,12 @@ Seluruh pasangan warna telah diverifikasi menggunakan `.agents/skills/antislop-h
 ### C. 10% Aksen Energi & Interaksi Kampus ITPLN
 - `--primary` / `--ent-accent-teal`: `#0E7480` (*ITPLN Accessible Electric Teal* dari sayap kanan logo, kontras **5.49:1** terhadap `#FFFFFF` baik sebagai teks tautan di atas putih maupun latar tombol dengan teks putih)
 - `--primary-light`: `#1B9AAA` (Kontras **3.36:1** terhadap `#FFFFFF`; **hanya** untuk garis aksen non-teks, indikator fokus grafis, atau teks berukuran besar `>= 24px`, dilarang untuk teks normal)
-- **Status Semantik & Indikator Periode (Kontras Tinggi & Non-Warna Pendamping)**:
-  - Aktif / Terbuka / Disetujui (`Active` / `Approved`): Latar hijau `#15803D` dengan teks putih bold `#FFFFFF` (kontras **5.02:1** WCAG AA), border `#14532D`.
-  - Tidak Aktif / Terkunci / Ditolak (`Inactive` / `Locked` / `Rejected`): Latar merah `#B91C1C` dengan teks putih bold `#FFFFFF` (kontras **6.47:1** WCAG AA), border `#7F1D1D`.
-  - Revisi (`Revision`): Teks `#78350F` (`font-weight: 700`) di atas `#FFFBEB`, border `#B45309` (kontras border **5.02:1**).
+- **Status Semantik, Indikator Capaian, & Diferensiasi Informasi vs. Tombol**:
+  - **Diferensiasi Informasi vs. Tombol**: Elemen yang hanya bersifat informasi (status aktif/tidak aktif, periode, peran, kode PIC, status verifikasi) dilarang menggunakan *border* atau kotak kapsul yang menyerupai tombol; cukup ditampilkan sebagai **teks tebal berwarna tematik** berpendamping label teks eksplisit.
+  - **Ambang Batas Pewarnaan Capaian/Skor (Tidak Dikunci di 100%)**:
+    - **Hijau (`>= 100%`, Tercapai)**: Teks tebal `#166534` (kontras **7.13:1** di atas `#FFFFFF` dan **6.79:1** di atas `#F7FAFB`, lulus WCAG AA). Persentase riil bebas melampaui `100%` (misal `114%`) sesuai hasil perhitungan aktual.
+    - **Kuning (`90% - 99%`, Perhatian)**: Teks tebal `#92400E` (kontras **7.02:1** di atas `#FFFFFF` dan **6.68:1** di atas `#F7FAFB`, lulus WCAG AA).
+    - **Merah (`< 90%`, Di Bawah Target / Tidak Aktif / Ditolak)**: Teks tebal `#B91C1C` (kontras **6.47:1** di atas `#FFFFFF` dan **6.16:1** di atas `#F7FAFB`, lulus WCAG AA).
 
 ---
 
@@ -54,7 +57,7 @@ Seluruh pasangan warna telah diverifikasi menggunakan `.agents/skills/antislop-h
 - **Radius Sudut (`R-11`)**: Tegas dan arsitektural (`4px` untuk badge/tag kode, `6px` untuk tombol & input, `8px` untuk panel kerja, header navigasi, & kartu data). Dilarang menggunakan kartu gelembung `20px-32px` atau header berbentuk pil `9999px`.
 - **Bayangan & Border (`R-12`, `R-13`)**: Bayangan netral tipis (`rgba(7, 37, 52, 0.05..0.12)`). Dilarang menggunakan *colored glow shadow* pada tombol/badge dan dilarang memasang garis tepi kiri berwarna (`border-left: 3px/4px`) pada kartu non-status.
 - **Batas `backdrop-filter` (`R-10`)**: Maksimal **1 elemen per tampilan** (hanya untuk bilah navigasi `Navbar` di rute publik, atau 1 lapisan *scrim* dialog modal aktif di rute internal). Tombol CTA, bar pencarian, dan kartu biasa wajib menggunakan permukaan solid tanpa `backdrop-filter` dan tanpa kanvas spekular tambahan.
-- **Ikonografi & Alasan Pemilihan (`R-04`, `R-08`, `R-31`)**: Menggunakan `lucide-react` (`strokeWidth: 1.75` s.d. `2`) karena ketebalan garisnya konsisten dengan *hairline* tabel buku besar `1px`. Ikon hanya dipakai sebagai penanda fungsi (kunci otoritas, pencarian, unduh berkas, status verifikasi). Dilarang menambahkan ikon panah dekoratif (`ArrowRight` / `ArrowUpRight`) berulang pada tombol/kartu navigasi biasa, dan dilarang menambahkan titik status (`::before`) pada badge metadata statis.
+- **Standarisasi Tombol Aksi & Ikonografi (`R-04`, `R-08`, `R-31`)**: Menggunakan `lucide-react` (`strokeWidth: 1.75` s.d. `2`) karena ketebalan garisnya konsisten dengan *hairline* tabel buku besar `1px`. Setiap tombol yang memicu aksi (*action button*) wajib menyertakan ikon fungsional yang relevan (simpan, kirim, unduh, tambah, pratinjau, kunci, saring, masuk) agar berbeda tegas dari teks informasi biasa. Dilarang memasang panah dekoratif (`ArrowRight` / `ArrowUpRight`) secara seragam pada setiap tombol biasa, dan dilarang menambahkan kotak/border menyerupai tombol pada label informasi statis.
 
 ---
 
@@ -71,4 +74,4 @@ Seluruh pasangan warna telah diverifikasi menggunakan `.agents/skills/antislop-h
   - Seluruh animasi wajib menghormati `@media (prefers-reduced-motion: reduce)`.
 - **Disiplin Copy & Kejujuran Klaim (`R-02`, `R-16`, `R-17`, `R-28`, `R-36`, `R-38`)**:
   - **Nol Em Dash (`R-02`)**: Dilarang menggunakan karakter `\u2014` di seluruh teks UI, kode, komentar, maupun dokumen.
-  - **Kejujuran Arsitektur & Metrik**: Jangan mengklaim integrasi SSO eksternal apabila autentikasi menggunakan sesi kredensial institusi lokal/SQLite, jangan mengklaim `"100% Integritas Audit"` tanpa rujukan terukur, dan bedakan secara jujur antara status `"Tercatat di Outbox Audit"` dengan `"Terkirim via Gateway Email"`. Sebutkan secara akurat **5 Peran Otoritas** (`Superadmin PRP`, `Peran Ganda / Dual`, `Otoritas IKU`, `PIC Unit KPI`, dan `Auditor SPI`).
+  - **Kejujuran Arsitektur & Metrik**: Jangan mengklaim integrasi SSO eksternal apabila autentikasi menggunakan sesi kredensial institusi lokal/SQLite, jangan mengklaim `"100% Integritas Audit"` tanpa rujukan terukur, dan bedakan secara jujur antara status `"Tercatat di Outbox Audit"` dengan `"Terkirim via Gateway Email"`. Sebutkan secara akurat struktur akses per **Unit Kerja** dengan pemisahan **PIC Utama** (penanggung jawab input tunggal) dan **Co-PIC** (kolaborasi informasi), serta peran **Verifikasi SPI** yang bersifat *strict Read-Only* dan ekspor/unduh bukti dukung.

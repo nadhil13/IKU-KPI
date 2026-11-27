@@ -80,11 +80,12 @@
 .kpi-designer-page button.has-error .badge.warn { background: var(--warn); }
 
 .kpi-designer-page .designer-weight {
-  display: inline-flex; align-items: center; gap: .3rem; padding: .24rem .6rem;
-  border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: .71rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: .3rem; padding: 0 .2rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: .74rem; font-weight: 700;
+  background: transparent; border: 0;
 }
-.kpi-designer-page .designer-weight.ok { background: #F0FDF4; border: 1px solid #86EFAC; color: #14532D; }
-.kpi-designer-page .designer-weight.warn { background: #FFFBEB; border: 1px solid #FCD34D; color: var(--warn); }
+.kpi-designer-page .designer-weight.ok { color: #166534; }
+.kpi-designer-page .designer-weight.warn { color: var(--warn); }
 
 .kpi-designer-page button.fix {
   margin-left: .4rem; min-height: 28px; padding: .15rem .5rem; border: 1px dashed currentColor; border-radius: 6px;
@@ -117,7 +118,7 @@
 }
 
 .kpi-designer-page .formula-bar {
-  position: sticky; top: 0; z-index: 5; display: grid; gap: .45rem;
+  position: relative; z-index: 5; display: grid; gap: .45rem;
   padding: .65rem .85rem; border-bottom: 1px solid var(--line-strong); background: var(--head);
 }
 .kpi-designer-page .formula-bar.picking { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--focus-ring); }
@@ -423,7 +424,7 @@
 .kpi-designer-page .rule-guide strong { color: #072534; }
 
 .kpi-designer-page .designer-preview { padding: 1rem; overflow-x: auto; min-width: 0; max-width: 100%; }
-.kpi-designer-page .designer-sim-banner { padding: .55rem .75rem; border-radius: 6px; background: #FFFBEB; border: 1px solid #FCD34D; color: var(--warn); font-size: .74rem; font-weight: 800; }
+.kpi-designer-page .designer-sim-banner { padding: .25rem 0 .6rem; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--warn); font-size: .76rem; font-weight: 800; }
 
 @media (max-width: 1360px) {
   .kpi-designer-page .designer-layout.with-panel { grid-template-columns: minmax(0, 1fr); }

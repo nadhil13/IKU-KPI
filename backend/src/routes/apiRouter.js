@@ -34,7 +34,6 @@ import {
   readAllKvStores,
   writeKvStore,
   readSpiAuditRecords,
-  upsertSpiAuditRecord,
   appendAuditLog,
   listAuditLogs,
   verifyAuditChain,
@@ -259,6 +258,14 @@ export async function handleApiRequest(req, res) {
       }
 
       clearLoginFailures(ip, email);
+      const sysCfgOnLogin = readKvStore('prp_system_config', {}).value || {};
+      if (sysCfgOnLogin.maintenanceMode && authResult.user.role !== 'superadmin_prp') {
+        sendJson(res, 503, {
+          ok: false,
+          error: 'Sistem sedang dalam pemeliharaan. Hanya Superadmin PRP yang dapat masuk.',
+        });
+        return true;
+      }
       const { token, payload } = signAccessToken(authResult.user);
       createSessionRecord({
         jti: payload.jti,
@@ -384,6 +391,13 @@ export async function handleApiRequest(req, res) {
       }
       if (safeStores.prp_kpi_distribution_v1) {
         safeStores.prp_kpi_distribution_v1 = filterKpiWorkflowForCaller(safeStores.prp_kpi_distribution_v1, caller);
+      }
+      if (Array.isArray(safeStores.prp_iku_submissions_v1) && !['superadmin_prp', 'spi'].includes(caller.role)) {
+        safeStores.prp_iku_submissions_v1 = caller.role === 'kpi_only'
+          ? []
+          : safeStores.prp_iku_submissions_v1.filter(
+              (r) => String(r?.owner || r?.ownerEmail || '').toLowerCase() === caller.email.toLowerCase(),
+            );
       }
       if (['superadmin_prp', 'spi'].includes(caller.role)) {
         safeStores.prp_spi_audit_v1 = readSpiAuditRecords();
@@ -560,155 +574,18 @@ export async function handleApiRequest(req, res) {
     if (pathname === '/api/v1/spi/audit' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
       if (!caller) {
-        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk menyimpan catatan audit SPI.' });
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan.' });
         return true;
       }
-      if (caller.role !== 'spi') {
-        appendAuditLog(
-          'SECURITY_VIOLATION',
-          `Percobaan pengisian form/kolom khusus SPI oleh peran ${caller.role} (${caller.email}) ditolak.`,
-          caller.email,
-          ip,
-        );
-        sendJson(res, 403, {
-          ok: false,
-          error: 'Akses ditolak: Hanya akun Auditor SPI yang berhak mengisi bagian/kolom khusus milik SPI.',
-        });
-        return true;
-      }
-      const body = await readJsonBody(req);
-      const itemKeys = Object.keys(body.items || {});
-      const invalidKeys = itemKeys.filter((k) => k !== 'D_5');
-      if (invalidKeys.length > 0) {
-        appendAuditLog(
-          'SECURITY_VIOLATION',
-          `Percobaan pengisian indikator ${invalidKeys.join(', ')} di luar Bagian D.5 oleh SPI (${caller.email}) ditolak.`,
-          caller.email,
-          ip,
-        );
-        sendJson(res, 403, {
-          ok: false,
-          error: 'Akses ditolak: Akun SPI hanya dapat mengisi Bagian D No. 5: Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS).',
-        });
-        return true;
-      }
-
-      const clientId = String(req.headers?.['x-client-id'] || body.clientId || '');
-      const formId = String(body.formId || 'global').trim();
-      const savedEntry = upsertSpiAuditRecord(formId, body, caller.email, ip);
-      if (!savedEntry) {
-        sendJson(res, 400, { ok: false, error: 'Identitas formulir audit SPI tidak valid.' });
-        return true;
-      }
-      const fullSpiAudit = readSpiAuditRecords();
-
-      // Sinkronkan juga isian Bagian D.5 milik SPI ke prp_kpi_distribution_v1 secara real-time (terisolasi khusus D_5)
-      let latestDist = readKvStore('prp_kpi_distribution_v1', null).value;
-      const d5Item = savedEntry?.items?.D_5 || null;
-      if (d5Item && formId && formId !== 'global') {
-        const currentDist = latestDist || {
-          forms: [],
-          submissions: {},
-          evidence: {},
-          drafts: {},
-          adminOverrides: {},
-          revisions: {},
-        };
-        const spiSubKey = `${formId}:${caller.email.toLowerCase()}`;
-        const prevSub = currentDist.submissions?.[spiSubKey] || null;
-        const prevDraft = currentDist.drafts?.[spiSubKey] || null;
-        const unVal = d5Item.unfollowedCount !== undefined ? String(d5Item.unfollowedCount) : (prevDraft?.values?.d_5_un ?? prevSub?.values?.d_5_un ?? '');
-        const totVal = d5Item.totalRecommendations !== undefined ? String(d5Item.totalRecommendations) : (prevDraft?.values?.d_5_tot ?? prevSub?.values?.d_5_tot ?? '');
-        const noteText = d5Item.auditNote !== undefined ? String(d5Item.auditNote) : (prevDraft?.notes?.D_5 ?? prevSub?.notes?.D_5 ?? '');
-        const unNum = Number(unVal);
-        const totNum = Number(totVal);
-        const hasValidNums = String(unVal).trim() !== '' && String(totVal).trim() !== '' && Number.isFinite(unNum) && Number.isFinite(totNum) && totNum > 0;
-        const unRatio = hasValidNums ? Math.min(1, Math.max(0, unNum / totNum)) : 0;
-
-        const targetForm = (currentDist.forms || []).find((f) => String(f?.id) === formId);
-        let d5Weight = -2.5;
-        if (targetForm && Array.isArray(targetForm.sections)) {
-          for (const sec of targetForm.sections) {
-            const d5Config = (sec.items || []).find((it) => it?.id === 'D_5');
-            if (d5Config && Number.isFinite(Number(d5Config.weight))) {
-              d5Weight = Number(d5Config.weight);
-              break;
-            }
-          }
-        }
-        const weightedD5 = hasValidNums ? Number((unRatio * d5Weight).toFixed(4)) : 0;
-        const isDraftMode = Boolean(body.isDraft || d5Item.isDraft || d5Item.status === 'DRAFT');
-
-        const nextDist = {
-          ...currentDist,
-          submissions: { ...(currentDist.submissions || {}) },
-          drafts: { ...(currentDist.drafts || {}) },
-          evidence: { ...(currentDist.evidence || {}) },
-        };
-
-        if (isDraftMode && (!prevSub || prevSub.status === 'DRAFT' || prevSub.status === 'REVISION_REQUESTED')) {
-          nextDist.drafts[spiSubKey] = {
-            ...(prevDraft || {}),
-            formId,
-            email: caller.email.toLowerCase(),
-            unit: caller.unit || 'Satuan Pengawasan Intern (SPI)',
-            picCodes: ['SPI'],
-            values: {
-              d_5_un: unVal,
-              d_5_tot: totVal,
-            },
-            notes: noteText ? { D_5: noteText } : {},
-            updatedAt: new Date().toISOString(),
-          };
-        } else {
-          const nextSpiSub = {
-            ...(prevSub || {}),
-            formId,
-            email: caller.email.toLowerCase(),
-            unit: caller.unit || 'Satuan Pengawasan Intern (SPI)',
-            picCodes: ['SPI'],
-            assignedIndicatorIds: ['D_5'],
-            values: {
-              d_5_un: unVal,
-              d_5_tot: totVal,
-            },
-            notes: noteText ? { D_5: noteText } : {},
-            status: prevSub?.status && prevSub.status !== 'DRAFT' ? prevSub.status : 'SUBMITTED',
-            submittedAt: new Date().toISOString(),
-            sectionScores: [{ code: 'D', title: 'PERSPEKTIF KEPATUHAN (COMPLIANCE)', score: weightedD5 }],
-            totalScore: weightedD5,
-          };
-          nextDist.submissions[spiSubKey] = nextSpiSub;
-        }
-
-        if (Array.isArray(d5Item.evidenceList)) {
-          nextDist.evidence[spiSubKey] = d5Item.evidenceList.filter((ev) => ev && ev.indicatorId === 'D_5');
-        }
-        writeKvStore('prp_kpi_distribution_v1', nextDist, caller.email);
-        latestDist = nextDist;
-      }
-
-      const updatedStoresPayload = { prp_spi_audit_v1: fullSpiAudit };
-      const updatedKeysList = ['prp_spi_audit_v1'];
-      if (latestDist) {
-        updatedStoresPayload.prp_kpi_distribution_v1 = latestDist;
-        updatedKeysList.push('prp_kpi_distribution_v1');
-      }
-
-      publishRealtimeEvent('state:updated', {
-        updatedKeys: updatedKeysList,
-        actor: { email: caller.email, name: caller.name, role: caller.role, picCodes: caller.picCodes },
-        originClientId: clientId,
-        stores: updatedStoresPayload,
-        audit: listAuditLogs(80),
-        at: new Date().toISOString(),
-      });
-
-      sendJson(res, 200, {
-        ok: true,
-        record: savedEntry,
-        spiAudit: fullSpiAudit,
-        serverTime: new Date().toISOString(),
+      appendAuditLog(
+        'SECURITY_VIOLATION',
+        `Percobaan penulisan evaluasi/umpan balik SPI oleh ${caller.email} (${caller.role}) ditolak karena kebijakan Read-Only SPI.`,
+        caller.email,
+        ip,
+      );
+      sendJson(res, 403, {
+        ok: false,
+        error: 'Akses ditolak: Akun Verifikasi SPI bersifat ketat Hanya Lihat (Read-Only) tanpa wewenang mengedit data, mengubah status, maupun mengisi umpan balik.',
       });
       return true;
     }
@@ -720,44 +597,35 @@ export async function handleApiRequest(req, res) {
         return true;
       }
 
+      if (caller.role === 'spi') {
+        appendAuditLog(
+          'SECURITY_VIOLATION',
+          `Percobaan mutasi data oleh akun Verifikasi SPI (${caller.email}) ditolak (Read-Only).`,
+          caller.email,
+          ip,
+        );
+        sendJson(res, 403, {
+          ok: false,
+          error: 'Akun Verifikasi SPI bersifat ketat Hanya Lihat (Read-Only) tanpa wewenang mengedit data, mengubah status, maupun mengisi umpan balik.',
+        });
+        return true;
+      }
+
+      const sysCfgOnPush = readKvStore('prp_system_config', {}).value || {};
+      if (sysCfgOnPush.maintenanceMode && caller.role !== 'superadmin_prp') {
+        sendJson(res, 503, {
+          ok: false,
+          error: 'Sistem sedang dalam pemeliharaan; penyimpanan perubahan sementara dinonaktifkan.',
+        });
+        return true;
+      }
+
       const body = await readJsonBody(req);
       const incomingStores = body.stores && typeof body.stores === 'object' ? body.stores : {};
       const expectedVersions = body.expectedVersions && typeof body.expectedVersions === 'object' ? body.expectedVersions : {};
       const clientId = String(req.headers?.['x-client-id'] || body.clientId || '');
       const updatedKeys = [];
       const pendingPushNotifications = [];
-
-      if (caller.role === 'spi') {
-        const storeKeys = Object.keys(incomingStores);
-        const spiEmailSuffix = `:${caller.email.toLowerCase()}`;
-        const hasValidSpiDist = (() => {
-          const dist = incomingStores.prp_kpi_distribution_v1;
-          if (!dist || typeof dist !== 'object') return false;
-          const allEntryKeys = [
-            ...Object.keys(dist.drafts || {}),
-            ...Object.keys(dist.submissions || {}),
-            ...Object.keys(dist.evidence || {}),
-          ];
-          return allEntryKeys.some((k) => k.toLowerCase().endsWith(spiEmailSuffix));
-        })();
-        const isAllowedForSpi = storeKeys.length > 0 && storeKeys.every(
-          (k) => k === 'prp_spi_audit_v1' || (k === 'prp_kpi_distribution_v1' && hasValidSpiDist),
-        );
-        if (!isAllowedForSpi) {
-          const attemptedKeys = storeKeys.join(', ') || 'state';
-          appendAuditLog(
-            'SECURITY_VIOLATION',
-            `Percobaan ubah data ${attemptedKeys} di luar cakupan SPI oleh akun Auditor SPI (${caller.email})`,
-            caller.email,
-            ip,
-          );
-          sendJson(res, 403, {
-            ok: false,
-            error: 'Akun Auditor SPI hanya dapat mengisi bagian/kolom audit khusus miliknya sendiri (Bagian D.5) dan dilarang mengubah data Renbang maupun unit lain.',
-          });
-          return true;
-        }
-      }
 
       const db = getDatabase();
       db.exec('SAVEPOINT sp_sync_push');
@@ -766,47 +634,13 @@ export async function handleApiRequest(req, res) {
           if (!ALLOWED_SYNC_KEYS.has(storeKey)) continue;
 
           if (storeKey === 'prp_spi_audit_v1') {
-            if (caller.role !== 'spi') {
-              db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
-              db.exec('RELEASE SAVEPOINT sp_sync_push');
-              appendAuditLog(
-                'SECURITY_VIOLATION',
-                `Percobaan tulis bagian khusus SPI (prp_spi_audit_v1) oleh non-SPI (${caller.email})`,
-                caller.email,
-                ip,
-              );
-              sendJson(res, 403, {
-                ok: false,
-                error: 'Akses ditolak: Hanya akun Auditor SPI yang berhak mengisi bagian/kolom khusus SPI.',
-              });
-              return true;
-            }
-            const byForm = (incomingVal?.records && typeof incomingVal.records === 'object'
-              ? incomingVal.records
-              : incomingVal?.byForm) || {};
-            for (const [fId, formEntry] of Object.entries(byForm)) {
-              if (fId && formEntry && typeof formEntry === 'object') {
-                const invalidKeys = Object.keys(formEntry.items || {}).filter((k) => k !== 'D_5');
-                if (invalidKeys.length > 0) {
-                  db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
-                  db.exec('RELEASE SAVEPOINT sp_sync_push');
-                  appendAuditLog(
-                    'SECURITY_VIOLATION',
-                    `Percobaan pengisian indikator ${invalidKeys.join(', ')} di luar Bagian D.5 melalui sync/push oleh SPI (${caller.email}) ditolak.`,
-                    caller.email,
-                    ip,
-                  );
-                  sendJson(res, 403, {
-                    ok: false,
-                    error: 'Akses ditolak: Akun SPI hanya dapat mengisi Bagian D No. 5: Tindaklanjut Rekomendasi Audit & Temuan (SPI, PJM, KAP, WBS).',
-                  });
-                  return true;
-                }
-                upsertSpiAuditRecord(fId, formEntry, caller.email, ip);
-              }
-            }
-            updatedKeys.push('prp_spi_audit_v1');
-            continue;
+            db.exec('ROLLBACK TO SAVEPOINT sp_sync_push');
+            db.exec('RELEASE SAVEPOINT sp_sync_push');
+            sendJson(res, 403, {
+              ok: false,
+              error: 'Akses ditolak: Catatan audit SPI bersifat Hanya Lihat (Read-Only).',
+            });
+            return true;
           }
 
           if (storeKey === 'prp_notifications_v1' || storeKey === 'prp_email_outbox_v1') {
@@ -913,7 +747,7 @@ export async function handleApiRequest(req, res) {
                 updatedKeys.push(storeKey);
                 appendAuditLog('KPI_WORKFLOW_PRP', `Sinkronisasi workflow KPI oleh Superadmin PRP (v${result.version})`, caller.email, ip);
               }
-            } else if (caller.role === 'kpi_only' || caller.role === 'dual' || caller.role === 'spi') {
+            } else if (caller.role === 'kpi_only' || caller.role === 'dual') {
               const existing = readKvStore(storeKey, null).value;
               const merged = validateAndMergeKpiWorkflowForUnit(existing, incomingVal, caller, ip);
               const result = writeKvStore(storeKey, merged, caller.email);
@@ -1028,6 +862,10 @@ export async function handleApiRequest(req, res) {
 
     if (pathname === '/api/v1/broadcasts' && req.method === 'GET') {
       const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk memuat daftar siaran.' });
+        return true;
+      }
       const list = listBroadcastsForUser(caller);
       sendJson(res, 200, { ok: true, broadcasts: list });
       return true;
@@ -1190,9 +1028,13 @@ export async function handleApiRequest(req, res) {
 
     if (pathname === '/api/v1/push/unsubscribe' && req.method === 'POST') {
       const caller = resolveAuthenticatedUser(req, urlObj);
+      if (!caller) {
+        sendJson(res, 401, { ok: false, error: 'Autentikasi diperlukan untuk membatalkan langganan Web Push.' });
+        return true;
+      }
       const body = await readJsonBody(req);
       const endpoint = String(body?.endpoint || body?.subscription?.endpoint || '').trim();
-      const removed = removePushSubscription(endpoint, caller?.email || 'client_unsubscribe');
+      const removed = removePushSubscription(endpoint, caller.email);
       sendJson(res, 200, { ok: true, removed });
       return true;
     }

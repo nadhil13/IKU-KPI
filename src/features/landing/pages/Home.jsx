@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Compass, Layers, LogIn } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -11,8 +11,8 @@ gsap.registerPlugin(ScrollTrigger);
 const CORPORATE_PILLARS = [
   { idx: '01', target: 8, suffix: '', pad: true, label: 'Indikator Makro IKU', sub: 'Standar Kepmendikbudristek No. 210/M/2023' },
   { idx: '02', target: 4, suffix: '', pad: true, label: 'Perspektif KPI Unit', sub: 'Keberlanjutan · Mahasiswa · Bisnis · Kepatuhan' },
-  { idx: '03', target: 5, suffix: '', pad: true, label: 'Peran Otoritas Sistem', sub: 'Superadmin PRP · Peran Ganda · IKU · PIC KPI · Auditor SPI' },
-  { idx: '04', target: 20, suffix: '', pad: true, label: 'Akun Unit & Biro Terdaftar', sub: 'Pemetaan kode PIC per baris indikator & rantai audit SHA-256' },
+  { idx: '03', target: 4, suffix: '', pad: true, label: 'Peran Otoritas Sistem', sub: 'Superadmin PRP · Unit IKU · PIC Utama KPI · Verifikasi SPI' },
+  { idx: '04', target: 19, suffix: '', pad: true, label: 'Akun Unit Kerja Terdaftar', sub: 'Pemetaan 1 PIC Utama & Co-PIC per indikator + rantai audit SHA-256' },
 ];
 
 const EDITORIAL_INDEX = [
@@ -573,7 +573,7 @@ export default function Home() {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.85rem',
+                  gap: '0.65rem',
                   minHeight: '46px',
                   background: '#ffffff',
                   color: '#072534',
@@ -587,7 +587,8 @@ export default function Home() {
                   border: '1px solid #ffffff',
                 }}
               >
-                Masuk Ruang Kerja
+                <LogIn size={16} aria-hidden="true" />
+                <span>Masuk Ruang Kerja</span>
               </Link>
 
               <Link
@@ -619,7 +620,8 @@ export default function Home() {
                   e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.45)';
                 }}
               >
-                Kerangka Strategis
+                <Compass size={16} aria-hidden="true" />
+                <span>Kerangka Strategis</span>
               </Link>
             </div>
           </div>
@@ -728,9 +730,9 @@ export default function Home() {
                     <div style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.66rem', fontWeight: 700, color: '#B8D4E0' }}>{row.code}</div>
                     <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#FFFFFF', marginTop: '2px' }}>{row.label}</div>
                   </div>
-                  <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: '4px', background: '#062C3D', color: '#E2F1F7', border: '1px solid #1B9AAA' }}>
+                  <strong style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.72rem', fontWeight: 800, color: '#B8D4E0', letterSpacing: '0.03em' }}>
                     {row.target}
-                  </span>
+                  </strong>
                 </div>
               ))}
             </div>
@@ -777,7 +779,8 @@ export default function Home() {
             </p>
 
             <Link to="/iku-list" className="arch-inline-cta">
-              Buka Katalog 8 Indikator IKU
+              <Layers size={15} aria-hidden="true" />
+              <span>Buka Katalog 8 Indikator IKU</span>
             </Link>
           </div>
         </div>
@@ -852,7 +855,8 @@ export default function Home() {
             </p>
 
             <Link to="/guide" className="arch-inline-cta">
-              Baca Prosedur Evaluasi KPI
+              <BookOpen size={15} aria-hidden="true" />
+              <span>Baca Prosedur Evaluasi KPI</span>
             </Link>
           </div>
         </div>
@@ -1061,7 +1065,7 @@ export default function Home() {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '0.85rem',
+                gap: '0.65rem',
                 minHeight: '46px',
                 background: '#ffffff',
                 color: '#072534',
@@ -1084,6 +1088,7 @@ export default function Home() {
                 e.currentTarget.style.background = '#ffffff';
               }}
             >
+              <LogIn size={16} aria-hidden="true" />
               <span>Masuk Sistem</span>
             </Link>
 
@@ -1091,12 +1096,12 @@ export default function Home() {
               style={{
                 fontFamily: 'var(--ent-mono)',
                 fontSize: '0.64rem',
-                fontWeight: 600,
+                fontWeight: 700,
                 letterSpacing: '0.1em',
                 color: '#C5DEE8',
               }}
             >
-              5 PERAN OTORITAS · RANTAI AUDIT SHA-256
+              19 UNIT KERJA · RANTAI AUDIT SHA-256
             </div>
           </div>
         </div>

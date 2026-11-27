@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleApiRequest } from './routes/apiRouter.js';
 import { getDatabase, closeDatabase } from './services/database.js';
+import { closeAllSseClients } from './services/realtimeHub.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../dist');
@@ -180,6 +181,7 @@ if (isDirectRun) {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[PERFORMA-BACKEND] Menerima sinyal ${signal}, menutup server dan melakukan checkpoint SQLite WAL...`);
+    closeAllSseClients();
     server.close(() => {
       closeDatabase();
       process.exit(0);

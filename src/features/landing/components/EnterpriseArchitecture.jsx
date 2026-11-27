@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from 'react';
-import { Lock, Pencil, ShieldCheck } from 'lucide-react';
+import { Layers, Lock, Pencil, ShieldCheck } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -429,6 +429,9 @@ export default function EnterpriseArchitecture() {
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem' }}>
                     <span
                       style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
                         fontFamily: 'var(--ent-mono)',
                         fontSize: '0.82rem',
                         fontWeight: 700,
@@ -436,6 +439,7 @@ export default function EnterpriseArchitecture() {
                         color: isActive ? '#0E7480' : '#475569',
                       }}
                     >
+                      <Layers size={14} aria-hidden="true" />
                       {item.id}
                     </span>
 
@@ -454,16 +458,13 @@ export default function EnterpriseArchitecture() {
                           {item.title}
                         </h3>
 
-                        <span
+                        <strong
                           style={{
                             fontFamily: 'var(--ent-mono)',
-                            fontSize: '0.6rem',
-                            fontWeight: 700,
+                            fontSize: '0.64rem',
+                            fontWeight: 800,
                             letterSpacing: '0.08em',
-                            padding: '0.2rem 0.55rem',
-                            borderRadius: '4px',
-                            background: '#094E68',
-                            color: '#ffffff',
+                            color: '#094E68',
                             opacity: isActive ? 1 : 0,
                             transform: isActive ? 'translateX(0)' : 'translateX(-6px)',
                             transition: 'opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -471,7 +472,7 @@ export default function EnterpriseArchitecture() {
                           }}
                         >
                           {item.tag}
-                        </span>
+                        </strong>
                       </div>
 
                       <div
@@ -669,24 +670,20 @@ export default function EnterpriseArchitecture() {
                   </span>
                 </div>
 
-                <span
+                <strong
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.35rem',
                     fontFamily: 'var(--ent-mono)',
-                    fontSize: '0.63rem',
-                    fontWeight: 700,
-                    padding: '0.22rem 0.58rem',
-                    borderRadius: '4px',
-                    background: current.iku.unlocked ? '#094E68' : '#EDF3F6',
-                    border: current.iku.unlocked ? '1px solid #1B9AAA' : '1px solid #64748B',
-                    color: current.iku.unlocked ? '#ffffff' : '#334155',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    color: current.iku.unlocked ? '#B8D4E0' : '#475569',
                   }}
                 >
                   {renderBadgeIcon(current.iku.mode)}
                   {current.iku.mode}
-                </span>
+                </strong>
               </div>
 
               <div className="plane-anim-content" style={{ marginBottom: '0.85rem' }}>
@@ -751,24 +748,20 @@ export default function EnterpriseArchitecture() {
                   </span>
                 </div>
 
-                <span
+                <strong
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.35rem',
                     fontFamily: 'var(--ent-mono)',
-                    fontSize: '0.63rem',
-                    fontWeight: 700,
-                    padding: '0.22rem 0.58rem',
-                    borderRadius: '4px',
-                    background: current.kpi.unlocked ? '#094E68' : '#EDF3F6',
-                    border: current.kpi.unlocked ? '1px solid #1B9AAA' : '1px solid #64748B',
-                    color: current.kpi.unlocked ? '#ffffff' : '#334155',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    color: current.kpi.unlocked ? '#B8D4E0' : '#475569',
                   }}
                 >
                   {renderBadgeIcon(current.kpi.mode)}
                   {current.kpi.mode}
-                </span>
+                </strong>
               </div>
 
               <div className="plane-anim-content" style={{ marginBottom: '0.85rem' }}>
@@ -869,6 +862,10 @@ export default function EnterpriseArchitecture() {
                 aria-pressed={activeIdx === i}
                 onClick={() => handleSelectRole(i)}
                 style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.32rem',
                   border: activeIdx === i ? '1px solid #094E68' : '1px solid #BFD2DC',
                   cursor: 'pointer',
                   minWidth: '44px',
@@ -883,7 +880,8 @@ export default function EnterpriseArchitecture() {
                   transition: 'background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease',
                 }}
               >
-                {r.id}
+                <Layers size={13} aria-hidden="true" />
+                <span>{r.id}</span>
               </button>
             ))}
           </div>

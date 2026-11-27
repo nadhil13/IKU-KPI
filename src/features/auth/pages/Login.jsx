@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
-  ArrowRight,
-  ArrowUpRight,
+  Building2,
+  Layers,
   Lock,
+  LogIn,
   ShieldCheck,
   Check,
   AlertCircle,
@@ -15,12 +16,6 @@ import { useGSAP } from '@gsap/react';
 import { readMergedUsers } from '../authAccounts';
 import { useAuth } from '../hooks/useAuth';
 import { requestOsNotificationPermission } from '../../../lib/pwaNotifications';
-
-const CAMERA_PRESETS = [
-  { scale: 1.05, xPercent: -1.5, yPercent: -1.0 },
-  { scale: 1.08, xPercent: 0.0, yPercent: 0.5 },
-  { scale: 1.11, xPercent: 1.5, yPercent: -0.5 },
-];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -39,14 +34,20 @@ export default function Login() {
     };
   }, []);
 
-  const allAccounts = useMemo(() => {
+  const unitAccounts = useMemo(() => {
     void usersRevision;
     return readMergedUsers().filter((acc) => acc.status !== 'Nonaktif');
   }, [usersRevision]);
-  const kpiAccounts = useMemo(() => allAccounts.filter((acc) => acc.role === 'kpi_only' || acc.role === 'dual' || acc.role === 'spi'), [allAccounts]);
 
-  const [selectedIdx, setSelectedIdx] = useState(2);
-  const [email, setEmail] = useState(mockAccounts[2].email);
+  const defaultAccount = useMemo(
+    () =>
+      unitAccounts.find((acc) => acc.email.toLowerCase() === 'admin@itpln.ac.id')
+      || unitAccounts[0]
+      || mockAccounts[0],
+    [unitAccounts, mockAccounts],
+  );
+
+  const [email, setEmail] = useState(() => defaultAccount?.email || 'admin@itpln.ac.id');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -59,164 +60,101 @@ export default function Login() {
   const containerRef = useRef(null);
   const bgPhotoRef = useRef(null);
   const hudCardRef = useRef(null);
-  const pillIndicatorRef = useRef(null);
-  const scrollProgressRef = useRef(null);
   const formStageRef = useRef(null);
   const gateStageRef = useRef(null);
   const svgLineIkuRef = useRef(null);
   const svgLineKpiRef = useRef(null);
 
-  const matchedByEmail = allAccounts.find((acc) => acc.email.toLowerCase() === email.trim().toLowerCase());
-  const activeAccount = matchedByEmail || mockAccounts[selectedIdx] || mockAccounts[2];
-
-  const primaryTabIndex = activeAccount.role === 'iku_only'
-    ? 0
-    : activeAccount.role === 'kpi_only' || activeAccount.role === 'spi' || (activeAccount.role === 'dual' && selectedIdx === 1)
-      ? 1
-      : 2;
+  const matchedByEmail = unitAccounts.find(
+    (acc) => acc.email.toLowerCase() === email.trim().toLowerCase(),
+  );
+  const activeAccount = matchedByEmail || defaultAccount;
 
   const isIkuActive =
     step === 'workspace_gate' && hoveredGate
       ? hoveredGate === 'iku'
-      : activeAccount.role === 'iku_only' || ['dual', 'superadmin_prp'].includes(activeAccount.role);
+      : activeAccount.role === 'iku_only'
+        || activeAccount.role === 'spi'
+        || ['dual', 'superadmin_prp'].includes(activeAccount.role);
 
   const isKpiActive =
     step === 'workspace_gate' && hoveredGate
       ? hoveredGate === 'kpi'
-      : activeAccount.role === 'kpi_only' || activeAccount.role === 'spi' || ['dual', 'superadmin_prp'].includes(activeAccount.role);
+      : activeAccount.role === 'kpi_only'
+        || activeAccount.role === 'spi'
+        || ['dual', 'superadmin_prp'].includes(activeAccount.role);
 
-  const handleSelectScenario = useCallback(
-    (tabIdx) => {
-      if (tabIdx < 0 || tabIdx > 2) return;
-      const baseAcc = mockAccounts[tabIdx];
-      if (!baseAcc) return;
-      const mergedAcc = allAccounts.find((acc) => acc.email.toLowerCase() === baseAcc.email.toLowerCase()) || baseAcc;
-      setSelectedIdx(tabIdx);
-      setEmail(mergedAcc.email);
-      setPassword('');
-      setErrorMessage('');
-    },
-    [allAccounts, mockAccounts],
-  );
-
-  const handleSelectKpiUnitAccount = (targetEmail) => {
-    const found = allAccounts.find((acc) => acc.email.toLowerCase() === targetEmail.toLowerCase());
+  const handleSelectUnitWorkAccount = (targetEmail) => {
+    const found = unitAccounts.find((acc) => acc.email.toLowerCase() === targetEmail.toLowerCase());
     if (!found) return;
-    setSelectedIdx(1);
     setEmail(found.email);
     setPassword('');
     setErrorMessage('');
   };
 
-  useGSAP(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return undefined;
-    }
+  useGSAP(
+    () => {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        return undefined;
+      }
 
-    const tl = gsap.timeline();
+      const tl = gsap.timeline();
+      tl.fromTo(
+        '.login-left-pane',
+        { clipPath: 'inset(0 100% 0 0)' },
+        { clipPath: 'inset(0 0% 0 0)', duration: 0.9, ease: 'expo.inOut' },
+      )
+        .fromTo(
+          bgPhotoRef.current,
+          { scale: 1.12, filter: 'brightness(0.9)' },
+          { scale: 1.05, filter: 'brightness(1.0)', duration: 1.1, ease: 'expo.out' },
+          '-=0.65',
+        )
+        .fromTo(
+          '.stagger-left',
+          { y: 18, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.65, stagger: 0.06, ease: 'expo.out' },
+          '-=0.8',
+        )
+        .fromTo(
+          '.stagger-right',
+          { y: 16, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.65, stagger: 0.05, ease: 'expo.out' },
+          '-=0.7',
+        );
+    },
+    { scope: containerRef },
+  );
 
-    tl.fromTo(
-      '.login-left-pane',
-      { clipPath: 'inset(0 100% 0 0)' },
-      { clipPath: 'inset(0 0% 0 0)', duration: 1.15, ease: 'expo.inOut' },
-    )
-      .fromTo(
-        bgPhotoRef.current,
-        { scale: 1.18, filter: 'blur(6px) brightness(0.88)' },
-        { scale: 1.11, filter: 'blur(0px) brightness(1.02)', duration: 1.45, ease: 'expo.out' },
-        '-=0.8',
-      )
-      .fromTo(
-        '.stagger-left',
-        { y: 24, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.85, stagger: 0.07, ease: 'expo.out' },
-        '-=1.05',
-      )
-      .fromTo(
-        '.stagger-right',
-        { y: 20, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.85, stagger: 0.05, ease: 'expo.out' },
-        '-=0.95',
+  useGSAP(
+    () => {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+
+      gsap.fromTo(
+        '.morph-text-item',
+        { y: 5, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.35, stagger: 0.03, ease: 'expo.out', overwrite: 'auto' },
       );
 
-    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-      return undefined;
-    }
-
-    const xBgTo = gsap.quickTo(bgPhotoRef.current, 'x', { duration: 1.1, ease: 'power3.out' });
-    const yBgTo = gsap.quickTo(bgPhotoRef.current, 'y', { duration: 1.1, ease: 'power3.out' });
-    const xHudTo = gsap.quickTo(hudCardRef.current, 'x', { duration: 0.8, ease: 'power3.out' });
-    const yHudTo = gsap.quickTo(hudCardRef.current, 'y', { duration: 0.8, ease: 'power3.out' });
-
-    const handleMouseMove = (e) => {
-      const normX = e.clientX / window.innerWidth - 0.5;
-      const normY = e.clientY / window.innerHeight - 0.5;
-      xBgTo(normX * -18);
-      yBgTo(normY * -12);
-      xHudTo(normX * 8);
-      yHudTo(normY * 6);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, { scope: containerRef });
-
-  useGSAP(() => {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const preset = CAMERA_PRESETS[primaryTabIndex] || CAMERA_PRESETS[2];
-
-    if (pillIndicatorRef.current) {
-      gsap.to(pillIndicatorRef.current, {
-        xPercent: primaryTabIndex * 100,
-        duration: reduced ? 0 : 0.5,
-        ease: 'expo.out',
-      });
-    }
-
-    if (scrollProgressRef.current) {
-      gsap.to(scrollProgressRef.current, {
-        scaleX: (primaryTabIndex + 1) / 3,
-        duration: reduced ? 0 : 0.5,
-        ease: 'expo.out',
-      });
-    }
-
-    if (reduced) return undefined;
-
-    if (bgPhotoRef.current) {
-      gsap.to(bgPhotoRef.current, {
-        scale: preset.scale,
-        xPercent: preset.xPercent,
-        yPercent: preset.yPercent,
-        duration: 1.1,
-        ease: 'expo.out',
-        overwrite: 'auto',
-      });
-    }
-
-    gsap.fromTo(
-      '.morph-text-item',
-      { y: 6, opacity: 0 },
-      { y: 0, opacity: 1, duration: 0.45, stagger: 0.03, ease: 'expo.out', overwrite: 'auto' },
-    );
-
-    if (svgLineIkuRef.current) {
-      gsap.to(svgLineIkuRef.current, {
-        opacity: isIkuActive ? 1 : 0.25,
-        strokeWidth: isIkuActive ? 2.2 : 1.2,
-        duration: 0.45,
-        ease: 'expo.out',
-      });
-    }
-    if (svgLineKpiRef.current) {
-      gsap.to(svgLineKpiRef.current, {
-        opacity: isKpiActive ? 1 : 0.25,
-        strokeWidth: isKpiActive ? 2.2 : 1.2,
-        duration: 0.45,
-        ease: 'expo.out',
-      });
-    }
-  }, { dependencies: [primaryTabIndex, activeAccount.email, isIkuActive, isKpiActive], scope: containerRef });
+      if (svgLineIkuRef.current) {
+        gsap.to(svgLineIkuRef.current, {
+          opacity: isIkuActive ? 1 : 0.25,
+          strokeWidth: isIkuActive ? 2.2 : 1.2,
+          duration: 0.35,
+          ease: 'expo.out',
+        });
+      }
+      if (svgLineKpiRef.current) {
+        gsap.to(svgLineKpiRef.current, {
+          opacity: isKpiActive ? 1 : 0.25,
+          strokeWidth: isKpiActive ? 2.2 : 1.2,
+          duration: 0.35,
+          ease: 'expo.out',
+        });
+      }
+    },
+    { dependencies: [activeAccount.email, isIkuActive, isKpiActive], scope: containerRef },
+  );
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
@@ -224,19 +162,18 @@ export default function Login() {
     setLoading(true);
     requestOsNotificationPermission().catch(() => undefined);
 
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      gsap.to('.submit-corp-btn', { scale: 0.985, duration: 0.1, yoyo: true, repeat: 1 });
-    }
-
     setTimeout(async () => {
       try {
-        const result = typeof authenticate === 'function'
-          ? await authenticate(email, password)
-          : login(email, password);
+        const result =
+          typeof authenticate === 'function'
+            ? await authenticate(email, password)
+            : login(email, password);
 
         if (!result?.success) {
           setLoading(false);
-          setErrorMessage(result?.message || 'Gagal melakukan autentikasi. Periksa kembali kredensial Anda.');
+          setErrorMessage(
+            result?.message || 'Gagal melakukan autentikasi. Periksa kembali kredensial Unit Kerja Anda.',
+          );
           return;
         }
 
@@ -252,7 +189,7 @@ export default function Login() {
         setLoading(false);
         setErrorMessage(err?.message || 'Terjadi gangguan jaringan saat menghubungi server autentikasi.');
       }
-    }, 360);
+    }, 280);
   };
 
   const transitionToWorkspaceGate = () => {
@@ -261,26 +198,18 @@ export default function Login() {
       return;
     }
 
-    if (bgPhotoRef.current) {
-      gsap.to(bgPhotoRef.current, {
-        scale: 1.14,
-        duration: 1.0,
-        ease: 'expo.out',
-      });
-    }
-
     gsap.to(formStageRef.current, {
-      y: -18,
+      y: -14,
       opacity: 0,
-      duration: 0.35,
+      duration: 0.28,
       ease: 'power3.inOut',
       onComplete: () => {
         setStep('workspace_gate');
         requestAnimationFrame(() => {
           gsap.fromTo(
             '.gate-stagger',
-            { y: 20, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.65, stagger: 0.06, ease: 'expo.out' },
+            { y: 16, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.5, stagger: 0.05, ease: 'expo.out' },
           );
         });
       },
@@ -295,18 +224,10 @@ export default function Login() {
       return;
     }
 
-    if (bgPhotoRef.current) {
-      gsap.to(bgPhotoRef.current, {
-        scale: CAMERA_PRESETS[primaryTabIndex].scale,
-        duration: 0.9,
-        ease: 'expo.out',
-      });
-    }
-
     gsap.to(gateStageRef.current, {
-      y: 16,
+      y: 14,
       opacity: 0,
-      duration: 0.3,
+      duration: 0.25,
       ease: 'power3.in',
       onComplete: () => {
         setStep('credentials');
@@ -314,8 +235,8 @@ export default function Login() {
         requestAnimationFrame(() => {
           gsap.fromTo(
             formStageRef.current,
-            { y: -16, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.55, ease: 'expo.out' },
+            { y: -14, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.45, ease: 'expo.out' },
           );
         });
       },
@@ -339,32 +260,33 @@ export default function Login() {
     });
 
     tl.to('.right-inner-wrap', {
-      y: -16,
+      y: -12,
       opacity: 0,
-      duration: 0.32,
+      duration: 0.25,
       ease: 'power3.in',
-    })
-      .to(
-        '.login-left-pane',
-        { clipPath: 'inset(0 100% 0 0)', duration: 0.7, ease: 'expo.inOut' },
-        '-=0.12',
-      )
-      .to(
-        '.login-right-pane',
-        { opacity: 0, duration: 0.5, ease: 'power2.inOut' },
-        '<',
-      );
+    }).to(
+      '.login-right-pane',
+      { opacity: 0, duration: 0.35, ease: 'power2.inOut' },
+      '<',
+    );
   };
 
   const submitLabel = loading
-    ? 'Memverifikasi Otoritas...'
+    ? 'Memverifikasi Kredensial Unit...'
     : activeAccount.role === 'superadmin_prp'
-      ? 'Masuk ke Pusat Kendali PRP'
-      : activeAccount.role === 'dual'
-        ? 'Verifikasi & Pilih Ruang Kerja'
-        : activeAccount.role === 'iku_only'
-          ? 'Masuk ke Ruang Kerja IKU'
-          : `Masuk Lembar Kerja KPI (${activeAccount.picCodes?.join(', ') || 'Unit'})`;
+      ? 'Masuk Dashboard Eksekutif & PRP'
+      : activeAccount.role === 'spi'
+        ? 'Masuk Ruang Verifikasi SPI'
+        : activeAccount.role === 'dual'
+          ? `Masuk Unit ${activeAccount.unit || activeAccount.name}`
+          : `Masuk Portal Unit (${activeAccount.unit || activeAccount.name})`;
+
+  const formatUnitOptionLabel = (acc) => {
+    const unitLabel = acc.unit || acc.name;
+    if (acc.role === 'superadmin_prp') return `${unitLabel} - Pusat Kendali & Eksekutif`;
+    if (acc.role === 'spi') return `${unitLabel} - Verifikasi SPI (Read-Only)`;
+    return `${unitLabel} (${acc.email})`;
+  };
 
   return (
     <div
@@ -393,7 +315,7 @@ export default function Login() {
           height: 2px;
           background: #094E68;
           transform-origin: left center;
-          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .corp-input {
           width: 100%;
@@ -435,7 +357,7 @@ export default function Login() {
           letter-spacing: 0.04em;
           text-transform: uppercase;
           padding: 0.55rem 1.1rem;
-          border-radius: 8px;
+          border-radius: 6px;
           background: #062C3D;
           border: 1.5px solid rgba(197, 222, 232, 0.55);
           transition: background-color 0.2s ease, border-color 0.2s ease;
@@ -457,15 +379,15 @@ export default function Login() {
           background: #094E68;
           color: #ffffff !important;
           border: 1px solid #094E68;
-          border-radius: 8px;
+          border-radius: 6px;
           font-size: 0.82rem;
-          font-weight: 600;
-          letter-spacing: 0.04em;
+          font-weight: 700;
+          letter-spacing: 0.03em;
           text-transform: uppercase;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 0.75rem;
+          gap: 0.65rem;
           transition: background-color 0.2s ease, border-color 0.2s ease;
         }
         .submit-corp-btn:hover:not(:disabled) {
@@ -476,13 +398,13 @@ export default function Login() {
         .gate-option-card {
           width: 100%;
           text-align: left;
-          padding: 1.35rem 1.5rem;
+          padding: 1.3rem 1.45rem;
           border-radius: 8px;
           border: 1.5px solid #64748B;
           background: #ffffff;
           color: #072534;
           cursor: pointer;
-          transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+          transition: background-color 0.22s ease, color 0.22s ease, border-color 0.22s ease;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -493,7 +415,6 @@ export default function Login() {
             background: #094E68;
             color: #ffffff !important;
             border-color: #094E68;
-            transform: translateY(-2px);
           }
           .gate-option-card:hover * {
             color: #ffffff !important;
@@ -521,24 +442,12 @@ export default function Login() {
             align-items: flex-start !important;
           }
         }
-        @media (max-width: 440px) {
-          .login-scenario-grid button {
-            padding: 0.45rem 0.25rem !important;
-            min-width: 0;
-          }
-          .login-scenario-grid button > div:first-child {
-            font-size: 0.7rem !important;
-          }
-          .login-scenario-grid button > div:last-child {
-            font-size: 0.58rem !important;
-          }
-        }
       `}</style>
 
       <div
         className="login-left-pane"
         style={{
-          flex: 1.16,
+          flex: 1.14,
           position: 'relative',
           overflow: 'hidden',
           display: 'flex',
@@ -553,12 +462,10 @@ export default function Login() {
           ref={bgPhotoRef}
           style={{
             position: 'absolute',
-            inset: '-8%',
+            inset: '-6%',
             backgroundImage: 'url(/pln_view.jpg)',
             backgroundSize: 'cover',
             backgroundPosition: 'center 28%',
-            filter: 'contrast(1.04) brightness(1.02)',
-            willChange: 'transform',
             zIndex: 0,
           }}
         />
@@ -568,22 +475,15 @@ export default function Login() {
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(180deg, rgba(6, 44, 61, 0.86) 0%, rgba(6, 44, 61, 0.78) 38%, rgba(6, 44, 61, 0.88) 68%, rgba(6, 44, 61, 0.96) 100%)',
+              'linear-gradient(180deg, rgba(6, 44, 61, 0.86) 0%, rgba(6, 44, 61, 0.78) 38%, rgba(6, 44, 61, 0.9) 70%, rgba(6, 44, 61, 0.96) 100%)',
             zIndex: 1,
           }}
         />
 
-        <div
-          style={{
-            position: 'relative',
-            zIndex: 5,
-            display: 'flex',
-            justifyContent: 'flex-start',
-            alignItems: 'center',
-          }}
-        >
+        <div style={{ position: 'relative', zIndex: 5, display: 'flex', justifyContent: 'flex-start' }}>
           <Link to="/" className="stagger-left login-back-pill">
-            <ArrowLeft size={15} /> Beranda Publik
+            <ArrowLeft size={15} />
+            <span>Beranda Publik</span>
           </Link>
         </div>
 
@@ -591,30 +491,23 @@ export default function Login() {
           <div
             className="stagger-left"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.36rem 0.85rem',
-              borderRadius: '6px',
-              background: '#062C3D',
-              border: '1px solid rgba(197, 222, 232, 0.35)',
               fontFamily: 'var(--ent-mono)',
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              letterSpacing: '0.1em',
+              fontSize: '0.7rem',
+              fontWeight: 800,
+              letterSpacing: '0.09em',
               textTransform: 'uppercase',
-              color: '#C5DEE8',
-              marginBottom: '1.1rem',
+              color: '#B8D4E0',
+              marginBottom: '0.75rem',
             }}
           >
-            Institut Teknologi PLN · Gerbang Sesi Internal
+            Institut Teknologi PLN · Tata Kelola Berbasis Unit Kerja
           </div>
 
           <h2
             className="stagger-left"
             style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: 'clamp(2.15rem, 3.4vw, 3.1rem)',
+              fontSize: 'clamp(2.1rem, 3.3vw, 3rem)',
               fontWeight: 800,
               letterSpacing: '-0.035em',
               lineHeight: 1.08,
@@ -622,21 +515,21 @@ export default function Login() {
               color: '#ffffff',
             }}
           >
-            Satu gerbang akses,
+            Satu akun per Unit Kerja,
             <br />
-            otoritas PIC terukur.
+            tanggung jawab terukur.
           </h2>
 
           <p
             className="stagger-left"
             style={{
-              fontSize: '0.94rem',
+              fontSize: '0.92rem',
               color: '#C5DEE8',
               lineHeight: 1.65,
               margin: '0 0 1.45rem',
             }}
           >
-            Hak akses dipetakan ketat per peran dan kode PIC unit kerja: pelaporan 8 IKU Kemendikbudristek, lembar kerja KPI dengan transparansi lintas unit, atau pusat kendali Direktorat PRP.
+            Setiap indikator dikelola oleh 1 PIC Utama sebagai penanggung jawab pengisian data dan dokumen bukti, sementara unit kolaborator tercatat sebagai Co-PIC tanpa duplikasi akun maupun tumpang tindih isian.
           </p>
 
           <div
@@ -647,38 +540,15 @@ export default function Login() {
               borderRadius: '8px',
               padding: '1.25rem 1.35rem',
               background: 'rgba(6, 44, 61, 0.94)',
-              boxShadow: '0 20px 40px rgba(4, 24, 34, 0.32)',
               position: 'relative',
               overflow: 'hidden',
-              willChange: 'transform',
             }}
           >
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: '3px',
-                background: 'rgba(255, 255, 255, 0.14)',
-              }}
-            >
-              <div
-                ref={scrollProgressRef}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  background: '#1B9AAA',
-                  transformOrigin: 'left center',
-                }}
-              />
-            </div>
-
             <div
               className="morph-text-item"
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 gap: '0.75rem',
                 marginBottom: '0.75rem',
@@ -689,13 +559,13 @@ export default function Login() {
                   style={{
                     fontFamily: 'var(--ent-mono)',
                     fontSize: '0.64rem',
-                    color: '#C5DEE8',
+                    color: '#B8D4E0',
                     fontWeight: 700,
                     letterSpacing: '0.08em',
                     textTransform: 'uppercase',
                   }}
                 >
-                  Profil Otoritas Aktif (5 Peran Sistem)
+                  Unit Kerja Terpilih
                 </div>
                 <div
                   style={{
@@ -706,25 +576,28 @@ export default function Login() {
                     fontFamily: "'Outfit', sans-serif",
                   }}
                 >
-                  {activeAccount.code || `0${primaryTabIndex + 1}`} · {activeAccount.roleTitle || activeAccount.name}
+                  {activeAccount.unit || activeAccount.name}
                 </div>
               </div>
 
-              <span
+              <strong
                 style={{
                   fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.64rem',
+                  fontSize: '0.68rem',
                   fontWeight: 800,
-                  letterSpacing: '0.06em',
-                  padding: '0.3rem 0.65rem',
-                  borderRadius: '4px',
-                  background: '#ffffff',
-                  color: '#072534',
+                  letterSpacing: '0.05em',
+                  color: '#B8D4E0',
                   flexShrink: 0,
                 }}
               >
-                {activeAccount.badge || (activeAccount.picCodes?.length ? `PIC: ${activeAccount.picCodes.join(', ')}` : 'AKUN AKTIF')}
-              </span>
+                {activeAccount.role === 'superadmin_prp'
+                  ? 'ADMIN PUSAT'
+                  : activeAccount.role === 'spi'
+                    ? 'AUDITOR VIEW-ONLY'
+                    : activeAccount.picCodes?.length
+                      ? `KODE UNIT: ${activeAccount.picCodes[0]}`
+                      : 'UNIT AKTIF'}
+              </strong>
             </div>
 
             <svg
@@ -759,8 +632,7 @@ export default function Login() {
                   border: isIkuActive
                     ? '1px solid rgba(197, 222, 232, 0.55)'
                     : '1px solid rgba(197, 222, 232, 0.16)',
-                  opacity: isIkuActive ? 1 : 0.65,
-                  transition: 'background-color 0.35s ease, border-color 0.35s ease, opacity 0.35s ease',
+                  opacity: isIkuActive ? 1 : 0.68,
                 }}
               >
                 <div
@@ -778,7 +650,11 @@ export default function Login() {
                   {isIkuActive ? <Check size={14} /> : <Lock size={13} />}
                 </div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 700, fontFamily: "'Outfit', sans-serif", color: '#ffffff' }}>
-                  {isIkuActive ? 'Akses Diizinkan' : 'Tidak Termasuk Peran'}
+                  {activeAccount.role === 'spi'
+                    ? 'Verifikasi SPI (View-Only)'
+                    : isIkuActive
+                      ? 'Akses Diizinkan'
+                      : 'Tidak Termasuk Cakupan Unit'}
                 </div>
               </div>
 
@@ -790,8 +666,7 @@ export default function Login() {
                   border: isKpiActive
                     ? '1px solid rgba(197, 222, 232, 0.55)'
                     : '1px solid rgba(197, 222, 232, 0.16)',
-                  opacity: isKpiActive ? 1 : 0.65,
-                  transition: 'background-color 0.35s ease, border-color 0.35s ease, opacity 0.35s ease',
+                  opacity: isKpiActive ? 1 : 0.68,
                 }}
               >
                 <div
@@ -810,12 +685,12 @@ export default function Login() {
                 </div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 700, fontFamily: "'Outfit', sans-serif", color: '#ffffff' }}>
                   {isKpiActive
-                    ? (activeAccount.role === 'spi'
-                      ? 'Audit SPI (View Only & Ekspor)'
-                      : ((activeAccount.role === 'kpi_only' || activeAccount.role === 'dual') && activeAccount.picCodes?.length
-                        ? `Hak Input PIC: ${activeAccount.picCodes.join(', ')}`
-                        : 'Akses Penuh PRP'))
-                    : 'Tidak Termasuk Peran'}
+                    ? activeAccount.role === 'spi'
+                      ? 'Verifikasi SPI (View-Only & Unduh Bukti)'
+                      : activeAccount.picCodes?.length && activeAccount.role !== 'superadmin_prp'
+                        ? `PIC Utama Unit ${activeAccount.picCodes[0]}`
+                        : 'Akses Penuh Direktorat PRP'
+                    : 'Tidak Termasuk Cakupan Unit'}
                 </div>
               </div>
             </div>
@@ -846,8 +721,8 @@ export default function Login() {
             left: 'clamp(1.25rem, 4vw, 2rem)',
             minHeight: '44px',
             padding: '0.5rem 0.85rem',
-            borderRadius: '8px',
-            border: '1px solid #D8E4EA',
+            borderRadius: '6px',
+            border: '1px solid #64748B',
             background: '#F7FAFB',
             alignItems: 'center',
             gap: '0.5rem',
@@ -855,11 +730,12 @@ export default function Login() {
             textDecoration: 'none',
             fontSize: '0.75rem',
             fontWeight: 700,
-            letterSpacing: '0.06em',
+            letterSpacing: '0.05em',
             textTransform: 'uppercase',
           }}
         >
-          <ArrowLeft size={15} /> Beranda
+          <ArrowLeft size={15} />
+          <span>Beranda</span>
         </Link>
 
         <div className="right-inner-wrap" style={{ width: '100%', maxWidth: '456px' }}>
@@ -887,21 +763,17 @@ export default function Login() {
                 >
                   PERFORMA ITPLN
                 </span>
-                <span
+                <strong
                   style={{
                     fontFamily: 'var(--ent-mono)',
-                    fontSize: '0.62rem',
-                    fontWeight: 700,
-                    padding: '2px 7px',
-                    borderRadius: '4px',
-                    background: '#EDF3F6',
-                    border: '1px solid #D8E4EA',
+                    fontSize: '0.64rem',
+                    fontWeight: 800,
                     color: '#094E68',
                     letterSpacing: '0.05em',
                   }}
                 >
                   PORTAL INTERNAL
-                </span>
+                </strong>
               </div>
               <div
                 style={{
@@ -932,180 +804,83 @@ export default function Login() {
                   lineHeight: 1.1,
                 }}
               >
-                Masuk Portal Kinerja.
+                Masuk per Unit Kerja.
               </h1>
               <p
                 className="stagger-right"
                 style={{
                   color: '#334155',
                   fontSize: '0.9rem',
-                  margin: '0 0 1.4rem',
+                  margin: '0 0 1.35rem',
                   lineHeight: 1.55,
                 }}
               >
-                Pilih skenario otoritas unit/PIC di bawah ini atau masukkan email kerja beserta kata sandi Anda.
+                Pilih Unit Kerja Anda atau masukkan alamat email resmi unit beserta kata sandi untuk mengakses modul kinerja.
               </p>
 
-              <div className="stagger-right" style={{ marginBottom: '1.4rem' }}>
-                <div
+              {/* Single Clean Unit Kerja Selector (No Stacked Roles or PIC Tabs) */}
+              <div className="stagger-right" style={{ marginBottom: '1.35rem' }}>
+                <label
+                  htmlFor="unit-kerja-select"
                   style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '0.35rem',
-                    marginBottom: '0.5rem',
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: 'var(--ent-mono)',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.08em',
-                      textTransform: 'uppercase',
-                      color: '#475569',
-                    }}
-                  >
-                    Pilih Konteks Otoritas
-                  </span>
-                  <span
-                    className="morph-text-item"
-                    style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.72rem', fontWeight: 700, color: '#0E7480' }}
-                  >
-                    {activeAccount.email}
-                  </span>
-                </div>
-
-                <div
-                  role="group"
-                  aria-label="Pilih kategori otoritas akun"
-                  className="login-scenario-grid"
-                  style={{
-                    position: 'relative',
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                    background: '#EDF3F6',
-                    padding: '4px',
+                    flexDirection: 'column',
+                    gap: '0.42rem',
+                    padding: '0.85rem 0.95rem',
+                    background: '#F7FAFB',
+                    border: '1px solid #CBD5E1',
                     borderRadius: '8px',
-                    border: '1px solid #64748B',
                   }}
                 >
-                  <div
-                    ref={pillIndicatorRef}
-                    aria-hidden="true"
+                  <span
                     style={{
-                      position: 'absolute',
-                      top: '4px',
-                      bottom: '4px',
-                      left: '4px',
-                      width: 'calc((100% - 8px) / 3)',
-                      background: '#094E68',
-                      borderRadius: '6px',
-                      boxShadow: '0 4px 12px rgba(9, 78, 104, 0.2)',
-                      zIndex: 1,
-                    }}
-                  />
-
-                  {[
-                    { label: '01. PIC IKU', sub: 'Khusus IKU' },
-                    { label: '02. PIC KPI', sub: 'Per Unit / PIC' },
-                    { label: '03. Admin PRP', sub: 'Pusat Kendali' },
-                  ].map((tab, idx) => {
-                    const isSelected = primaryTabIndex === idx;
-                    return (
-                      <button
-                        key={tab.label}
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => handleSelectScenario(idx)}
-                        style={{
-                          position: 'relative',
-                          zIndex: 2,
-                          minHeight: '48px',
-                          background: 'transparent',
-                          border: 'none',
-                          borderRadius: '6px',
-                          padding: '0.55rem 0.35rem',
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                          color: isSelected ? '#ffffff' : '#334155',
-                          transition: 'color 0.25s ease',
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontFamily: "'Outfit', sans-serif",
-                            fontSize: '0.78rem',
-                            fontWeight: 800,
-                            letterSpacing: '-0.01em',
-                          }}
-                        >
-                          {tab.label}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: '0.64rem',
-                            color: isSelected ? '#C5DEE8' : '#475569',
-                            marginTop: '1px',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {tab.sub}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {primaryTabIndex === 1 && kpiAccounts.length > 0 && (
-                  <label
-                    style={{
-                      display: 'grid',
-                      gap: '0.32rem',
-                      marginTop: '0.65rem',
-                      padding: '0.68rem 0.85rem',
-                      background: '#EDF3F6',
-                      border: '1px solid #64748B',
-                      borderRadius: '8px',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
                       color: '#072534',
                     }}
                   >
-                    <span>Pilih Akun Unit Kerja / PIC KPI (Pembatasan Hak Input Baris)</span>
-                    <select
-                      aria-label="Pilih akun unit PIC KPI"
-                      className="ent-select"
-                      value={activeAccount.email}
-                      onChange={(e) => handleSelectKpiUnitAccount(e.target.value)}
-                      style={{ minHeight: '44px', background: '#FFFFFF', fontSize: '0.8rem', fontWeight: 600 }}
-                    >
-                      {kpiAccounts.map((acc) => (
-                        <option key={acc.email} value={acc.email}>
-                          {acc.picCodes?.length ? `[PIC: ${acc.picCodes.join(', ')}] ` : ''}{acc.name} ({acc.email})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <Building2 size={15} color="#094E68" />
+                      <span>Pilih Unit Kerja</span>
+                    </span>
+                    <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', color: '#094E68', fontWeight: 700 }}>
+                      {unitAccounts.length} Unit Terdaftar
+                    </span>
+                  </span>
 
-                <div
-                  className="morph-text-item"
-                  style={{
-                    marginTop: '0.65rem',
-                    padding: '0.75rem 0.95rem',
-                    background: '#F7FAFB',
-                    border: '1px solid #D8E4EA',
-                    borderRadius: '8px',
-                    fontSize: '0.8rem',
-                    color: '#334155',
-                    lineHeight: 1.52,
-                  }}
-                >
-                  <strong style={{ color: '#072534' }}>{activeAccount.roleTitle || activeAccount.name}:</strong>{' '}
-                  {activeAccount.description || 'Akses terkunci sesuai otoritas PIC unit kerja.'}
-                </div>
+                  <select
+                    id="unit-kerja-select"
+                    aria-label="Pilih Unit Kerja"
+                    className="ent-select"
+                    value={activeAccount.email}
+                    onChange={(e) => handleSelectUnitWorkAccount(e.target.value)}
+                    style={{ minHeight: '44px', background: '#FFFFFF', fontSize: '0.83rem', fontWeight: 700 }}
+                  >
+                    {unitAccounts.map((acc) => (
+                      <option key={acc.email} value={acc.email}>
+                        {formatUnitOptionLabel(acc)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div
+                    className="morph-text-item"
+                    style={{
+                      marginTop: '0.3rem',
+                      fontSize: '0.77rem',
+                      color: '#334155',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <strong style={{ color: '#094E68' }}>{activeAccount.unit || activeAccount.name}:</strong>{' '}
+                    {activeAccount.description || 'Hak akses terisolasi sesuai tanggung jawab Unit Kerja.'}
+                  </div>
+                </label>
               </div>
 
               {errorMessage && (
@@ -1119,9 +894,9 @@ export default function Login() {
                     borderRadius: '8px',
                     background: '#FEF2F2',
                     border: '1px solid #FECACA',
-                    color: '#7F1D1D',
+                    color: '#B91C1C',
                     fontSize: '0.82rem',
-                    fontWeight: 600,
+                    fontWeight: 700,
                     marginBottom: '1.2rem',
                   }}
                 >
@@ -1142,10 +917,9 @@ export default function Login() {
                       letterSpacing: '0.08em',
                       textTransform: 'uppercase',
                       color: focusedField === 'email' ? '#094E68' : '#475569',
-                      transition: 'color 0.2s ease',
                     }}
                   >
-                    Email Institusi
+                    Email Unit Kerja
                   </label>
                   <div className="corp-field-wrap">
                     <input
@@ -1157,16 +931,8 @@ export default function Login() {
                       value={email}
                       onFocus={() => setFocusedField('email')}
                       onBlur={() => setFocusedField(null)}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        const found = allAccounts.find(
-                          (a) => a.email.toLowerCase() === e.target.value.trim().toLowerCase(),
-                        );
-                        if (found) {
-                          setSelectedIdx(found.role === 'iku_only' ? 0 : (found.role === 'kpi_only' || found.role === 'spi') ? 1 : 2);
-                        }
-                      }}
-                      placeholder="nama@itpln.ac.id"
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="unit@itpln.ac.id"
                     />
                     <div
                       className="corp-field-line"
@@ -1186,7 +952,6 @@ export default function Login() {
                       letterSpacing: '0.08em',
                       textTransform: 'uppercase',
                       color: focusedField === 'password' ? '#094E68' : '#475569',
-                      transition: 'color 0.2s ease',
                     }}
                   >
                     Kata Sandi
@@ -1218,8 +983,8 @@ export default function Login() {
                   className="stagger-right submit-corp-btn"
                   style={{ cursor: loading ? 'wait' : 'pointer' }}
                 >
+                  <LogIn size={17} />
                   <span className="morph-text-item">{submitLabel}</span>
-                  {!loading && <ArrowRight size={17} />}
                 </button>
               </form>
             </div>
@@ -1232,21 +997,17 @@ export default function Login() {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.35rem 0.85rem',
-                  borderRadius: '6px',
-                  background: '#EDF3F6',
-                  border: '1px solid #D8E4EA',
-                  color: '#094E68',
+                  gap: '0.45rem',
+                  color: '#166534',
                   fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.06em',
                   textTransform: 'uppercase',
-                  marginBottom: '1rem',
+                  marginBottom: '0.75rem',
                 }}
               >
-                <ShieldCheck size={14} /> Otoritas Ganda Terverifikasi
+                <ShieldCheck size={15} /> Kredensial Unit Kerja Terverifikasi
               </div>
 
               <h2
@@ -1270,14 +1031,13 @@ export default function Login() {
                   fontSize: '0.9rem',
                   color: '#334155',
                   lineHeight: 1.6,
-                  margin: '0 0 1.55rem',
+                  margin: '0 0 1.45rem',
                 }}
               >
-                Akun <strong style={{ color: '#072534' }}>{pendingDualUser?.email}</strong> memiliki
-                hak akses ke kedua modul. Pilih ruang kerja yang ingin Anda buka terlebih dahulu:
+                Unit <strong style={{ color: '#072534' }}>{pendingDualUser?.unit || pendingDualUser?.email}</strong> memiliki wewenang pelaporan pada kedua instrumen. Pilih ruang kerja yang ingin dibuka terlebih dahulu:
               </p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.4rem' }}>
                 <button
                   type="button"
                   className="gate-stagger gate-option-card"
@@ -1289,42 +1049,29 @@ export default function Login() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
                       <span
                         style={{
-                          fontFamily: 'var(--ent-mono)',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          color: hoveredGate === 'iku' ? '#C5DEE8' : '#0E7480',
-                        }}
-                      >
-                        01
-                      </span>
-                      <span
-                        style={{
                           fontFamily: "'Outfit', sans-serif",
-                          fontSize: '1.15rem',
+                          fontSize: '1.12rem',
                           fontWeight: 800,
                           letterSpacing: '-0.02em',
                         }}
                       >
-                        Masuk Ruang Kerja IKU
+                        Masuk Ruang Kerja 8 IKU
                       </span>
-                      <span
+                      <strong
                         style={{
                           fontFamily: 'var(--ent-mono)',
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          padding: '2px 7px',
-                          borderRadius: '4px',
-                          background: hoveredGate === 'iku' ? 'rgba(255,255,255,0.16)' : '#EDF3F6',
-                          color: hoveredGate === 'iku' ? '#ffffff' : '#094E68',
+                          fontSize: '0.64rem',
+                          fontWeight: 800,
+                          color: hoveredGate === 'iku' ? '#C5DEE8' : '#094E68',
                         }}
                       >
-                        8 IKU KEMENTERIAN
-                      </span>
+                        STANDAR KEMENTERIAN
+                      </strong>
                     </div>
                     <p
                       style={{
                         margin: 0,
-                        fontSize: '0.84rem',
+                        fontSize: '0.83rem',
                         color: hoveredGate === 'iku' ? '#C5DEE8' : '#334155',
                         lineHeight: 1.5,
                       }}
@@ -1332,8 +1079,7 @@ export default function Login() {
                       Kelola dan pantau capaian 8 Indikator Kinerja Utama standar Kemendikbudristek.
                     </p>
                   </div>
-
-                  <ArrowUpRight size={22} style={{ flexShrink: 0 }} />
+                  <Layers size={20} style={{ flexShrink: 0 }} />
                 </button>
 
                 <button
@@ -1347,51 +1093,37 @@ export default function Login() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
                       <span
                         style={{
-                          fontFamily: 'var(--ent-mono)',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          color: hoveredGate === 'kpi' ? '#C5DEE8' : '#0E7480',
-                        }}
-                      >
-                        02
-                      </span>
-                      <span
-                        style={{
                           fontFamily: "'Outfit', sans-serif",
-                          fontSize: '1.15rem',
+                          fontSize: '1.12rem',
                           fontWeight: 800,
                           letterSpacing: '-0.02em',
                         }}
                       >
-                        Masuk Ruang Kerja KPI
+                        Masuk Lembar Kerja KPI Unit
                       </span>
-                      <span
+                      <strong
                         style={{
                           fontFamily: 'var(--ent-mono)',
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          padding: '2px 7px',
-                          borderRadius: '4px',
-                          background: hoveredGate === 'kpi' ? 'rgba(255,255,255,0.16)' : '#EDF3F6',
-                          color: hoveredGate === 'kpi' ? '#ffffff' : '#094E68',
+                          fontSize: '0.64rem',
+                          fontWeight: 800,
+                          color: hoveredGate === 'kpi' ? '#C5DEE8' : '#094E68',
                         }}
                       >
                         OPERASIONAL ITPLN
-                      </span>
+                      </strong>
                     </div>
                     <p
                       style={{
                         margin: 0,
-                        fontSize: '0.84rem',
+                        fontSize: '0.83rem',
                         color: hoveredGate === 'kpi' ? '#C5DEE8' : '#334155',
                         lineHeight: 1.5,
                       }}
                     >
-                      Kelola target Key Performance Indicator internal Fakultas, Prodi, dan Unit Kerja.
+                      Isi indikator KPI sesuai tanggung jawab PIC Utama serta pantau indikator kolaborasi Co-PIC.
                     </p>
                   </div>
-
-                  <ArrowUpRight size={22} style={{ flexShrink: 0 }} />
+                  <Building2 size={20} style={{ flexShrink: 0 }} />
                 </button>
               </div>
 
@@ -1414,7 +1146,8 @@ export default function Login() {
                   cursor: 'pointer',
                 }}
               >
-                <RotateCcw size={15} /> Kembali &amp; ganti akun masuk
+                <RotateCcw size={15} />
+                <span>Kembali &amp; ganti Unit Kerja</span>
               </button>
             </div>
           )}

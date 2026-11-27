@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Eye, PenLine, Plus, RotateCcw, Search } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import { readKpiWorkflow, readUnitDraft, readUnitEvidence, readUnitSubmission, subscribeKpiWorkflow } from '../../kpi/kpiWorkflowStore';
@@ -194,41 +194,32 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                   onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; }}
                 >
                   <td style={{ padding: '0.62rem 0.55rem', verticalAlign: 'middle' }}>
-                    <span
+                    <strong
                       style={{
-                        display: 'inline-block',
-                        padding: '2px 7px',
-                        borderRadius: '4px',
                         fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                        fontSize: '0.64rem',
-                        fontWeight: 700,
-                        letterSpacing: '0.06em',
-                        background: row.module === 'IKU' ? '#094E68' : '#EDF3F6',
-                        color: row.module === 'IKU' ? '#FFFFFF' : '#072534',
-                        border: row.module === 'IKU' ? '1px solid #094E68' : '1px solid #64748B',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.05em',
+                        color: row.module === 'IKU' ? '#094E68' : '#0E7480',
                       }}
                     >
                       {row.module}
-                    </span>
+                    </strong>
                   </td>
                   <td style={{ padding: '0.62rem 0.55rem', minWidth: '150px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <strong style={{ color: '#072534', fontSize: '0.77rem' }}>{row.unit}</strong>
                       {row.picBadge && (
-                        <span
+                        <strong
                           style={{
-                            fontSize: '0.62rem',
-                            fontWeight: 700,
+                            fontSize: '0.65rem',
+                            fontWeight: 800,
                             fontFamily: 'JetBrains Mono, monospace',
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            background: '#EDF3F6',
-                            border: '1px solid #64748B',
                             color: '#094E68',
                           }}
                         >
-                          PIC: {row.picBadge}
-                        </span>
+                          · PIC: {row.picBadge}
+                        </strong>
                       )}
                     </div>
                     <small style={{ color: '#475569', fontSize: '0.68rem' }}>{row.email}</small>
@@ -260,11 +251,13 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                   >
                     {row.module === 'IKU' ? (
                       <Link className="gov-button" style={{ minHeight: '44px' }} to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
-                        Tinjau Detail
+                        <Eye size={13} />
+                        <span>Tinjau Detail</span>
                       </Link>
                     ) : (
                       <button type="button" className="gov-button" style={{ minHeight: '44px' }} onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
-                        {row.status === 'EMPTY' || row.status === 'DRAFT' ? 'Kelola & Isi Unit' : 'Tinjau & Revisi'}
+                        <PenLine size={13} />
+                        <span>{row.status === 'EMPTY' || row.status === 'DRAFT' ? 'Kelola & Isi Unit' : 'Tinjau & Revisi'}</span>
                       </button>
                     )}
                   </td>
@@ -283,7 +276,8 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                 style={{ minHeight: '44px' }}
                 onClick={() => setVisibleLimit((prev) => prev + 30)}
               >
-                Tampilkan Lebih Banyak ({visible.length - visibleLimit} tersisa)
+                <Plus size={13} />
+                <span>Tampilkan Lebih Banyak ({visible.length - visibleLimit} tersisa)</span>
               </button>
             </div>
           )}
@@ -301,7 +295,8 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                     setStatus('');
                   }}
                 >
-                  Reset Filter Submission
+                  <RotateCcw size={13} />
+                  <span>Reset Filter Submission</span>
                 </button>
               )}
             </div>
@@ -324,7 +319,8 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                   setStatus('');
                 }}
               >
-                Reset Filter Submission
+                <RotateCcw size={13} />
+                <span>Reset Filter Submission</span>
               </button>
             )}
           </div>
@@ -343,21 +339,16 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  <span
+                  <strong
                     style={{
-                      display: 'inline-block',
-                      padding: '2px 7px',
-                      borderRadius: '4px',
                       fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-                      fontSize: '0.64rem',
-                      fontWeight: 700,
-                      background: row.module === 'IKU' ? '#094E68' : '#EDF3F6',
-                      color: row.module === 'IKU' ? '#FFFFFF' : '#072534',
-                      border: row.module === 'IKU' ? '1px solid #094E68' : '1px solid #B8CAD4',
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      color: row.module === 'IKU' ? '#094E68' : '#0E7480',
                     }}
                   >
                     {row.module}
-                  </span>
+                  </strong>
                   <span style={{ fontSize: '0.74rem', color: '#334155', fontWeight: 600 }}>{row.period}</span>
                 </div>
                 <span className={BADGE_CLASS[row.status] || 'ent-badge'}>
@@ -390,11 +381,13 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                 </small>
                 {row.module === 'IKU' ? (
                   <Link className="gov-button" style={{ minHeight: '44px' }} to={`/internal/iku-submissions?period=${encodeURIComponent(row.periodId)}&id=${encodeURIComponent(row.id)}`}>
-                    Tinjau Detail
+                    <Eye size={13} />
+                    <span>Tinjau Detail</span>
                   </Link>
                 ) : (
                   <button type="button" className="gov-button" style={{ minHeight: '44px' }} onClick={() => onReviewKpi?.({ formId: row.formId, email: row.email })}>
-                    {row.status === 'EMPTY' || row.status === 'DRAFT' ? 'Kelola & Isi Unit' : 'Tinjau & Revisi'}
+                    <PenLine size={13} />
+                    <span>{row.status === 'EMPTY' || row.status === 'DRAFT' ? 'Kelola & Isi Unit' : 'Tinjau & Revisi'}</span>
                   </button>
                 )}
               </div>

@@ -7,10 +7,14 @@ import {
   ExternalLink,
   FileCheck2,
   Lock,
+  RotateCcw,
   Send,
   ShieldCheck,
   Save,
   History,
+  Unlock,
+  X,
+  XCircle,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -22,6 +26,7 @@ import {
   IKU_TRANSITIONS,
   emptyIkuValues,
   getIkuPeriods,
+  ikuAchievementMeta,
   ikuInputIssue,
   ikuPercentage,
   listIkuSubmissions,
@@ -366,7 +371,6 @@ export default function IKUSubmissions() {
         .iku-alert.ok {
           background: #F7FAFB;
           border: 1px solid #094E68;
-          border-left: 3px solid #094E68;
           color: #072534;
         }
         .iku-alert.err {
@@ -576,29 +580,26 @@ export default function IKUSubmissions() {
         <div className="iku-cards-grid">
           {display.map((row, i) => {
             const pct = ikuPercentage(row);
+            const achMeta = ikuAchievementMeta(pct);
             const barWidth = pct === null ? 0 : Math.min(100, Math.max(0, pct));
             return (
               <article className="iku-ind-card" key={row.id}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem' }}>
                   <div>
-                    <span
+                    <strong
                       style={{
                         display: 'inline-block',
                         fontFamily: 'var(--ent-mono)',
-                        fontSize: '0.64rem',
-                        fontWeight: 700,
-                        letterSpacing: '0.08em',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.06em',
                         textTransform: 'uppercase',
                         color: '#094E68',
-                        background: '#EDF3F6',
-                        border: '1px solid #D8E4EA',
-                        padding: '2px 7px',
-                        borderRadius: '4px',
-                        marginBottom: '0.4rem',
+                        marginBottom: '0.35rem',
                       }}
                     >
                       IKU.0{i + 1}
-                    </span>
+                    </strong>
                     <h2
                       style={{
                         margin: 0,
@@ -618,19 +619,19 @@ export default function IKUSubmissions() {
                         display: 'block',
                         fontFamily: 'var(--ent-mono)',
                         fontSize: '0.62rem',
-                        color: '#475569',
-                        fontWeight: 700,
+                        color: achMeta.color,
+                        fontWeight: 800,
                         textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
+                        letterSpacing: '0.06em',
                       }}
                     >
-                      CAPAIAN
+                      {pct === null ? 'CAPAIAN' : achMeta.label}
                     </span>
                     <strong
                       style={{
                         fontSize: '1.22rem',
                         fontFamily: 'Outfit, sans-serif',
-                        color: pct !== null && pct >= 100 ? '#0E7480' : '#072534',
+                        color: achMeta.color,
                         fontVariantNumeric: 'tabular-nums',
                         letterSpacing: '-0.03em',
                       }}
@@ -647,7 +648,7 @@ export default function IKUSubmissions() {
                     style={{
                       width: `${barWidth}%`,
                       height: '100%',
-                      background: pct !== null && pct >= 100 ? '#0E7480' : '#094E68',
+                      background: pct !== null ? achMeta.color : '#094E68',
                     }}
                   />
                 </div>
@@ -778,7 +779,8 @@ export default function IKUSubmissions() {
                           )
                         }
                       >
-                        {st === 'VERIFIED' ? 'Verifikasi Bukti' : 'Tolak Bukti'}
+                        {st === 'VERIFIED' ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                        <span>{st === 'VERIFIED' ? 'Verifikasi Bukti' : 'Tolak Bukti'}</span>
                       </button>
                     ))}
                   </div>
@@ -905,7 +907,10 @@ export default function IKUSubmissions() {
                 onClick={() => decide(status)}
               >
                 {status === 'APPROVED' && <CheckCircle2 size={15} />}
-                {record.status === 'LOCKED' && status === 'NEEDS_REVISION' ? 'Buka Kembali (Unlock)' : actions[status]}
+                {status === 'LOCKED' && <Lock size={15} />}
+                {status === 'REJECTED' && <XCircle size={15} />}
+                {status === 'NEEDS_REVISION' && (record.status === 'LOCKED' ? <Unlock size={15} /> : <RotateCcw size={15} />)}
+                <span>{record.status === 'LOCKED' && status === 'NEEDS_REVISION' ? 'Buka Kembali (Unlock)' : actions[status]}</span>
               </button>
             ))}
           </div>
@@ -987,7 +992,8 @@ export default function IKUSubmissions() {
                 style={{ minHeight: '44px' }}
                 onClick={() => setConfirmUnlockOpen(false)}
               >
-                Batal
+                <X size={15} />
+                <span>Batal</span>
               </button>
               <button
                 type="button"
@@ -998,7 +1004,8 @@ export default function IKUSubmissions() {
                   run(() => reviewIkuSubmission(currentUser, record.id, 'NEEDS_REVISION', reason), 'Submission dibuka kembali untuk revisi.');
                 }}
               >
-                Ya, Buka Kembali
+                <Unlock size={15} />
+                <span>Ya, Buka Kembali</span>
               </button>
             </div>
           </div>

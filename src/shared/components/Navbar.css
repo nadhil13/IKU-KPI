@@ -65,5 +65,12 @@
     left: 0.75rem;
     right: 0.75rem;
     padding: 0.85rem;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 360px) {
+  .navbar-brand-tag {
+    display: none !important;
   }
 }

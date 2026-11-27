@@ -1,24 +1,54 @@
 /**
- * Mesin rumus mini ala Excel untuk KPI (aman, TANPA eval()).
- *
- * Variabel yang tersedia:
- *   I1, I2, ... In  → nilai kolom ISIAN ke-n pada baris indikator (urut dari atas)
- *   T               → NILAI 100% (TARGET)
- *   B               → BOBOT (selalu positif)
- *
- * Operator : + - * / ^ %  ( )  dan perbandingan  < > <= >= = <>
- * Fungsi   : SUM, AVG, MIN, MAX, ABS, ROUND(x;n), IF(kondisi;benar;salah)
- * Pemisah argumen boleh "," atau ";" (gaya Excel Indonesia). Simbol × dan ÷ juga diterima.
- *
- * Hasil rumus = CAPAIAN dalam persen (0 sampai 100). Contoh: I1/I2*100  atau  SUM(I1;I2)/T*100
+ * Mesin rumus ala Excel untuk evaluasi KPI (tanpa eval()).
+ * Mendukung koordinat sel Excel (E3, F3, G3), rentang sel (E3:E8, I1:I6),
+ * variabel baris lokal (I1..In, T, B), serta referensi lintas baris (A1A_I1, A1A_T, A1A_B).
  */
 
 class FormulaError extends Error {}
 class MissingInputError extends Error {}
 
 const FUNCTION_ARITY = { SUM: [1, Infinity], AVG: [1, Infinity], MIN: [1, Infinity], MAX: [1, Infinity], ABS: [1, 1], ROUND: [1, 2], IF: [2, 3] };
+const RANGE_FUNCTIONS = new Set(['SUM', 'AVG', 'MIN', 'MAX']);
 
 export const FORMULA_FUNCTIONS = Object.keys(FUNCTION_ARITY);
+
+export function expandCellRangeTokens(startName, endName) {
+  const a = String(startName || '').trim().toUpperCase();
+  const b = String(endName || '').trim().toUpperCase();
+  const excelMatchA = /^([A-Z]{1,2})(\d+)$/.exec(a);
+  const excelMatchB = /^([A-Z]{1,2})(\d+)$/.exec(b);
+  if (excelMatchA && excelMatchB && excelMatchA[1] === excelMatchB[1]) {
+    const col = excelMatchA[1];
+    const r1 = Number(excelMatchA[2]);
+    const r2 = Number(excelMatchB[2]);
+    if (r1 <= 0 || r2 <= 0 || Math.abs(r2 - r1) > 250) {
+      throw new FormulaError(`Rentang "${a}:${b}" tidak valid`);
+    }
+    const lo = Math.min(r1, r2);
+    const hi = Math.max(r1, r2);
+    const out = [];
+    for (let r = lo; r <= hi; r += 1) out.push(`${col}${r}`);
+    return out;
+  }
+
+  const localMatchA = /^([A-Z0-9_]*_)?I(\d+)$/.exec(a);
+  const localMatchB = /^([A-Z0-9_]*_)?I(\d+)$/.exec(b);
+  if (localMatchA && localMatchB && (localMatchA[1] || '') === (localMatchB[1] || '')) {
+    const prefix = localMatchA[1] || '';
+    const i1 = Number(localMatchA[2]);
+    const i2 = Number(localMatchB[2]);
+    if (i1 <= 0 || i2 <= 0 || Math.abs(i2 - i1) > 100) {
+      throw new FormulaError(`Rentang "${a}:${b}" tidak valid`);
+    }
+    const lo = Math.min(i1, i2);
+    const hi = Math.max(i1, i2);
+    const out = [];
+    for (let idx = lo; idx <= hi; idx += 1) out.push(`${prefix}I${idx}`);
+    return out;
+  }
+
+  throw new FormulaError(`Rentang "${a}:${b}" harus berada pada kolom Excel yang sama (mis. E3:E8 atau I1:I6)`);
+}
 
 function tokenize(source) {
   const tokens = [];
@@ -54,7 +84,7 @@ function tokenize(source) {
     }
 
     const alias = { '×': '*', '÷': '/', ';': ',' };
-    if ('+-*/^(),;<>=%×÷'.includes(ch)) {
+    if ('+-*/^(),;:<>=%×÷'.includes(ch)) {
       tokens.push({ type: 'op', value: alias[ch] || ch });
       i += 1;
       continue;
@@ -71,6 +101,23 @@ function parse(tokens) {
   const expect = (value) => {
     if (!isOp(value)) throw new FormulaError(`Diharapkan "${value}"`);
     pos += 1;
+  };
+
+  const parseArgOrRange = (allowRange) => {
+    if (
+      allowRange
+      && peek()?.type === 'id'
+      && tokens[pos + 1]?.type === 'op'
+      && tokens[pos + 1]?.value === ':'
+      && tokens[pos + 2]?.type === 'id'
+    ) {
+      const startId = tokens[pos].value;
+      const endId = tokens[pos + 2].value;
+      pos += 3;
+      const cells = expandCellRangeTokens(startId, endId);
+      return { t: 'range', start: startId, end: endId, cells };
+    }
+    return parseComparison();
   };
 
   const parseComparison = () => {
@@ -118,13 +165,17 @@ function parse(tokens) {
     if (token.type === 'num') { pos += 1; return { t: 'num', v: token.value }; }
     if (token.type === 'id') {
       pos += 1;
+      if (isOp(':')) {
+        throw new FormulaError('Rentang sel (mis. E3:E8) hanya dapat dipakai di dalam SUM, AVG, MIN, atau MAX');
+      }
       if (isOp('(')) {
         if (!FUNCTION_ARITY[token.value]) throw new FormulaError(`Fungsi "${token.value}" tidak dikenal`);
+        const allowRange = RANGE_FUNCTIONS.has(token.value);
         pos += 1;
         const args = [];
         if (!isOp(')')) {
-          args.push(parseComparison());
-          while (isOp(',')) { pos += 1; args.push(parseComparison()); }
+          args.push(parseArgOrRange(allowRange));
+          while (isOp(',')) { pos += 1; args.push(parseArgOrRange(allowRange)); }
         }
         expect(')');
         const [min, max] = FUNCTION_ARITY[token.value];
@@ -152,6 +203,7 @@ const cache = new Map();
 function collectVars(node, set = new Set()) {
   if (!node) return set;
   if (node.t === 'var') set.add(node.name);
+  if (node.t === 'range') (node.cells || []).forEach((cell) => set.add(cell));
   if (node.l) collectVars(node.l, set);
   if (node.r) collectVars(node.r, set);
   if (node.e) collectVars(node.e, set);
@@ -188,17 +240,39 @@ function evaluate(node, scope) {
     case 'pct': return evaluate(node.e, scope) / 100;
     case 'call': {
       if (node.name === 'IF') {
-        // IF dievaluasi malas: hanya cabang terpilih yang dihitung.
         const condition = evaluate(node.args[0], scope);
         if (condition) return evaluate(node.args[1], scope);
         return node.args[2] ? evaluate(node.args[2], scope) : 0;
       }
+      if (RANGE_FUNCTIONS.has(node.name)) {
+        const values = [];
+        let sawRange = false;
+        for (const arg of node.args) {
+          if (arg.t === 'range') {
+            sawRange = true;
+            for (const cellName of arg.cells) {
+              const cellVal = scope(cellName);
+              if (cellVal === undefined) throw new FormulaError(`Sel "${cellName}" pada rentang ${arg.start}:${arg.end} tidak ditemukan`);
+              if (cellVal !== null) values.push(cellVal);
+            }
+          } else {
+            values.push(evaluate(arg, scope));
+          }
+        }
+        if (values.length === 0) {
+          if (sawRange) throw new MissingInputError('rentang kosong');
+          return 0;
+        }
+        switch (node.name) {
+          case 'SUM': return values.reduce((sum, value) => sum + value, 0);
+          case 'AVG': return values.reduce((sum, value) => sum + value, 0) / values.length;
+          case 'MIN': return Math.min(...values);
+          case 'MAX': return Math.max(...values);
+          default: break;
+        }
+      }
       const args = node.args.map((arg) => evaluate(arg, scope));
       switch (node.name) {
-        case 'SUM': return args.reduce((sum, value) => sum + value, 0);
-        case 'AVG': return args.reduce((sum, value) => sum + value, 0) / args.length;
-        case 'MIN': return Math.min(...args);
-        case 'MAX': return Math.max(...args);
         case 'ABS': return Math.abs(args[0]);
         case 'ROUND': { const factor = 10 ** (args[1] ?? 0); return Math.round(args[0] * factor) / factor; }
         default: throw new FormulaError(`Fungsi "${node.name}" tidak dikenal`);
@@ -241,24 +315,19 @@ const buildScope = ({ inputs = [], target = 0, bobot = 0, cells = null }) => (na
   return undefined;
 };
 
-/**
- * Hitung rumus. Mengembalikan { value, error }.
- * value = null tanpa error berarti isian belum lengkap (bukan kesalahan rumus).
- */
 export function evaluateKpiFormula(source, context = {}) {
   const clean = String(source ?? '').trim().replace(/^=\s*/, '');
   const compiled = compileFormula(clean);
   if (compiled.error) return { value: null, error: compiled.error };
   try {
     const value = evaluate(compiled.ast, buildScope(context));
-    return Number.isFinite(value) ? { value, error: null } : { value: null, error: null };
+    return Number.isFinite(value) ? { value, error: null } : { value, error: null };
   } catch (error) {
     if (error instanceof MissingInputError) return { value: null, error: null };
     return { value: null, error: error.message };
   }
 }
 
-/** Validasi rumus terhadap jumlah isian pada baris dan referensi sel global (dipakai desainer PRP). */
 export function validateKpiFormula(source, inputCount, allowedGlobalRefs = null) {
   const clean = String(source ?? '').trim().replace(/^=\s*/, '');
   const compiled = compileFormula(clean);
@@ -269,9 +338,9 @@ export function validateKpiFormula(source, inputCount, allowedGlobalRefs = null)
     const match = /^I(\d+)$/.exec(name);
     if (!match) {
       if (allowedGlobalRefs) {
-        return `Referensi "${name}" tidak ditemukan di tabel.`;
+        return `Referensi sel "${name}" tidak ditemukan di tabel.`;
       }
-      return `Variabel "${name}" tidak dikenal. Gunakan I1..I${inputCount}, T, B, atau klik sel di tabel.`;
+      return `Variabel "${name}" tidak dikenal. Gunakan koordinat Excel (mis. E3, G3), I1..I${inputCount}, T, atau B.`;
     }
     const index = Number(match[1]);
     if (index < 1 || index > inputCount) return `${name} tidak ada: baris ini hanya punya ${inputCount} isian.`;
@@ -279,19 +348,22 @@ export function validateKpiFormula(source, inputCount, allowedGlobalRefs = null)
   return null;
 }
 
-/** Ubah I1, I2, T, B, dan kode sel menjadi label manusiawi untuk ditampilkan ke user. */
 export function describeKpiFormula(source, subrows = [], cellLabels = null) {
-  let text = String(source || '').replace(/^=\s*/, '');
-  if (cellLabels) {
-    text = text.replace(/\b([A-Z0-9_]+)\b/gi, (token) => {
-      const upper = token.toUpperCase();
-      return cellLabels[upper] ? `[${cellLabels[upper]}]` : token;
-    });
-  }
-  return text
-    .replace(/\bI(\d+)\b/gi, (_, n) => `[${subrows[Number(n) - 1]?.label || `Isian ${n}`}]`)
-    .replace(/\bT\b/g, '[Target]')
-    .replace(/\bB\b/g, '[Bobot]')
+  const clean = String(source || '').replace(/^=\s*/, '');
+  const replaced = clean.replace(/\b([A-Za-z][A-Za-z0-9_]*)\b/g, (token) => {
+    const upper = token.toUpperCase();
+    if (FUNCTION_ARITY[upper]) return upper;
+    if (cellLabels && cellLabels[upper]) return `[${cellLabels[upper]}]`;
+    const iMatch = /^I(\d+)$/.exec(upper);
+    if (iMatch) {
+      const idx = Number(iMatch[1]);
+      return `[${subrows[idx - 1]?.label || `Isian ${idx}`}]`;
+    }
+    if (upper === 'T') return '[Target]';
+    if (upper === 'B') return '[Bobot]';
+    return token;
+  });
+  return replaced
     .replace(/\*/g, ' × ')
     .replace(/\//g, ' ÷ ');
 }

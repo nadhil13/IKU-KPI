@@ -91,14 +91,19 @@ export function publishRealtimeEvent(eventName, payload, filterFn = null) {
       continue;
     }
     let clientPayload = payload;
-    if (payload?.stores?.prp_kpi_distribution_v1 && !['superadmin_prp', 'spi'].includes(client.user?.role)) {
-      clientPayload = {
-        ...payload,
-        stores: {
-          ...payload.stores,
-          prp_kpi_distribution_v1: filterKpiWorkflowForCaller(payload.stores.prp_kpi_distribution_v1, client.user),
-        },
-      };
+    if (payload?.stores && client.user?.role !== 'superadmin_prp') {
+      const nextStores = { ...payload.stores };
+      if (nextStores.prp_kpi_distribution_v1) {
+        nextStores.prp_kpi_distribution_v1 = filterKpiWorkflowForCaller(nextStores.prp_kpi_distribution_v1, client.user);
+      }
+      if (Array.isArray(nextStores.prp_iku_submissions_v1) && client.user?.role !== 'spi') {
+        nextStores.prp_iku_submissions_v1 = client.user?.role === 'kpi_only'
+          ? []
+          : nextStores.prp_iku_submissions_v1.filter(
+              (r) => String(r?.owner || r?.ownerEmail || '').toLowerCase() === String(client.user?.email || '').toLowerCase(),
+            );
+      }
+      clientPayload = { ...payload, stores: nextStores };
     }
     sendSseEvent(client, eventName, clientPayload);
     delivered += 1;
@@ -118,4 +123,19 @@ export function getRealtimeStats() {
     connectedClients: clients.size,
     authenticatedClients: [...clients.values()].filter((c) => Boolean(c.user)).length,
   };
+}
+
+export function closeAllSseClients() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  for (const client of clients.values()) {
+    try {
+      client.res.end();
+    } catch {
+      // Koneksi sudah ditutup
+    }
+  }
+  clients.clear();
 }

@@ -1071,34 +1071,22 @@ button.ent-btn-teal:hover:not(:disabled) {
   cursor: not-allowed;
 }
 
+/* Informational Status Text (No Button-Like Borders or Pill Boxes) */
 .ent-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.52rem;
-  border-radius: 4px;
+  gap: 0.32rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   font-family: var(--ent-mono);
-  font-size: 0.63rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  border: 1px solid #D8E4EA;
-  background: #F7FAFB;
-  color: #1E3A4C;
+  color: #334155;
   white-space: nowrap;
-}
-
-.ent-badge-submitted::before,
-.ent-badge-approved::before,
-.ent-badge-revision::before,
-.ent-badge-rejected::before,
-.ent-badge-locked::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 1px;
-  background: currentColor;
-  flex-shrink: 0;
 }
 
 .ent-badge-dot {
@@ -1107,35 +1095,22 @@ button.ent-btn-teal:hover:not(:disabled) {
 
 .ent-badge-info,
 .ent-badge-submitted {
-  background: #EDF5F7;
-  border-color: #094E68;
   color: #094E68;
 }
 
 .ent-badge-approved {
-  background: #15803D;
-  border: 1.5px solid #14532D;
-  color: #FFFFFF;
-  font-weight: 700;
+  color: #166534;
 }
 
 .ent-badge-revision {
-  background: #fffbeb;
-  border-color: #fcd34d;
-  color: #78350f;
-  font-weight: 700;
+  color: #92400E;
 }
 
 .ent-badge-rejected {
-  background: #B91C1C;
-  border: 1.5px solid #7F1D1D;
-  color: #FFFFFF;
-  font-weight: 700;
+  color: #B91C1C;
 }
 
 .ent-badge-locked {
-  background: #EDF3F6;
-  border-color: #BFD2DC;
   color: #334155;
 }
 

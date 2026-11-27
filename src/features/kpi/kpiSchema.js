@@ -141,6 +141,67 @@ export function formatPicDisplay(pics, customDisplay = '') {
   return normalized.join(', ');
 }
 
+export function resolveItemPicRoles(item) {
+  const allFromItem = normalizePicCodes(item?.pics?.length ? item.pics : (item?.picDisplay ?? []));
+  const explicitPrimary = normalizePicCode(item?.primaryPic ?? '');
+  const primaryPic = explicitPrimary || allFromItem[0] || '';
+  const rawCoPics = item?.coPics !== undefined
+    ? normalizePicCodes(item.coPics)
+    : allFromItem.slice(primaryPic ? 1 : 0);
+  const coPics = rawCoPics.filter((code) => code.toLowerCase() !== primaryPic.toLowerCase());
+  const allPics = primaryPic ? [primaryPic, ...coPics] : [...coPics];
+  const displayLabel = primaryPic
+    ? (coPics.length > 0 ? `${primaryPic} (Co-PIC: ${coPics.join(', ')})` : primaryPic)
+    : '-';
+  return { primaryPic, coPics, allPics, displayLabel };
+}
+
+export function getKpiAchievementMeta(ratioPercent, { isPenaltySection = false } = {}) {
+  if (ratioPercent === null || ratioPercent === undefined || !Number.isFinite(Number(ratioPercent))) {
+    const statusText = 'Belum Terisi';
+    return {
+      tone: 'empty',
+      tier: 'empty',
+      color: '#475569',
+      statusText,
+      label: statusText,
+      thresholdLabel: 'Menunggu Isian',
+    };
+  }
+  const pct = Number(ratioPercent);
+  if (pct >= 100) {
+    const statusText = isPenaltySection ? 'Patuh (100%)' : 'Tercapai';
+    return {
+      tone: 'green',
+      tier: 'green',
+      color: '#166534',
+      statusText,
+      label: statusText,
+      thresholdLabel: 'Hijau (>= 100%)',
+    };
+  }
+  if (pct >= 90) {
+    const statusText = 'Perhatian';
+    return {
+      tone: 'yellow',
+      tier: 'yellow',
+      color: '#92400E',
+      statusText,
+      label: statusText,
+      thresholdLabel: 'Kuning (90% - 99%)',
+    };
+  }
+  const statusText = isPenaltySection ? 'Kena Penalti' : 'Di Bawah Target';
+  return {
+    tone: 'red',
+    tier: 'red',
+    color: '#B91C1C',
+    statusText,
+    label: statusText,
+    thresholdLabel: 'Merah (< 90%)',
+  };
+}
+
 export function getUserPicCodes(user) {
   if (!user) return [];
   if (Array.isArray(user.picCodes) && user.picCodes.length > 0) {
@@ -161,17 +222,25 @@ export function getUserPicCodes(user) {
 export function canUserEditKpiItem(item, user) {
   if (!user || user.status === 'Nonaktif') return false;
   if (user.role === 'superadmin_prp') return true;
-  const rowPics = normalizePicCodes(item?.pics?.length ? item.pics : (item?.picDisplay || []));
-  if (user.role === 'spi') {
-    return item?.id === 'D_5' || rowPics.some((code) => code.toLowerCase() === 'spi');
-  }
+  // Akun Auditor SPI bersifat ketat Read-Only tanpa hak edit baris mana pun.
+  if (user.role === 'spi') return false;
+  const { primaryPic } = resolveItemPicRoles(item);
   const hasKpiAuthority = !user.role || user.role === 'kpi_only' || user.role === 'dual';
-  // Baris tanpa penugasan PIC spesifik tetap dapat diisi akun KPI/Dual untuk menjaga kompatibilitas formulir umum.
-  if (rowPics.length === 0) return hasKpiAuthority;
+  // Baris tanpa penugasan PIC spesifik tetap dapat diisi akun KPI/Dual pada formulir umum.
+  if (!primaryPic) return hasKpiAuthority;
   if (!hasKpiAuthority) return false;
   const userPics = new Set(getUserPicCodes(user).map((code) => code.toLowerCase()));
   if (userPics.size === 0) return false;
-  return rowPics.some((code) => userPics.has(code.toLowerCase()));
+  // Hanya 1 PIC Utama yang memiliki wewenang pengisian dokumen; Co-PIC bersifat kolaborator informasi.
+  return userPics.has(primaryPic.toLowerCase());
+}
+
+export function isUserCoPicOnKpiItem(item, user) {
+  if (!user || user.status === 'Nonaktif') return false;
+  const { coPics } = resolveItemPicRoles(item);
+  if (!coPics.length) return false;
+  const userPics = new Set(getUserPicCodes(user).map((code) => code.toLowerCase()));
+  return coPics.some((code) => userPics.has(code.toLowerCase()));
 }
 
 export function parseIndonesianNumber(input) {
@@ -215,20 +284,28 @@ const MONTH_MAP = {
   des: 11, desember: 11, dec: 11, december: 11,
 };
 
+function makeStrictDate(year, monthIndex, day) {
+  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || !Number.isInteger(day)) return null;
+  if (monthIndex < 0 || monthIndex > 11 || day < 1 || day > 31) return null;
+  const dt = new Date(year, monthIndex, day);
+  if (dt.getFullYear() !== year || dt.getMonth() !== monthIndex || dt.getDate() !== day) return null;
+  return dt;
+}
+
 export function parseFlexibleDate(input) {
   if (!input) return null;
   const raw = String(input).trim();
   if (!raw) return null;
 
   const isoMatch = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (isoMatch) return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+  if (isoMatch) return makeStrictDate(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
 
   const textMatch = raw.replace(/,/g, '').match(/^(\d{1,2})[\s\-/]+([a-zA-Z]+)[\s\-/]+(\d{2,4})$/);
   if (textMatch) {
     let year = Number(textMatch[3]);
     if (year < 100) year += 2000;
     const month = MONTH_MAP[textMatch[2].toLowerCase()];
-    if (month !== undefined) return new Date(year, month, Number(textMatch[1]));
+    if (month !== undefined) return makeStrictDate(year, month, Number(textMatch[1]));
   }
 
   const monthYearMatch = raw.replace(/,/g, '').match(/^([a-zA-Z]+)[\s\-/]+(\d{2,4})$/);
@@ -243,7 +320,7 @@ export function parseFlexibleDate(input) {
   if (dmyMatch) {
     let year = Number(dmyMatch[3]);
     if (year < 100) year += 2000;
-    return new Date(year, Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
+    return makeStrictDate(year, Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
   }
 
   return null;
@@ -352,44 +429,148 @@ export const cleanRefCode = (value) => String(value ?? '').toUpperCase().replace
 export const itemRefPrefix = (sectionCode, itemNo) => `${cleanRefCode(sectionCode || 'A')}${cleanRefCode(itemNo || '1')}`;
 
 /**
- * Membangun peta referensi sel ala Excel untuk seluruh tabel KPI (mis. A1A_I1, A1A_T, A1A_B).
+ * Menghitung pemetaan nomor baris spreadsheet Excel (1-based) secara deterministik:
+ * Baris 1 = Header kolom (A=No, B=Indikator, C=PIC, D=Rumusan, E=Isian, F=Bobot, G=Target, H=Satuan, I=Rumus, J=Capaian, K=Skor).
+ * Setiap baris spanduk bagian (section) dan sub-baris isian memiliki nomor baris unik yang selaras dengan koordinat Excel E/F/G.
+ */
+export function computeKpiExcelRowMap(sections = []) {
+  const sectionRows = new Map();
+  const itemStartRows = new Map();
+  const itemRowInfo = new Map();
+  const itemSubRowsById = new Map();
+  const subrowRows = new Map();
+  let currentRow = 2;
+
+  (sections || []).forEach((section, sIdx) => {
+    const secKey = section.code || String(sIdx);
+    sectionRows.set(secKey, currentRow);
+    sectionRows.set(sIdx, currentRow);
+    if (section.id) sectionRows.set(section.id, currentRow);
+    currentRow += 1;
+
+    (section.items || []).forEach((item) => {
+      const subs = item.subrows || item.inputs || [];
+      const startRow = currentRow;
+      const count = Math.max(1, subs.length);
+      const subRowNums = Array.from({ length: count }, (_, idx) => startRow + idx);
+      if (item.id) {
+        itemStartRows.set(item.id, startRow);
+        itemRowInfo.set(item.id, { startRow, subRows: subRowNums });
+        itemSubRowsById.set(item.id, subRowNums);
+      }
+      subs.forEach((sub, subIdx) => {
+        if (sub?.key) subrowRows.set(sub.key, startRow + subIdx);
+      });
+      currentRow += count;
+    });
+  });
+
+  const totalExcelRows = currentRow - 1;
+  return {
+    headerRow: 1,
+    sectionRows,
+    sectionHeaderRow: sectionRows,
+    sectionRowById: sectionRows,
+    itemStartRows,
+    itemStartRowById: itemStartRows,
+    itemRowInfo,
+    itemSubRowsById,
+    subrowRows,
+    totalExcelRows,
+    totalRows: totalExcelRows,
+  };
+}
+
+/**
+ * Membangun peta referensi sel ala Excel untuk seluruh tabel KPI:
+ * - Koordinat Excel standar: E{row} (Isian), F{row} (Bobot), G{row} (Target)
+ * - Referensi semantik lintas baris: A1A_I1, A1A_B, A1A_T (kompatibilitas penuh).
  */
 export function buildKpiCellDirectory(sections = [], values = {}) {
   const cells = {};
   const labels = {};
   const allowedRefs = new Set();
+  const excelCoordsByItem = new Map();
+  let currentRow = 2;
 
   (sections || []).forEach((section, sIdx) => {
     const secCode = cleanRefCode(section.code || String.fromCharCode(65 + sIdx));
+    currentRow += 1; // Baris header bagian (Section A, B, C, D)
+
     (section.items || []).forEach((item, iIdx) => {
       const prefix = itemRefPrefix(secCode, item.no ?? (iIdx + 1));
       const targetVal = Number(item.targetNum) || 0;
       const bobotVal = Math.abs(Number(item.bobot) || 0);
+      const subs = item.subrows || item.inputs || [];
+      const itemStartRow = currentRow;
 
       const tRef = `${prefix}_T`;
       const bRef = `${prefix}_B`;
+      const excelBRef = `F${itemStartRow}`;
+      const excelTRef = `G${itemStartRow}`;
+
       cells[tRef] = targetVal;
       cells[bRef] = bobotVal;
+      cells[excelTRef] = targetVal;
+      cells[excelBRef] = bobotVal;
       allowedRefs.add(tRef);
       allowedRefs.add(bRef);
+      allowedRefs.add(excelTRef);
+      allowedRefs.add(excelBRef);
       labels[tRef] = `${section.code}.${item.no} Target`;
       labels[bRef] = `${section.code}.${item.no} Bobot`;
+      labels[excelTRef] = `${excelTRef} (${section.code}.${item.no} Target)`;
+      labels[excelBRef] = `${excelBRef} (${section.code}.${item.no} Bobot)`;
 
-      (item.subrows || []).forEach((sub, subIdx) => {
+      const subExcelRefs = [];
+      subs.forEach((sub, subIdx) => {
+        const rowNum = itemStartRow + subIdx;
         const iRef = `${prefix}_I${subIdx + 1}`;
+        const excelIRef = `E${rowNum}`;
         const parsed = parseIndonesianNumber(values?.[sub.key] ?? '');
+
         cells[iRef] = parsed;
+        cells[excelIRef] = parsed;
         allowedRefs.add(iRef);
+        allowedRefs.add(excelIRef);
         labels[iRef] = `${section.code}.${item.no} ${sub.label || `Isian ${subIdx + 1}`}`;
+        labels[excelIRef] = `${excelIRef} (${section.code}.${item.no} ${sub.label || `Isian ${subIdx + 1}`})`;
+        subExcelRefs.push(excelIRef);
+
+        // Sel Bobot (F) dan Target (G) ter-merge sepanjang sub-baris indikator; izinkan referensi baris tergabung
+        if (subIdx > 0) {
+          const mergedF = `F${rowNum}`;
+          const mergedG = `G${rowNum}`;
+          cells[mergedF] = bobotVal;
+          cells[mergedG] = targetVal;
+          allowedRefs.add(mergedF);
+          allowedRefs.add(mergedG);
+          labels[mergedF] = `${mergedF} (${section.code}.${item.no} Bobot)`;
+          labels[mergedG] = `${mergedG} (${section.code}.${item.no} Target)`;
+        }
       });
+
+      if (item.id) {
+        excelCoordsByItem.set(item.id, {
+          startRow: itemStartRow,
+          endRow: itemStartRow + Math.max(1, subs.length) - 1,
+          bobotCell: excelBRef,
+          targetCell: excelTRef,
+          inputCells: subExcelRefs,
+        });
+      }
+
+      currentRow += Math.max(1, subs.length);
     });
   });
 
-  return { cells, labels, allowedRefs };
+  return { cells, labels, allowedRefs, excelCoordsByItem };
 }
 
 /**
- * Menghitung satu baris indikator KPI. Capaian dibatasi 0-100%, skor dibatasi oleh bobot baris.
+ * Menghitung satu baris indikator KPI.
+ * Persentase capaian riil (ratioPercent) tidak dikunci di 100% (dapat >100% sesuai realisasi lapangan),
+ * sedangkan skor tertimbang (weightedScore) tetap proporsional dan terjaga terhadap bobot baris.
  */
 export function computeKpiItem(item, values, isPenaltySection, allSections = null) {
   const bobot = Number(item.bobot) || 0;
@@ -412,7 +593,8 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
 
   switch (item.calcType) {
     case 'custom': {
-      const globalCells = allSections ? buildKpiCellDirectory(allSections, values).cells : null;
+      const effectiveSections = allSections || [{ code: 'A', items: [item] }];
+      const globalCells = buildKpiCellDirectory(effectiveSections, values).cells;
       const result = evaluateKpiFormula(item.formulaExpr, {
         inputs: parsedSubs.map((sub) => sub.num),
         target: targetNum,
@@ -422,9 +604,11 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
       if (result.error) {
         extraNote = `Rumus error: ${result.error}`;
       } else if (result.value !== null) {
-        const clamped = Math.min(100, Math.max(0, result.value));
-        ratioPercent = clamped;
-        weightedScore = isPenaltySection ? ((100 - clamped) / 100) * bobot : (clamped / 100) * bobot;
+        const pct = Math.max(0, result.value);
+        ratioPercent = pct;
+        weightedScore = isPenaltySection
+          ? ((100 - Math.min(100, pct)) / 100) * bobot
+          : (pct / 100) * bobot;
       }
       break;
     }
@@ -542,7 +726,9 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
     }
   }
 
-  if (ratioPercent !== null) ratioPercent = Math.min(100, Math.max(0, ratioPercent));
+  if (ratioPercent !== null) {
+    ratioPercent = Math.round(Math.max(0, ratioPercent) * 1e6) / 1e6;
+  }
   if (weightedScore !== null) {
     const limit = Math.abs(bobot);
     weightedScore = isPenaltySection ? Math.max(-limit, Math.min(0, weightedScore)) : Math.min(limit, Math.max(0, weightedScore));
@@ -579,7 +765,8 @@ export function normalizeKpiSections(sections) {
         usedKeys.add(key);
         return { ...sub, key, label: sub.label || `Isian ${subIndex + 1}`, isTextInput: meta.textInput ? true : Boolean(sub.isTextInput) };
       });
-      const pics = normalizePicCodes(item.pics ?? item.picDisplay ?? []);
+      const { primaryPic, coPics, allPics } = resolveItemPicRoles(item);
+      const pics = allPics;
       const picDisplay = formatPicDisplay(pics, item.picDisplay);
 
       return {
@@ -589,6 +776,8 @@ export function normalizeKpiSections(sections) {
         excelNo: String(item.excelNo ?? item.no ?? itemIndex + 1),
         indikator: item.indikator || 'Indikator baru',
         formula: item.formula || '',
+        primaryPic,
+        coPics,
         pics,
         picDisplay,
         bobot,

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, CircleCheck, Copy, Ellipsis, Eye, GitMerge, History, Lock, LockOpen, MousePointerClick,
+  ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, CircleCheck, Copy, Ellipsis, Eye, FileSpreadsheet, GitMerge, History, Lock, LockOpen, MousePointerClick,
   PanelRightClose, Plus, Radio, RotateCcw, Send, Settings2, Sigma, Split, Table2, Trash2, TriangleAlert, Users, X,
 } from 'lucide-react';
 import gsap from 'gsap';
@@ -20,7 +20,8 @@ import {
   CALC_TYPES, PRESET_FORMULA_EXPR, KPI_DRAFT_KEY, KPI_LIVE_SYNC_KEY, DEFAULT_KPI_VALIDATION_RULES,
   createId, normalizeKpiSections, publishKpiSections, readKpiHistory, readPublishedKpiConfig,
   validateKpiSections, computeKpiItem, formatIndonesianNumber, buildKpiCellDirectory, itemRefPrefix,
-  readMasterPicCatalog, normalizePicCodes, formatPicDisplay, readKpiValidationRules, saveKpiValidationRules,
+  readMasterPicCatalog, normalizePicCode, normalizePicCodes, formatPicDisplay, readKpiValidationRules, saveKpiValidationRules,
+  computeKpiExcelRowMap, resolveItemPicRoles, getKpiAchievementMeta,
 } from '../kpiSchema';
 import { compileFormula, describeKpiFormula, validateKpiFormula } from '../formulaEngine';
 import {
@@ -155,7 +156,6 @@ export default function KPITableDesigner() {
   const sheetScrollRef = useRef(null);
   const noticeTimer = useRef(null);
   const sendingRef = useRef(false);
-  const pickingRef = useRef(false);
   const [sections, setSections] = useState(initialSections);
   const [picCatalog, setPicCatalog] = useState(readMasterPicCatalog);
   const [validationRules, setValidationRules] = useState(readKpiValidationRules);
@@ -194,6 +194,7 @@ export default function KPITableDesigner() {
   }, [periodsList, periodString]);
 
   const normalized = useMemo(() => normalizeKpiSections(sections), [sections]);
+  const excelRowMap = useMemo(() => computeKpiExcelRowMap(normalized), [normalized]);
   const validation = useMemo(() => validateKpiSections(normalized, validationRules), [normalized, validationRules]);
   const directory = useMemo(() => buildKpiCellDirectory(normalized, simValues), [normalized, simValues]);
   const errorCount = validation.issues.filter((issue) => issue.level === 'error').length;
@@ -209,6 +210,8 @@ export default function KPITableDesigner() {
   const selectedSection = selectedSectionIndex >= 0 ? normalized[selectedSectionIndex] : undefined;
   const selectedItemIndex = selectedSection ? selectedSection.items.findIndex((item) => item.id === selectedId) : -1;
   const selected = selectedItemIndex >= 0 ? selectedSection.items[selectedItemIndex] : null;
+  const selectedExcelMeta = selected ? excelRowMap.itemRowInfo.get(selected.id) : null;
+  const selectedPicRoles = useMemo(() => (selected ? resolveItemPicRoles(selected) : { primaryPic: '', coPics: [], allPics: [] }), [selected]);
   const selectedPrefix = selected ? itemRefPrefix(selectedSection.code, selected.no) : '';
   const selectedExpr = selected ? visibleExpr(selected) : '';
   const formulaEditable = Boolean(selected) && !isDateType(selected.calcType);
@@ -219,8 +222,25 @@ export default function KPITableDesigner() {
   const referencedCells = useMemo(() => {
     if (!selected || !formulaEditable) return new Set();
     const { vars } = compileFormula(stripEq(selectedExpr));
-    return new Set([...vars].map((name) => (/^(I\d+|T|B)$/.test(name) ? `${selectedPrefix}_${name}` : name)));
-  }, [selected, formulaEditable, selectedExpr, selectedPrefix]);
+    const refs = new Set();
+    const selMeta = excelRowMap.itemRowInfo.get(selected.id);
+    vars.forEach((name) => {
+      if (/^I(\d+)$/.test(name)) {
+        const subIdx = Number(name.slice(1)) - 1;
+        refs.add(`${selectedPrefix}_${name}`);
+        if (selMeta?.subRows?.[subIdx]) refs.add(`E${selMeta.subRows[subIdx]}`);
+      } else if (name === 'B') {
+        refs.add(`${selectedPrefix}_B`);
+        if (selMeta?.startRow) refs.add(`F${selMeta.startRow}`);
+      } else if (name === 'T') {
+        refs.add(`${selectedPrefix}_T`);
+        if (selMeta?.startRow) refs.add(`G${selMeta.startRow}`);
+      } else {
+        refs.add(name);
+      }
+    });
+    return refs;
+  }, [selected, formulaEditable, selectedExpr, selectedPrefix, excelRowMap]);
 
   const results = useMemo(() => {
     const map = new Map();
@@ -230,15 +250,6 @@ export default function KPITableDesigner() {
     return map;
   }, [normalized, simValues]);
 
-  const gutterStart = useMemo(() => {
-    const map = new Map();
-    let counter = 1;
-    normalized.forEach((section) => section.items.forEach((item) => {
-      map.set(item.id, counter);
-      counter += item.subrows.length;
-    }));
-    return map;
-  }, [normalized]);
   const totalScore = [...results.values()].reduce((sum, result) => sum + (result.weightedScore || 0), 0);
   const totalRows = normalized.reduce((sum, section) => sum + section.items.length, 0);
   const activeUnitCount = useMemo(() => (picCatalog.length >= 0 ? getKpiUnits().length : 0), [picCatalog]);
@@ -278,7 +289,7 @@ export default function KPITableDesigner() {
     }
   }, [normalized, notify]);
 
-  // Sinkronisasi struktur & baris realtime ke form seluruh unit kerja
+  // Sinkronisasi struktur & baris realtime ke form seluruh unit kerja (debounced agar bebas spam)
   useEffect(() => {
     if (!liveSync || hasBlockingError) return undefined;
     const timer = window.setTimeout(() => {
@@ -289,7 +300,7 @@ export default function KPITableDesigner() {
       } catch {
         notify('Live sync gagal menyimpan konfigurasi.');
       }
-    }, 280);
+    }, 900);
     return () => window.clearTimeout(timer);
   }, [normalized, liveSync, hasBlockingError, notify, currentUser?.email]);
 
@@ -364,8 +375,8 @@ export default function KPITableDesigner() {
     const next = current.map((section, index) => (
       index === si ? { ...section, items: transform(section.items, section) } : section
     ));
-    if (liveSync && immediateSyncNote) {
-      window.queueMicrotask(() => pushRealtimeStructureNow(next, immediateSyncNote));
+    if (immediateSyncNote) {
+      window.queueMicrotask(() => notify(immediateSyncNote));
     }
     return next;
   });
@@ -380,25 +391,58 @@ export default function KPITableDesigner() {
     index === ii ? { ...item, subrows: transform(item.subrows) } : item
   )));
 
-  const toggleItemPic = (item, code) => {
-    const current = normalizePicCodes(item.pics || []);
-    const exists = current.some((c) => c.toLowerCase() === code.toLowerCase());
-    const nextPics = exists
-      ? current.filter((c) => c.toLowerCase() !== code.toLowerCase())
-      : [...current, code];
+  const setItemPrimaryPic = (item, rawPrimaryCode) => {
+    const nextPrimary = normalizePicCode(rawPrimaryCode);
+    const currentRoles = resolveItemPicRoles(item);
+    const nextCoPics = currentRoles.coPics.filter((c) => c.toLowerCase() !== nextPrimary.toLowerCase());
+    const nextPics = nextPrimary ? [nextPrimary, ...nextCoPics] : [...nextCoPics];
     patchItemById(item.id, {
+      primaryPic: nextPrimary,
+      coPics: nextPrimary ? nextCoPics : nextCoPics.slice(1),
       pics: nextPics,
       picDisplay: nextPics.join(', '),
       picClearedByAdmin: nextPics.length === 0,
     });
   };
 
-  const updateItemPicText = (item, rawText) => {
-    const nextPics = normalizePicCodes(rawText);
+  const toggleItemCoPic = (item, rawCode) => {
+    const code = normalizePicCode(rawCode);
+    if (!code) return;
+    const currentRoles = resolveItemPicRoles(item);
+    if (!currentRoles.primaryPic) {
+      patchItemById(item.id, {
+        primaryPic: code,
+        coPics: [],
+        pics: [code],
+        picDisplay: code,
+        picClearedByAdmin: false,
+      });
+      return;
+    }
+    if (currentRoles.primaryPic.toLowerCase() === code.toLowerCase()) {
+      const promoted = currentRoles.coPics[0] || '';
+      const remainingCo = currentRoles.coPics.slice(1);
+      const nextPics = promoted ? [promoted, ...remainingCo] : [];
+      patchItemById(item.id, {
+        primaryPic: promoted,
+        coPics: remainingCo,
+        pics: nextPics,
+        picDisplay: nextPics.join(', '),
+        picClearedByAdmin: nextPics.length === 0,
+      });
+      return;
+    }
+    const exists = currentRoles.coPics.some((c) => c.toLowerCase() === code.toLowerCase());
+    const nextCoPics = exists
+      ? currentRoles.coPics.filter((c) => c.toLowerCase() !== code.toLowerCase())
+      : [...currentRoles.coPics, code];
+    const nextPics = [currentRoles.primaryPic, ...nextCoPics];
     patchItemById(item.id, {
+      primaryPic: currentRoles.primaryPic,
+      coPics: nextCoPics,
       pics: nextPics,
-      picDisplay: formatPicDisplay(nextPics, rawText),
-      picClearedByAdmin: nextPics.length === 0,
+      picDisplay: nextPics.join(', '),
+      picClearedByAdmin: false,
     });
   };
 
@@ -570,9 +614,7 @@ export default function KPITableDesigner() {
     let code;
     do { code = letters(number++).toUpperCase(); } while (current.some((section) => section.code === code));
     const next = [...current, { code, title: 'Bagian baru', totalWeight: 0, isPenaltySection: false, items: [blankItem(code, 1)] }];
-    if (liveSync) {
-      window.queueMicrotask(() => pushRealtimeStructureNow(next, `Perspektif baru (${code}) ditambahkan dan disinkronkan ke seluruh unit.`));
-    }
+    window.queueMicrotask(() => notify(`Perspektif baru (${code}) ditambahkan${liveSync ? ' dan disinkronkan ke seluruh unit' : ''}.`));
     return next;
   });
 
@@ -593,19 +635,91 @@ export default function KPITableDesigner() {
     });
   };
 
-  const pickHandlers = (ownerId, localRef, globalRef) => (pickMode && formulaEditable ? {
+  const pickHandlers = (ownerId, localRef, excelRef, legacyRef) => (pickMode && formulaEditable ? {
     onMouseDown: (event) => {
       event.preventDefault();
     },
     onClick: () => {
-      insertToken(ownerId === selected?.id ? localRef : globalRef);
+      insertToken(ownerId === selected?.id ? excelRef : excelRef || legacyRef);
     },
-    title: `Klik untuk menyisipkan ${globalRef}`,
+    title: `Klik untuk menyisipkan koordinat Excel ${excelRef} (alias ${ownerId === selected?.id ? localRef : legacyRef})`,
   } : {});
-  const refClass = (ref) => [
+  const refClass = (excelRef, legacyRef) => [
     pickMode && formulaEditable ? 'pickable' : '',
-    referencedCells.has(ref) ? 'is-ref' : '',
+    referencedCells.has(excelRef) || referencedCells.has(legacyRef) ? 'is-ref' : '',
   ].join(' ');
+
+  const handleExportDesignerExcel = () => {
+    const esc = (val) => {
+      const raw = String(val ?? '');
+      const safe = /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      return safe.replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+    };
+    let rowsHtml = '';
+    normalized.forEach((sec) => {
+      rowsHtml += `<tr style="background:#EDF3F6;font-weight:bold;color:#072534;">
+        <td style="border:1px solid #CBD5E1;text-align:center;padding:6px;">${esc(sec.code)}</td>
+        <td colspan="4" style="border:1px solid #CBD5E1;padding:6px;">${esc(sec.title)}</td>
+        <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(sec.totalWeight)}</td>
+        <td colspan="5" style="border:1px solid #CBD5E1;padding:6px;">${sec.isPenaltySection ? 'Bagian Penalti' : ''}</td>
+      </tr>`;
+      sec.items.forEach((item) => {
+        const span = item.subrows.length;
+        const picMeta = resolveItemPicRoles(item);
+        const picText = picMeta.primaryPic
+          ? (picMeta.coPics.length ? `Utama: ${picMeta.primaryPic} | Co-PIC: ${picMeta.coPics.join(', ')}` : picMeta.primaryPic)
+          : (item.picDisplay || '-');
+        const res = results.get(item.id);
+        const capStr = res?.ratioPercent == null ? '' : `${formatIndonesianNumber(res.ratioPercent, 2)}%`;
+        const skorStr = res?.weightedScore == null ? '' : formatIndonesianNumber(res.weightedScore, 2);
+        const formulaStr = isDateType(item.calcType) ? CALC_TYPES[item.calcType].label : `=${stripEq(visibleExpr(item))}`;
+        item.subrows.forEach((sub, sIdx) => {
+          const simVal = simValues[sub.key] ?? '';
+          if (sIdx === 0) {
+            rowsHtml += `<tr>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:center;">${esc(item.no)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;">${esc(item.indikator)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;">${esc(picText)}</td>
+              <td style="border:1px solid #CBD5E1;padding:6px;">${esc(sub.label)}</td>
+              <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(simVal)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(Math.abs(Number(item.bobot) || 0))}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(item.targetNum)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:center;padding:6px;">${esc(item.satuan)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;font-family:Consolas,monospace;">${esc(formulaStr)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;font-weight:bold;">${esc(capStr)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;font-weight:bold;">${esc(skorStr)}</td>
+            </tr>`;
+          } else {
+            rowsHtml += `<tr>
+              <td style="border:1px solid #CBD5E1;padding:6px;">${esc(sub.label)}</td>
+              <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(simVal)}</td>
+            </tr>`;
+          }
+        });
+      });
+    });
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="UTF-8" /></head>
+      <body style="font-family:Calibri,Arial,sans-serif;font-size:10pt;">
+        <table style="border-collapse:collapse;width:100%;">
+          <thead>
+            <tr style="background:#F8FAFC;font-weight:bold;text-align:center;">
+              ${COLUMNS.map((c) => `<th style="border:1px solid #CBD5E1;padding:8px;">${esc(c)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </body></html>`;
+    const blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Template_Desainer_KPI_Excel_A_K_${periodString || '2026'}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handleSaveValidationRules = () => {
     const saved = saveKpiValidationRules(validationRules, currentUser?.email || 'Superadmin PRP');
@@ -715,21 +829,20 @@ export default function KPITableDesigner() {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.45rem 0.8rem',
-              borderRadius: '6px',
-              fontSize: '0.73rem',
+              gap: '0.35rem',
+              padding: '0.15rem 0.25rem',
+              fontSize: '0.75rem',
               fontWeight: 800,
-              letterSpacing: '0.02em',
-              background: selectedPeriodMeta?.isOpenForInput ? '#15803D' : '#B91C1C',
-              border: `1.5px solid ${selectedPeriodMeta?.isOpenForInput ? '#14532D' : '#7F1D1D'}`,
-              color: '#FFFFFF',
+              letterSpacing: '0.01em',
+              color: selectedPeriodMeta
+                ? (selectedPeriodMeta.isOpenForInput ? '#166534' : '#B91C1C')
+                : '#094E68',
             }}
             title={selectedPeriodMeta ? selectedPeriodMeta.statusLabel : 'Periode Baru (belum disinkronkan)'}
           >
             {selectedPeriodMeta?.isOpenForInput ? <LockOpen size={13} /> : <Lock size={13} />}
             {selectedPeriodMeta
-              ? (selectedPeriodMeta.isOpenForInput ? `Periode ${periodString}: AKTIF (Terbuka)` : `Periode ${periodString}: TIDAK AKTIF (Terkunci)`)
+              ? (selectedPeriodMeta.isOpenForInput ? `Periode ${periodString}: Aktif (Terbuka)` : `Periode ${periodString}: Tidak Aktif (Terkunci)`)
               : `Periode ${periodString || '-'}: Siap Buat Baru`}
           </span>
           <button
@@ -805,6 +918,9 @@ export default function KPITableDesigner() {
           <button type="button" onClick={handleSyncStructureRealtime} disabled={hasBlockingError}>
             <Radio size={14} /> Sync Baris Aktif
           </button>
+          <button type="button" onClick={handleExportDesignerExcel} title="Ekspor struktur tabel desainer dengan pemetaan kolom A-K dan baris Excel 1:1">
+            <FileSpreadsheet size={14} /> Template Excel (A-K)
+          </button>
           <button type="button" onClick={() => setSimValues({})}><RotateCcw size={14} /> Kosongkan simulasi</button>
           <button
             type="button"
@@ -843,7 +959,9 @@ export default function KPITableDesigner() {
           <div className="sheet-shell">
             <div className={`formula-bar ${pickMode && formulaEditable ? 'picking' : ''}`}>
               <div className="formula-row">
-                <span className="name-box" title="Baris terpilih">{selected ? `${selectedSection.code}.${selected.no}` : '-'}</span>
+                <span className="name-box" title="Koordinat baris terpilih (Kode KPI & Baris Excel)">
+                  {selected ? `${selectedSection.code}.${selected.no} · E${selectedExcelMeta?.startRow || '-'}` : '-'}
+                </span>
                 <select
                   aria-label="Tipe perhitungan"
                   disabled={!selected}
@@ -860,11 +978,11 @@ export default function KPITableDesigner() {
                   aria-label="Rumus baris terpilih"
                   aria-invalid={Boolean(formulaError)}
                   disabled={!formulaEditable}
-                  placeholder={!selected ? 'Klik salah satu baris di tabel untuk mengedit rumus dan PIC' : isDateType(selected.calcType) ? 'Tipe tanggal memakai batas waktu, bukan rumus' : '=I1/T*100'}
+                  placeholder={!selected ? 'Klik salah satu baris di tabel untuk mengedit rumus dan PIC' : isDateType(selected.calcType) ? 'Tipe tanggal memakai batas waktu, bukan rumus' : `=E${selectedExcelMeta?.startRow || 3}/G${selectedExcelMeta?.startRow || 3}*100 atau =I1/T*100`}
                   value={formulaEditable ? `=${stripEq(selectedExpr)}` : ''}
                   onChange={(event) => setFormula(stripEq(event.target.value))}
-                  onFocus={() => { pickingRef.current = true; setPickMode(true); }}
-                  onBlur={() => { pickingRef.current = false; setPickMode(false); }}
+                  onFocus={() => setPickMode(true)}
+                  onBlur={() => setPickMode(false)}
                   spellCheck={false}
                 />
               </div>
@@ -883,6 +1001,15 @@ export default function KPITableDesigner() {
                         {op.label}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      title="Rentang sel Excel (misal SUM(E3:E8))"
+                      disabled={!formulaEditable}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertToken(':')}
+                    >
+                      :
+                    </button>
                   </div>
                   <div className="op-group" role="group" aria-label="Fungsi">
                     {FUNCTIONS.map((name) => (
@@ -897,14 +1024,53 @@ export default function KPITableDesigner() {
                       </button>
                     ))}
                   </div>
-                  <div className="op-group" role="group" aria-label="Sel baris ini">
+                  <div className="op-group" role="group" aria-label="Koordinat Excel dan alias baris ini">
+                    {selected.subrows.map((sub, index) => {
+                      const excelCoord = `E${selectedExcelMeta?.subRows?.[index] || index + 3}`;
+                      return (
+                        <button
+                          key={sub.key}
+                          type="button"
+                          className="ref-chip"
+                          disabled={!formulaEditable}
+                          title={`Sel Excel ${excelCoord} (${sub.label} · alias I${index + 1})`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => insertToken(excelCoord)}
+                        >
+                          {excelCoord}
+                        </button>
+                      );
+                    })}
+                    {selectedExcelMeta?.startRow && (
+                      <>
+                        <button
+                          type="button"
+                          className="ref-chip"
+                          disabled={!formulaEditable}
+                          title={`Target Excel G${selectedExcelMeta.startRow} (alias T)`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => insertToken(`G${selectedExcelMeta.startRow}`)}
+                        >
+                          G{selectedExcelMeta.startRow}
+                        </button>
+                        <button
+                          type="button"
+                          className="ref-chip"
+                          disabled={!formulaEditable}
+                          title={`Bobot Excel F${selectedExcelMeta.startRow} (alias B)`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => insertToken(`F${selectedExcelMeta.startRow}`)}
+                        >
+                          F{selectedExcelMeta.startRow}
+                        </button>
+                      </>
+                    )}
                     {selected.subrows.map((sub, index) => (
                       <button
-                        key={sub.key}
+                        key={`alias-${sub.key}`}
                         type="button"
-                        className="ref-chip"
                         disabled={!formulaEditable}
-                        title={sub.label}
+                        title={`Alias lokal I${index + 1}: ${sub.label}`}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => insertToken(`I${index + 1}`)}
                       >
@@ -913,9 +1079,8 @@ export default function KPITableDesigner() {
                     ))}
                     <button
                       type="button"
-                      className="ref-chip"
                       disabled={!formulaEditable}
-                      title="Target baris ini"
+                      title="Target baris ini (alias T)"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => insertToken('T')}
                     >
@@ -923,9 +1088,8 @@ export default function KPITableDesigner() {
                     </button>
                     <button
                       type="button"
-                      className="ref-chip"
                       disabled={!formulaEditable}
-                      title="Bobot baris ini"
+                      title="Bobot baris ini (alias B)"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => insertToken('B')}
                     >
@@ -953,16 +1117,19 @@ export default function KPITableDesigner() {
                       </span>
                       {!formulaError && <span className="desc">= {describeKpiFormula(selectedExpr, selected.subrows, directory.labels)}</span>}
                       <span className="sim">
-                        Capaian <strong>{results.get(selected.id)?.ratioPercent == null ? '-' : `${formatIndonesianNumber(results.get(selected.id).ratioPercent)}%`}</strong>
+                        Capaian{' '}
+                        <strong style={{ color: getKpiAchievementMeta(results.get(selected.id)?.ratioPercent, { isPenaltySection: selectedSection?.isPenaltySection }).color }}>
+                          {results.get(selected.id)?.ratioPercent == null ? '-' : `${formatIndonesianNumber(results.get(selected.id).ratioPercent)}%`}
+                        </strong>
                         {' · '}Skor <strong>{formatIndonesianNumber(results.get(selected.id)?.weightedScore)}</strong>
                       </span>
-                      {selected.calcType !== 'custom' && <span className="hint">Preset: mengetik di kolom fx otomatis mengubahnya menjadi rumus bebas.</span>}
+                      {selected.calcType !== 'custom' && <span className="hint">Preset: mengetik di kolom fx otomatis mengubahnya menjadi rumus bebas (mendukung sel Excel E3, F3, G3, SUM(E3:E8)).</span>}
                     </>
                   ) : (
                     <span className="hint">{CALC_TYPES[selected.calcType]?.expression}</span>
                   )}
                   <span className="hint pick-hint">
-                    <MousePointerClick size={13} /> {pickMode && formulaEditable ? 'Mode pilih sel aktif: klik sel Isian / Bobot / Target di baris mana pun.' : 'Klik kolom fx untuk mengaktifkan mode pilih sel.'}
+                    <MousePointerClick size={13} /> {pickMode && formulaEditable ? 'Mode pilih sel aktif: klik sel Isian (E), Bobot (F), atau Target (G) di baris mana pun.' : 'Klik kolom fx untuk mengaktifkan mode pilih sel Excel.'}
                   </span>
                 </div>
               )}
@@ -973,11 +1140,36 @@ export default function KPITableDesigner() {
                     <input value={selected.formula ?? ''} onChange={(event) => patchItemById(selected.id, { formula: event.target.value })} />
                   </label>
                   <label>
-                    <span>PIC Penanggung Jawab (pisahkan koma, mis. BAKT, BAG)</span>
+                    <span>PIC Utama (1 Unit Penanggung Jawab Input)</span>
+                    <select
+                      value={selectedPicRoles.primaryPic}
+                      onChange={(event) => setItemPrimaryPic(selected, event.target.value)}
+                      style={{ minHeight: '36px', padding: '.4rem .55rem', border: '1px solid var(--line-strong)', borderRadius: '5px', background: '#FFFFFF', color: '#072534', fontSize: '.76rem' }}
+                    >
+                      <option value="">- Pilih PIC Utama -</option>
+                      {picCatalog.map((entry) => (
+                        <option key={entry.code} value={entry.code}>{entry.code} - {entry.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Co-PIC Kolaborasi (hanya info, pisahkan koma)</span>
                     <input
-                      value={selected.picDisplay || (selected.pics || []).join(', ')}
-                      placeholder="Contoh: BAKT, BAG"
-                      onChange={(event) => updateItemPicText(selected, event.target.value)}
+                      value={selectedPicRoles.coPics.join(', ')}
+                      placeholder="Contoh: BAG, PJM (tanpa input ganda)"
+                      onChange={(event) => {
+                        const rawCo = normalizePicCodes(event.target.value).filter(
+                          (c) => c.toLowerCase() !== selectedPicRoles.primaryPic.toLowerCase(),
+                        );
+                        const nextPics = selectedPicRoles.primaryPic ? [selectedPicRoles.primaryPic, ...rawCo] : rawCo;
+                        patchItemById(selected.id, {
+                          primaryPic: selectedPicRoles.primaryPic || rawCo[0] || '',
+                          coPics: selectedPicRoles.primaryPic ? rawCo : rawCo.slice(1),
+                          pics: nextPics,
+                          picDisplay: nextPics.join(', '),
+                          picClearedByAdmin: nextPics.length === 0,
+                        });
+                      }}
                     />
                   </label>
                   <label>
@@ -1119,12 +1311,12 @@ export default function KPITableDesigner() {
                 </colgroup>
                 <thead>
                   <tr className="letters">
-                    <th aria-hidden="true" />
-                    {COLUMNS.map((_, index) => <th key={index} aria-hidden="true">{String.fromCharCode(65 + index)}</th>)}
-                    <th aria-hidden="true" />
+                    <th>Baris</th>
+                    {COLUMNS.map((_, index) => <th key={index}>{String.fromCharCode(65 + index)}</th>)}
+                    <th />
                   </tr>
                   <tr className="titles">
-                    <th scope="col">#</th>
+                    <th scope="col" className="gutter" title="Baris Excel 1 (Header Kolom)">1</th>
                     {COLUMNS.map((title) => <th scope="col" key={title}>{title}</th>)}
                     <th scope="col"><span className="sr-only">Aksi</span></th>
                   </tr>
@@ -1133,10 +1325,11 @@ export default function KPITableDesigner() {
                   const summary = validation.sectionSummaries[si];
                   const itemSum = summary?.itemSum ?? 0;
                   const weightMismatch = summary ? !summary.matches : false;
+                  const secExcelRow = excelRowMap.sectionHeaderRow.get(si) || 2;
                   return (
                     <tbody key={`section-${si}`} id={`kpi-section-${si}`} className={`sheet-section ${weightMismatch ? 'has-warn' : ''}`}>
                       <tr className="section-row">
-                        <td className="gutter">{section.code}</td>
+                        <td className="gutter" title={`Baris Excel ${secExcelRow} (Header Bagian ${section.code})`}>{secExcelRow}</td>
                         <td colSpan={COLUMNS.length + 1}>
                           <div className="section-bar">
                             <input aria-label="Kode bagian" className="code" value={section.code} onChange={(event) => updateSection(si, { code: event.target.value.toUpperCase() })} />
@@ -1156,7 +1349,7 @@ export default function KPITableDesigner() {
                                 title="Samakan bobot bagian dengan total bobot baris"
                                 onClick={() => updateSection(si, { totalWeight: itemSum })}
                               >
-                                Samakan = {formatIndonesianNumber(itemSum, 4)}
+                                <Check size={12} /> Samakan = {formatIndonesianNumber(itemSum, 4)}
                               </button>
                             )}
                             <label className="designer-check">
@@ -1200,14 +1393,21 @@ export default function KPITableDesigner() {
                         const isSelected = item.id === selectedId;
                         const rowClass = `${isSelected ? 'selected' : ''} ${hasError ? 'row-error' : ''}`;
                         const select = () => { if (!pickMode) setSelectedId(item.id); };
+                        const itemExcelMeta = excelRowMap.itemRowInfo.get(item.id) || { startRow: 3, subRows: item.subrows.map((_, i) => 3 + i) };
+                        const itemStartRow = itemExcelMeta.startRow;
+                        const picRoles = resolveItemPicRoles(item);
+                        const capMeta = getKpiAchievementMeta(result?.ratioPercent, { isPenaltySection: section.isPenaltySection });
 
                         return item.subrows.map((sub, subi) => {
-                          const gutter = (gutterStart.get(item.id) || 0) + subi;
+                          const subExcelRow = itemExcelMeta.subRows[subi] || (itemStartRow + subi);
                           const patchSub = (patch) => editSubs(si, ii, (subs) => subs.map((entry, index) => (index === subi ? { ...entry, ...patch } : entry)));
                           const iRef = `${prefix}_I${subi + 1}`;
+                          const excelERef = `E${subExcelRow}`;
+                          const excelFRef = `F${itemStartRow}`;
+                          const excelGRef = `G${itemStartRow}`;
                           return (
                             <tr key={sub.key} className={`${rowClass} ${subi === 0 ? 'item-start' : ''}`} onFocusCapture={select} onClick={select}>
-                              <td className="gutter" title={hasError ? rowIssues.map((issue) => issue.message).join('\n') : undefined}>{gutter}</td>
+                              <td className="gutter" title={hasError ? rowIssues.map((issue) => issue.message).join('\n') : `Baris Excel ${subExcelRow}`}>{subExcelRow}</td>
                               {subi === 0 && (
                                 <>
                                   <td rowSpan={span} style={{ background: item.hideExcelNo ? '#F8FAFC' : undefined }}>
@@ -1232,7 +1432,7 @@ export default function KPITableDesigner() {
                                           fontWeight: 700,
                                         }}
                                       >
-                                        Merged ↑ (Unmerge)
+                                        <Split size={11} /> Merged (Unmerge)
                                       </button>
                                     )}
                                   </td>
@@ -1271,7 +1471,7 @@ export default function KPITableDesigner() {
                                           fontWeight: 700,
                                         }}
                                       >
-                                        Merged dg Baris Atas ↑ (Klik untuk Unmerge)
+                                        <Split size={11} /> Merged dg Baris Atas (Unmerge)
                                       </button>
                                     )}
                                   </td>
@@ -1279,7 +1479,7 @@ export default function KPITableDesigner() {
                                     <button
                                       type="button"
                                       className="pic-cell-trigger"
-                                      aria-label={`Pilih PIC untuk indikator ${section.code}.${item.no}`}
+                                      aria-label={`Pilih PIC Utama dan Co-PIC untuk indikator ${section.code}.${item.no}`}
                                       aria-haspopup="dialog"
                                       aria-expanded={picPickerFor === item.id}
                                       onClick={() => {
@@ -1288,19 +1488,20 @@ export default function KPITableDesigner() {
                                         setPicPickerFor((cur) => (cur === item.id ? null : item.id));
                                       }}
                                     >
-                                      {item.pics?.length ? (
-                                        item.pics.map((code) => (
-                                          <span key={code} className="pic-chip">{code}</span>
-                                        ))
+                                      <Users size={12} style={{ flexShrink: 0, color: '#094E68' }} />
+                                      {picRoles.primaryPic ? (
+                                        <span style={{ display: 'flex', flexDirection: 'column', gap: '1px', lineHeight: 1.25 }}>
+                                          <strong style={{ fontSize: '0.69rem', color: '#094E68' }}>Utama: {picRoles.primaryPic}</strong>
+                                          {picRoles.coPics.length > 0 && (
+                                            <span style={{ fontSize: '0.63rem', color: '#475569', fontWeight: 600 }}>
+                                              Co-PIC: {picRoles.coPics.join(', ')}
+                                            </span>
+                                          )}
+                                        </span>
                                       ) : (
-                                        <span className="pic-empty"><Users size={12} /> Atur PIC</span>
+                                        <span className="pic-empty">Atur PIC Utama</span>
                                       )}
                                     </button>
-                                    {item.picDisplay && item.picDisplay !== item.pics?.join(', ') && (
-                                      <div style={{ fontSize: '0.64rem', color: '#475569', marginTop: '0.2rem', lineHeight: 1.25 }}>
-                                        {item.picDisplay}
-                                      </div>
-                                    )}
                                     {picPickerFor === item.id && (
                                       <div
                                         className="pic-popover"
@@ -1315,7 +1516,7 @@ export default function KPITableDesigner() {
                                       >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
                                           <strong style={{ fontSize: '0.73rem', color: '#072534' }}>
-                                            PIC Baris {section.code}.{item.no}
+                                            PIC Utama &amp; Co-PIC ({section.code}.{item.no})
                                           </strong>
                                           <button
                                             type="button"
@@ -1327,40 +1528,50 @@ export default function KPITableDesigner() {
                                             <X size={13} />
                                           </button>
                                         </div>
+                                        <label style={{ display: 'grid', gap: '0.2rem', fontSize: '0.68rem', fontWeight: 700, color: '#072534' }}>
+                                          1. PIC Utama (Penanggung Jawab Pengisian)
+                                          <select
+                                            className="pic-popover-display"
+                                            aria-label="Pilih PIC Utama"
+                                            value={picRoles.primaryPic}
+                                            onChange={(event) => setItemPrimaryPic(item, event.target.value)}
+                                          >
+                                            <option value="">- Belum Ditentukan -</option>
+                                            {picCatalog.map((entry) => (
+                                              <option key={entry.code} value={entry.code}>{entry.code} - {entry.name}</option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#334155', marginTop: '0.15rem' }}>
+                                          2. Co-PIC (Kolaborasi / Informasi Tanpa Akun Ganda)
+                                        </div>
                                         <input
-                                          autoFocus
                                           className="pic-popover-search"
-                                          placeholder="Cari master PIC (mis. BAKT, LPPM)..."
-                                          aria-label="Cari kode PIC"
+                                          placeholder="Cari unit Co-PIC (mis. BAG, PJM)..."
+                                          aria-label="Cari kode Co-PIC"
                                           value={picSearch}
                                           onChange={(event) => setPicSearch(event.target.value)}
                                         />
                                         <div className="pic-popover-list">
                                           {filteredPicCatalog.map((entry) => {
-                                            const active = (item.pics || []).some((c) => c.toLowerCase() === entry.code.toLowerCase());
+                                            const isPrimary = picRoles.primaryPic.toLowerCase() === entry.code.toLowerCase();
+                                            const isCo = picRoles.coPics.some((c) => c.toLowerCase() === entry.code.toLowerCase());
                                             return (
                                               <button
                                                 key={entry.code}
                                                 type="button"
-                                                aria-pressed={active}
-                                                title={entry.name}
-                                                className={`pic-option ${active ? 'active' : ''}`}
-                                                onClick={() => toggleItemPic(item, entry.code)}
+                                                aria-pressed={isPrimary || isCo}
+                                                title={isPrimary ? `${entry.name} (PIC Utama saat ini)` : entry.name}
+                                                className={`pic-option ${isPrimary || isCo ? 'active' : ''}`}
+                                                style={isPrimary ? { background: '#166534', borderColor: '#166534', color: '#FFFFFF' } : undefined}
+                                                onClick={() => toggleItemCoPic(item, entry.code)}
                                               >
-                                                {entry.code}
+                                                {isPrimary ? <Check size={11} /> : <Plus size={11} />}
+                                                {entry.code}{isPrimary ? ' (Utama)' : ''}
                                               </button>
                                             );
                                           })}
                                         </div>
-                                        <label style={{ display: 'grid', gap: '0.2rem', fontSize: '0.68rem', fontWeight: 700, color: '#334155' }}>
-                                          Label Tampilan / Kode Kustom
-                                          <input
-                                            className="pic-popover-display"
-                                            value={item.picDisplay || (item.pics || []).join(', ')}
-                                            placeholder="Contoh: PJM dan PRP"
-                                            onChange={(event) => updateItemPicText(item, event.target.value)}
-                                          />
-                                        </label>
                                       </div>
                                     )}
                                   </td>
@@ -1377,7 +1588,7 @@ export default function KPITableDesigner() {
                                       className={sub.isTextInput ? 'on' : ''}
                                       onClick={() => patchSub({ isTextInput: !sub.isTextInput })}
                                     >
-                                      Aa
+                                      <Settings2 size={11} /> Aa
                                     </button>
                                     <button type="button" title="Naikkan" disabled={subi === 0} onClick={() => editSubs(si, ii, (subs) => move(subs, subi, -1))}><ArrowUp size={12} /></button>
                                     <button type="button" title="Turunkan" disabled={subi === span - 1} onClick={() => editSubs(si, ii, (subs) => move(subs, subi, 1))}><ArrowDown size={12} /></button>
@@ -1399,10 +1610,10 @@ export default function KPITableDesigner() {
                                   </div>
                                 </div>
                               </td>
-                              <td className={`ref-cell sim ${refClass(iRef)}`} {...pickHandlers(item.id, `I${subi + 1}`, iRef)}>
-                                <span className="ref-tag">{iRef}</span>
+                              <td className={`ref-cell sim ${refClass(excelERef, iRef)}`} {...pickHandlers(item.id, `I${subi + 1}`, excelERef, iRef)}>
+                                <span className="ref-tag" title={`Sel Excel ${excelERef} · Alias ${iRef}`}>{excelERef} · I{subi + 1}</span>
                                 <Cell
-                                  aria-label={`Simulasi ${iRef}`}
+                                  aria-label={`Simulasi ${excelERef}`}
                                   className="right"
                                   value={simValues[sub.key]}
                                   placeholder={sub.placeholder || '0'}
@@ -1411,8 +1622,8 @@ export default function KPITableDesigner() {
                               </td>
                               {subi === 0 && (
                                 <>
-                                  <td rowSpan={span} className={`ref-cell ${refClass(`${prefix}_B`)}`} {...pickHandlers(item.id, 'B', `${prefix}_B`)}>
-                                    <span className="ref-tag">{prefix}_B</span>
+                                  <td rowSpan={span} className={`ref-cell ${refClass(excelFRef, `${prefix}_B`)}`} {...pickHandlers(item.id, 'B', excelFRef, `${prefix}_B`)}>
+                                    <span className="ref-tag" title={`Sel Excel ${excelFRef} · Alias ${prefix}_B`}>{excelFRef} · B</span>
                                     <Cell
                                       type="number"
                                       step="any"
@@ -1422,8 +1633,8 @@ export default function KPITableDesigner() {
                                       onChange={(value) => updateItem(si, ii, { bobot: value })}
                                     />
                                   </td>
-                                  <td rowSpan={span} className={`ref-cell ${refClass(`${prefix}_T`)}`} {...pickHandlers(item.id, 'T', `${prefix}_T`)}>
-                                    <span className="ref-tag">{prefix}_T</span>
+                                  <td rowSpan={span} className={`ref-cell ${refClass(excelGRef, `${prefix}_T`)}`} {...pickHandlers(item.id, 'T', excelGRef, `${prefix}_T`)}>
+                                    <span className="ref-tag" title={`Sel Excel ${excelGRef} · Alias ${prefix}_T`}>{excelGRef} · T</span>
                                     <Cell
                                       type="number"
                                       step="any"
@@ -1443,12 +1654,18 @@ export default function KPITableDesigner() {
                                       title="Edit rumus di formula bar"
                                       onClick={() => { setSelectedId(item.id); window.requestAnimationFrame(() => formulaRef.current?.focus()); }}
                                     >
-                                      {isDateType(item.calcType) ? CALC_TYPES[item.calcType].label : `=${stripEq(visibleExpr(item)) || '...'}`}
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <Sigma size={11} />
+                                        {isDateType(item.calcType) ? CALC_TYPES[item.calcType].label : `=${stripEq(visibleExpr(item)) || '...'}`}
+                                      </span>
                                       {item.calcType !== 'custom' && <small>preset</small>}
                                     </button>
                                   </td>
-                                  <td rowSpan={span} className="result">
+                                  <td rowSpan={span} className="result" style={{ color: capMeta.color }}>
                                     {result?.ratioPercent == null ? '-' : `${formatIndonesianNumber(result.ratioPercent)}%`}
+                                    {result?.ratioPercent != null && (
+                                      <small style={{ color: capMeta.color, fontWeight: 700, textAlign: 'right' }}>{capMeta.label}</small>
+                                    )}
                                   </td>
                                   <td rowSpan={span} className="result">
                                     {formatIndonesianNumber(result?.weightedScore)}
@@ -1527,7 +1744,7 @@ export default function KPITableDesigner() {
                 })}
                 <tfoot>
                   <tr>
-                    <td className="gutter" />
+                    <td className="gutter">{excelRowMap.totalRows + 1}</td>
                     <td colSpan={COLUMNS.length - 1} className="total-label">Total skor simulasi</td>
                     <td className="result total">{formatIndonesianNumber(totalScore)}</td>
                     <td />
@@ -1555,13 +1772,13 @@ export default function KPITableDesigner() {
                         <li key={`${issue.level}-${index}-${issue.message}`} className={issue.level}>
                           <span className="issue-tag">{issue.level === 'error' ? 'Error' : 'Peringatan'}</span>
                           {issue.itemId ? (
-                            <button type="button" className="link" onClick={() => setSelectedId(issue.itemId)}>{issue.message}</button>
+                            <button type="button" className="link" onClick={() => setSelectedId(issue.itemId)}><MousePointerClick size={12} /> {issue.message}</button>
                           ) : sectionIndex >= 0 ? (
-                            <button type="button" className="link" onClick={() => focusSection(sectionIndex)}>{issue.message}</button>
+                            <button type="button" className="link" onClick={() => focusSection(sectionIndex)}><MousePointerClick size={12} /> {issue.message}</button>
                           ) : issue.message}
                           {summary && !summary.matches && (
                             <button type="button" className="ghost fix" onClick={() => updateSection(sectionIndex, { totalWeight: summary.itemSum })}>
-                              Set bobot {issue.sectionCode} = {formatIndonesianNumber(summary.itemSum, 4)}
+                              <Check size={12} /> Set bobot {issue.sectionCode} = {formatIndonesianNumber(summary.itemSum, 4)}
                             </button>
                           )}
                         </li>
@@ -1610,7 +1827,7 @@ export default function KPITableDesigner() {
                     </select>
                   </label>
                   <button type="button" onClick={syncAllSectionWeightsToRows} style={{ width: '100%' }}>
-                    Samakan Semua Bobot Bagian ke Total Baris
+                    <Check size={14} /> Samakan Semua Bobot Bagian ke Total Baris
                   </button>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
                     <label className="rule-field">
@@ -1667,7 +1884,7 @@ export default function KPITableDesigner() {
                       <Check size={14} /> Simpan Aturan PRP
                     </button>
                     <button type="button" onClick={handleResetValidationRules}>
-                      Reset
+                      <RotateCcw size={14} /> Reset
                     </button>
                   </div>
                 </div>
@@ -1746,7 +1963,7 @@ export default function KPITableDesigner() {
                   style={{ minHeight: '44px', padding: '0.45rem 0.9rem', border: '1px solid #B8CAD4', borderRadius: '6px' }}
                   onClick={() => setConfirmState(null)}
                 >
-                  Batal
+                  <X size={14} /> Batal
                 </button>
                 <button
                   type="button"
@@ -1765,6 +1982,7 @@ export default function KPITableDesigner() {
                     fn?.();
                   }}
                 >
+                  {confirmState.danger ? <Trash2 size={14} /> : <Check size={14} />}
                   {confirmState.confirmLabel}
                 </button>
               </div>

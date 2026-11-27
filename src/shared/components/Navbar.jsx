@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X } from 'lucide-react';
+import { LogIn, Menu, X } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -242,6 +242,9 @@ export default function Navbar() {
         top: 0,
         left: 0,
         right: 0,
+        width: '100%',
+        maxWidth: '100vw',
+        boxSizing: 'border-box',
         paddingTop: 'env(safe-area-inset-top, 0px)',
         paddingLeft: 'env(safe-area-inset-left, 0px)',
         paddingRight: 'env(safe-area-inset-right, 0px)',
@@ -259,11 +262,14 @@ export default function Navbar() {
           position: 'relative',
           width: '100%',
           maxWidth: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
           height: 'clamp(64px, 8vw, 72px)',
-          padding: '0 clamp(1rem, 2.5vw, 2.5rem)',
+          padding: '0 clamp(0.85rem, 2.5vw, 2.5rem)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: '0.5rem',
           borderRadius: '0px',
           background: 'rgba(255, 255, 255, 0.94)',
           backdropFilter: 'blur(12px)',
@@ -283,9 +289,10 @@ export default function Navbar() {
             zIndex: 2,
             display: 'flex',
             alignItems: 'center',
-            gap: '0.85rem',
+            gap: 'clamp(0.45rem, 2vw, 0.85rem)',
             textDecoration: 'none',
-            flexShrink: 0,
+            flexShrink: 1,
+            minWidth: 0,
             userSelect: 'none',
           }}
         >
@@ -295,6 +302,7 @@ export default function Navbar() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             <img
@@ -317,41 +325,41 @@ export default function Navbar() {
               width: '1px',
               height: isFolded ? '20px' : '24px',
               background: '#BFD2DC',
+              flexShrink: 0,
               transition: 'height 0.4s ease',
             }}
           />
 
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0 }}>
               <span
                 style={{
-                  fontSize: isFolded ? 'clamp(0.95rem, 3.5vw, 1.08rem)' : 'clamp(1rem, 4vw, 1.18rem)',
+                  fontSize: isFolded ? 'clamp(0.88rem, 3.5vw, 1.08rem)' : 'clamp(0.92rem, 3.8vw, 1.18rem)',
                   fontWeight: 800,
                   color: '#072534',
                   letterSpacing: '-0.025em',
                   lineHeight: 1.1,
+                  whiteSpace: 'nowrap',
                   fontFamily: 'Outfit, system-ui, sans-serif',
                   transition: 'font-size 0.4s ease',
                 }}
               >
                 PERFORMA ITPLN
               </span>
-              <span
+              <strong
+                className="navbar-brand-tag"
                 style={{
                   fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.58rem',
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: '#EDF5F7',
-                  border: '1px solid #B8D9E2',
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
                   color: '#094E68',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 IKU · KPI
-              </span>
+              </strong>
             </div>
             <span
               ref={brandSubRef}
@@ -390,10 +398,11 @@ export default function Navbar() {
         >
           {navLinks.map((item) => {
             const active = item.to ? location.pathname === item.to : location.pathname === '/' && activeSection === item.id;
+            const href = item.to || `/#${item.id}`;
             return (
-              <button
+              <a
                 key={item.id}
-                type="button"
+                href={href}
                 className="nav-btn-item"
                 aria-current={active ? 'page' : undefined}
                 onClick={(e) => handleNavClick(e, item)}
@@ -409,6 +418,7 @@ export default function Navbar() {
                   letterSpacing: '-0.01em',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
+                  textDecoration: 'none',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.4rem',
@@ -441,7 +451,7 @@ export default function Navbar() {
                   />
                 )}
                 <span>{item.label}</span>
-              </button>
+              </a>
             );
           })}
         </nav>
@@ -475,11 +485,12 @@ export default function Navbar() {
               e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
+            <LogIn size={15} />
             <span>Masuk Portal</span>
           </Link>
         </div>
 
-        <div className="navbar-mobile-toggle" style={{ position: 'relative', zIndex: 2 }}>
+        <div className="navbar-mobile-toggle" style={{ position: 'relative', zIndex: 2, flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => setIsOpen(!isOpen)}
@@ -491,15 +502,17 @@ export default function Navbar() {
               cursor: 'pointer',
               minWidth: '44px',
               minHeight: '44px',
-              padding: '0.45rem 0.75rem',
+              padding: '0.45rem 0.65rem',
               color: '#072534',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '0.4rem',
+              gap: '0.35rem',
               borderRadius: '6px',
-              fontSize: '0.78rem',
+              fontSize: '0.76rem',
               fontWeight: 700,
+              whiteSpace: 'nowrap',
+              boxSizing: 'border-box',
               transition: 'background 0.2s ease, border-color 0.2s ease',
             }}
           >
@@ -513,10 +526,11 @@ export default function Navbar() {
         <div className="navbar-mobile-drawer" role="navigation" aria-label="Menu Mobile">
           {navLinks.map((item) => {
             const isItemActive = item.to ? location.pathname === item.to : location.pathname === '/' && activeSection === item.id;
+            const href = item.to || `/#${item.id}`;
             return (
-              <button
+              <a
                 key={item.id}
-                type="button"
+                href={href}
                 onClick={(e) => handleNavClick(e, item)}
                 style={{
                   background: isItemActive ? '#EDF5F7' : 'transparent',
@@ -530,6 +544,7 @@ export default function Navbar() {
                   borderRadius: '6px',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
+                  textDecoration: 'none',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -547,7 +562,7 @@ export default function Navbar() {
                     }}
                   />
                 )}
-              </button>
+              </a>
             );
           })}
 
@@ -570,6 +585,7 @@ export default function Navbar() {
               borderRadius: '6px',
             }}
           >
+            <LogIn size={15} />
             <span>Masuk Portal</span>
           </Link>
         </div>

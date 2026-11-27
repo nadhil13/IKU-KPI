@@ -194,9 +194,12 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-export async function syncWebPushSubscription() {
+let lastPushSyncAt = 0;
+
+export async function syncWebPushSubscription({ force = false } = {}) {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') return null;
   if (Notification.permission !== 'granted') return null;
+  if (!force && Date.now() - lastPushSyncAt < 300000) return null;
 
   try {
     const token = localStorage.getItem('performa_access_token')
@@ -239,6 +242,7 @@ export async function syncWebPushSubscription() {
       body: JSON.stringify({ subscription: subJson }),
     });
 
+    lastPushSyncAt = Date.now();
     emitPwaState();
     return subJson;
   } catch {

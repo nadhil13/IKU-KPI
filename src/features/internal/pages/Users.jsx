@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Plus, Search, SlidersHorizontal, ShieldCheck, Pencil, Trash2, X, Check, KeyRound, Copy
+  Plus, Search, SlidersHorizontal, ShieldCheck, Pencil, Trash2, X, Check, KeyRound, Copy, Power, RotateCcw
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -22,8 +22,8 @@ const usersList = MOCK_ACCOUNTS;
 const roleLabels = {
   all: 'Semua peran',
   iku_only: 'Otoritas IKU',
-  kpi_only: 'Otoritas KPI (Unit/PIC)',
-  spi: 'Auditor SPI (View Only & Audit)',
+  kpi_only: 'Otoritas KPI (Unit Kerja / PIC Utama)',
+  spi: 'Verifikasi SPI (Auditor View-Only)',
   dual: 'Peran Ganda (IKU & KPI)',
   superadmin_prp: 'Superadmin PRP',
 };
@@ -160,7 +160,7 @@ export default function Users() {
     const needsPic = editing.role === 'kpi_only' || editing.role === 'dual';
     const cleanPicCodes = needsPic
       ? normalizePicCodes(editing.picCodes || [])
-      : (editing.role === 'superadmin_prp' ? ['PRP'] : editing.role === 'spi' ? ['SPI'] : []);
+      : (editing.role === 'superadmin_prp' ? ['PRP'] : []);
     if (needsPic && cleanPicCodes.length === 0) {
       setModalError('Pilih minimal satu Kode PIC Penanggung Jawab untuk akun Otoritas KPI / Peran Ganda.');
       return;
@@ -188,9 +188,9 @@ export default function Users() {
     }
 
     const badgeText = editing.role === 'kpi_only'
-      ? `PIC: ${cleanPicCodes.join(', ')}`
+      ? `PIC UTAMA: ${cleanPicCodes.join(', ')}`
       : editing.role === 'spi'
-        ? 'AUDITOR SPI (VIEW ONLY)'
+        ? 'VERIFIKASI SPI (VIEW ONLY)'
         : editing.role === 'dual'
           ? `DUAL: ${cleanPicCodes.join(', ')}`
           : editing.role === 'superadmin_prp'
@@ -198,9 +198,9 @@ export default function Users() {
             : 'IKU ONLY';
 
     const titleText = editing.role === 'kpi_only'
-      ? `PIC Unit ${cleanPicCodes.join(', ')}`
+      ? `PIC Utama Unit ${cleanPicCodes.join(', ')}`
       : editing.role === 'spi'
-        ? 'Auditor SPI (View Only & Audit)'
+        ? 'Verifikasi SPI (Auditor View-Only)'
         : editing.role === 'dual'
           ? `Peran Ganda (${cleanPicCodes.join(', ')})`
           : roleLabels[editing.role];
@@ -208,7 +208,7 @@ export default function Users() {
     const scopeText = editing.role === 'iku_only'
       ? '8 IKU Kementerian'
       : editing.role === 'spi'
-        ? 'Audit KPI (View Only & Ekspor)'
+        ? 'Verifikasi SPI (Read-Only & Unduh Bukti)'
         : editing.role === 'superadmin_prp'
           ? 'Platform, IKU & KPI'
           : editing.role === 'dual'
@@ -464,23 +464,19 @@ export default function Users() {
                     <td className="user-scope">
                       <div>{user.accessScope}</div>
                       {(user.role === 'kpi_only' || user.role === 'dual') && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginTop: '0.25rem' }}>
                           {(user.picCodes?.length ? user.picCodes : ['Belum dipetakan']).map((code) => (
-                            <span
+                            <strong
                               key={code}
                               style={{
                                 fontFamily: 'var(--ent-mono)',
-                                fontSize: '0.66rem',
-                                fontWeight: 700,
-                                padding: '0.12rem 0.42rem',
-                                borderRadius: '4px',
-                                background: '#EDF3F6',
-                                border: '1px solid #D8E4EA',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
                                 color: '#094E68',
                               }}
                             >
-                              PIC: {code}
-                            </span>
+                              PIC Utama: {code}
+                            </strong>
                           ))}
                         </div>
                       )}
@@ -512,7 +508,7 @@ export default function Users() {
                           <KeyRound size={12} /> Reset
                         </button>
                         <button type="button" className="user-mini-btn" title="Aktifkan atau nonaktifkan akun" onClick={() => toggleUser(user)}>
-                          {user.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}
+                          <Power size={12} /> {user.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}
                         </button>
                         {!usersList.some((base) => base.email === user.email) && (
                           <button type="button" className="user-mini-btn danger" title="Hapus user" onClick={() => requestRemoveUser(user)}>
@@ -537,7 +533,8 @@ export default function Users() {
                 style={{ minHeight: '44px' }}
                 onClick={() => setVisibleLimit((prev) => prev + 30)}
               >
-                Tampilkan Lebih Banyak ({filteredUsers.length - visibleLimit} tersisa)
+                <Plus size={14} />
+                <span>Tampilkan Lebih Banyak ({filteredUsers.length - visibleLimit} tersisa)</span>
               </button>
             </div>
           )}
@@ -555,7 +552,8 @@ export default function Users() {
                       setFilterRole('all');
                     }}
                   >
-                    Reset Pencarian &amp; Filter
+                    <RotateCcw size={14} />
+                    <span>Reset Pencarian &amp; Filter</span>
                   </button>
                 </div>
               )}
@@ -710,8 +708,8 @@ export default function Users() {
                     onChange={(e) => setEditing({ ...editing, role: e.target.value })}
                   >
                     <option value="iku_only">Otoritas IKU</option>
-                    <option value="kpi_only">Otoritas KPI (Unit/PIC)</option>
-                    <option value="spi">Auditor SPI (View Only &amp; Audit)</option>
+                    <option value="kpi_only">Otoritas KPI (Unit Kerja / PIC Utama)</option>
+                    <option value="spi">Verifikasi SPI (Auditor View-Only)</option>
                     <option value="dual">Peran Ganda (IKU &amp; KPI)</option>
                     <option value="superadmin_prp">Superadmin PRP</option>
                   </select>
@@ -773,9 +771,13 @@ export default function Users() {
                             fontSize: '0.7rem',
                             fontWeight: 700,
                             cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
                           }}
                         >
-                          {entry.code}
+                          {active ? <Check size={12} /> : <Plus size={12} />}
+                          <span>{entry.code}</span>
                         </button>
                       );
                     })}
@@ -835,7 +837,8 @@ export default function Users() {
                   setModalError('');
                 }}
               >
-                Batal
+                <X size={15} />
+                <span>Batal</span>
               </button>
               <button className="users-action" type="button" onClick={saveUser}>
                 <Check size={15} /> Simpan Pengguna
@@ -872,7 +875,8 @@ export default function Users() {
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', flexWrap: 'wrap' }}>
               <button type="button" className="ent-btn" style={{ minHeight: '44px' }} onClick={() => setConfirmAction(null)}>
-                Batal
+                <X size={15} />
+                <span>Batal</span>
               </button>
               <button
                 type="button"
@@ -880,7 +884,8 @@ export default function Users() {
                 style={{ minHeight: '44px', ...(confirmAction.type === 'delete' ? { background: '#B91C1C', borderColor: '#B91C1C' } : {}) }}
                 onClick={executeConfirmAction}
               >
-                {confirmAction.type === 'delete' ? 'Ya, Hapus Akun' : 'Buat Kata Sandi Baru'}
+                {confirmAction.type === 'delete' ? <Trash2 size={15} /> : <KeyRound size={15} />}
+                <span>{confirmAction.type === 'delete' ? 'Ya, Hapus Akun' : 'Buat Kata Sandi Baru'}</span>
               </button>
             </div>
           </div>
@@ -932,7 +937,8 @@ export default function Users() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button type="button" className="ent-btn ent-btn-primary" style={{ minHeight: '44px' }} onClick={() => setResetResult(null)}>
-                Selesai
+                <Check size={15} />
+                <span>Selesai</span>
               </button>
             </div>
           </div>

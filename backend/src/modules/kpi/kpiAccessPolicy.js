@@ -20,17 +20,24 @@ export function normalizePicList(raw) {
   return out;
 }
 
+export function resolveRowPrimaryPic(item) {
+  const explicit = String(item?.primaryPic ?? '').trim().toUpperCase();
+  if (explicit) return explicit;
+  const list = normalizePicList(item?.pics ?? item?.picDisplay ?? []);
+  return list[0] || '';
+}
+
 export function canCallerEditKpiRow(item, callerUser) {
   if (!callerUser || callerUser.status === 'Nonaktif') return false;
   if (callerUser.role === 'superadmin_prp') return true;
-  const rowPics = normalizePicList(item?.pics ?? item?.picDisplay ?? []);
-  if (callerUser.role === 'spi') {
-    return item?.id === 'D_5' || rowPics.includes('SPI');
-  }
+  // Akun SPI bersifat ketat Hanya Lihat (Read-Only Auditor).
+  if (callerUser.role === 'spi') return false;
   if (callerUser.role !== 'kpi_only' && callerUser.role !== 'dual') return false;
-  if (rowPics.length === 0) return true;
+  const primaryPic = resolveRowPrimaryPic(item);
+  if (!primaryPic) return true;
   const userPics = new Set(normalizePicList(callerUser.picCodes || []));
-  return rowPics.some((code) => userPics.has(code));
+  // Hanya 1 PIC Utama yang memiliki wewenang tulis/input dokumen; Co-PIC bersifat informasi kolaborasi.
+  return userPics.has(primaryPic);
 }
 
 function splitFormAndEmailKey(entryKey) {
@@ -241,7 +248,7 @@ export function validateAndMergeKpiWorkflowForUnit(existingWorkflow, incomingWor
     if (incoming.submissions && Object.prototype.hasOwnProperty.call(incoming.submissions, unitKey)) {
       const rawSub = incoming.submissions[unitKey];
       const prevSub = base.submissions?.[unitKey];
-      const isPrevFinalLocked = prevSub && ['APPROVED', 'LOCKED'].includes(prevSub.status);
+      const isPrevFinalLocked = prevSub && ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(prevSub.status);
       if (!rawSub) {
         if (!isUnitSubmissionLocked) {
           delete nextSubmissions[unitKey];
@@ -420,66 +427,21 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
   }
   if (callerUser.role === 'spi') {
     const forms = Array.isArray(workflow.forms) ? workflow.forms : [];
-    const unlockedFormIds = new Set();
     const validationByFormId = {};
     const annotatedForms = forms.map((form) => {
       const valStatus = evaluateRenbangValidationForForm(form, workflow);
-      if (valStatus.isValidated100) {
-        unlockedFormIds.add(String(form.id));
-      }
       validationByFormId[form.id] = valStatus;
       return {
         ...form,
         renbangValidationSummary: valStatus,
       };
     });
-
-    const spiOwnEmail = String(callerUser.email || 'spi@itpln.ac.id').toLowerCase();
-    const filterUnlockedMap = (mapObj, onlyApprovedSubmissions = false) => {
-      const out = {};
-      for (const [entryKey, val] of Object.entries(mapObj || {})) {
-        const { formId: fId, email: keyEmail } = splitFormAndEmailKey(entryKey);
-        if (keyEmail && keyEmail === spiOwnEmail) {
-          out[entryKey] = val;
-          continue;
-        }
-        if (fId && unlockedFormIds.has(fId)) {
-          if (onlyApprovedSubmissions && val && !['APPROVED', 'LOCKED'].includes(val.status) && !annotatedForms.find((f) => f.id === fId)?.renbangValidatedFinal) {
-            continue;
-          }
-          out[entryKey] = val;
-        }
-      }
-      return out;
-    };
-
-    const filterOwnDrafts = (mapObj) => {
-      const out = {};
-      for (const [entryKey, val] of Object.entries(mapObj || {})) {
-        const { email: keyEmail } = splitFormAndEmailKey(entryKey);
-        if (keyEmail && keyEmail === spiOwnEmail) {
-          out[entryKey] = val;
-        }
-      }
-      return out;
-    };
-
-    const filteredOverrides = {};
-    for (const [fId, ov] of Object.entries(workflow.adminOverrides || {})) {
-      if (unlockedFormIds.has(fId)) {
-        filteredOverrides[fId] = ov;
-      }
-    }
-
+    // SPI memperoleh tampilan data komprehensif setara Admin untuk pemeriksaan (termasuk berkas evidence),
+    // namun akses tulis diblokir penuh pada endpoint mutasi.
     return {
       ...workflow,
       forms: annotatedForms,
       validationByFormId,
-      submissions: filterUnlockedMap(workflow.submissions, true),
-      evidence: filterUnlockedMap(workflow.evidence, false),
-      drafts: filterOwnDrafts(workflow.drafts),
-      adminOverrides: filteredOverrides,
-      revisions: {},
     };
   }
   const callerEmail = String(callerUser.email || '').toLowerCase();

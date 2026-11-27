@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, Info, Lock, LockOpen } from 'lucide-react';
+import { Building2, Calendar, FileCheck2, Info, Layers, PenLine } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { ikuPercentage, listIkuSubmissions, subscribeIku } from '../../iku/ikuWorkflowStore';
+import { ikuAchievementMeta, ikuPercentage, listIkuSubmissions, subscribeIku } from '../../iku/ikuWorkflowStore';
 import { listKpiPeriodsWithStatus } from '../../kpi/kpiWorkflowStore';
 import KPIDataEntrySheet from '../../kpi/components/KPIDataEntrySheet';
 import SPIAuditWorkspace from '../../kpi/components/SPIAuditWorkspace';
@@ -201,16 +201,12 @@ export default function Dashboard() {
       const hasEvidence = Boolean(row?.evidence);
       const verified = row?.verification === 'VERIFIED';
 
+      const achMeta = ikuAchievementMeta(pct);
       let badgeLabel = 'BELUM DIISI';
-      let badgeClass = 'ent-badge';
       if (pct !== null) {
-        if (pct >= 100) {
-          badgeLabel = verified ? 'TERVERIFIKASI' : 'MEMENUHI TARGET';
-          badgeClass = 'ent-badge ent-badge-approved';
-        } else {
-          badgeLabel = 'DI BAWAH TARGET';
-          badgeClass = 'ent-badge ent-badge-revision';
-        }
+        badgeLabel = verified && pct >= 100
+          ? 'TERCAPAI · TERVERIFIKASI'
+          : achMeta.label.toUpperCase();
       }
 
       return {
@@ -221,7 +217,7 @@ export default function Dashboard() {
         hasEvidence,
         verified,
         badgeLabel,
-        badgeClass,
+        statusColor: achMeta.color,
       };
     });
 
@@ -449,7 +445,7 @@ export default function Dashboard() {
             {isIkuOnly
               ? 'OTORITAS KHUSUS IKU'
               : isSpiAuditor
-                ? 'SATUAN PENGAWASAN INTERNAL (SPI) · AUDIT TERVALIDASI RENBANG & FORM INPUT REAL-TIME'
+                ? 'SATUAN PENGAWAS INTERNAL (SPI) · VERIFIKASI SPI (HANYA LIHAT & UNDUH BUKTI)'
                 : isKpiOnly
                   ? `OTORITAS KHUSUS UNIT PIC: ${(currentUser?.picCodes || []).join(', ') || currentUser?.unit || 'KPI'}`
                   : currentUser?.role === 'superadmin_prp'
@@ -490,26 +486,18 @@ export default function Dashboard() {
               )}
             </select>
           </div>
-          <span
+          <strong
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.42rem 0.82rem',
-              borderRadius: '6px',
-              fontSize: '0.7rem',
+              fontSize: '0.72rem',
               fontWeight: 800,
               fontFamily: 'var(--ent-mono)',
               letterSpacing: '0.03em',
-              background: isPeriodOpen ? '#15803D' : '#B91C1C',
-              border: `1.5px solid ${isPeriodOpen ? '#14532D' : '#7F1D1D'}`,
-              color: '#FFFFFF',
+              color: isPeriodOpen ? '#166534' : '#B91C1C',
             }}
             title={selectedPeriod?.statusLabel || (isPeriodOpen ? 'Periode Aktif (Terbuka untuk Diisi)' : 'Periode Tidak Aktif (Terkunci)')}
           >
-            {isPeriodOpen ? <LockOpen size={13} /> : <Lock size={13} />}
             {isPeriodOpen ? 'STATUS PERIODE: AKTIF (TERBUKA)' : 'STATUS PERIODE: TIDAK AKTIF (TERKUNCI)'}
-          </span>
+          </strong>
         </div>
       </div>
 
@@ -522,7 +510,7 @@ export default function Dashboard() {
                 {currentView === 'iku'
                   ? 'Matriks Capaian'
                   : isSpiAuditor
-                    ? 'Ruang Kerja Audit & Input'
+                    ? 'Verifikasi SPI'
                     : isKpiOnly
                       ? 'Indikator Kerja Khusus'
                       : 'Evaluasi Operasional'}
@@ -533,7 +521,7 @@ export default function Dashboard() {
                 {currentView === 'iku'
                   ? '8 IKU Kementerian.'
                   : isSpiAuditor
-                    ? 'Satuan Pengawasan Internal (SPI).'
+                    ? 'Tinjauan Komprehensif & Evidence.'
                     : isKpiOnly
                       ? `${currentUser?.unit || 'Unit PIC Anda'}.`
                       : 'KPI Unit & Fakultas.'}
@@ -553,9 +541,9 @@ export default function Dashboard() {
             {currentView === 'iku'
               ? 'Pemantauan pengisian aktual, standar target RKAT, dan kelengkapan bukti 8 Indikator Kinerja Utama Institut Teknologi PLN.'
               : isSpiAuditor
-                ? 'Tabel Audit KPI (Read-Only) terkunci selama validasi Renbang belum selesai 100%, dan terbuka otomatis segera setelah validasi Renbang 100%. Dilengkapi Form Inputan Khusus SPI yang tersimpan ke database secara real-time.'
+                ? 'Akses pemeriksaan komprehensif seluruh capaian KPI, 8 IKU Kementerian, dan lampiran bukti dukung lintas unit kerja dalam mode baca ketat (Read-Only) beserta pengunduhan Excel, PDF, CSV, dan berkas evidence.'
                 : isKpiOnly
-                  ? `Menampilkan khusus daftar indikator yang menjadi tanggung jawab PIC Anda (${(currentUser?.picCodes || []).join(', ')}). Data unit lain diisolasi demi kerahasiaan antar-bagian.`
+                  ? `Menampilkan daftar indikator tanggung jawab PIC Utama unit Anda (${(currentUser?.picCodes || []).join(', ')}) serta indikator kolaborasi Co-PIC.`
                   : 'Pengukuran terstruktur capaian Keberlanjutan (A), Mahasiswa (B), Bisnis Internal (C), serta Kepatuhan (D).'}
           </p>
         </div>
@@ -610,9 +598,14 @@ export default function Dashboard() {
                 letterSpacing: '0.03em',
                 color: currentView === 'iku' ? '#ffffff' : '#334155',
                 transition: 'color 0.2s ease',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.4rem',
               }}
             >
-              RUANG IKU
+              <Layers size={14} />
+              <span>RUANG IKU</span>
             </button>
             <button
               type="button"
@@ -633,9 +626,14 @@ export default function Dashboard() {
                 letterSpacing: '0.03em',
                 color: currentView === 'kpi' ? '#ffffff' : '#334155',
                 transition: 'color 0.2s ease',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.4rem',
               }}
             >
-              RUANG KPI
+              <Building2 size={14} />
+              <span>RUANG KPI</span>
             </button>
           </div>
         )}
@@ -658,7 +656,6 @@ export default function Dashboard() {
                 borderRadius: '8px',
                 background: '#F7FAFB',
                 border: '1px solid #64748B',
-                borderLeft: '3px solid #094E68',
                 fontSize: '0.82rem',
                 color: '#334155',
                 lineHeight: 1.55,
@@ -720,11 +717,13 @@ export default function Dashboard() {
 
             {['iku_only', 'dual', 'superadmin_prp'].includes(currentUser?.role) ? (
               <Link to="/internal/iku-submissions" className="ent-btn ent-btn-primary" style={{ minHeight: '44px' }}>
-                {ikuOverview.activeRecord ? 'Buka Submission & Bukti IKU' : 'Isi Capaian & Bukti IKU'}
+                <PenLine size={15} />
+                <span>{ikuOverview.activeRecord ? 'Buka Submission & Bukti IKU' : 'Isi Capaian & Bukti IKU'}</span>
               </Link>
             ) : (
               <Link to="/iku-list" className="ent-btn" style={{ minHeight: '44px' }}>
-                Katalog Standar 8 IKU
+                <FileCheck2 size={15} />
+                <span>Katalog Standar 8 IKU</span>
               </Link>
             )}
           </div>
@@ -755,7 +754,17 @@ export default function Dashboard() {
                       >
                         {item.idx} · {item.code}
                       </span>
-                      <span className={item.badgeClass}>{item.badgeLabel}</span>
+                      <strong
+                        style={{
+                          fontFamily: 'var(--ent-mono)',
+                          fontSize: '0.66rem',
+                          fontWeight: 800,
+                          color: item.statusColor,
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {item.badgeLabel}
+                      </strong>
                     </div>
 
                     <h3
@@ -790,14 +799,14 @@ export default function Dashboard() {
                           fontFamily: 'Outfit, sans-serif',
                           fontSize: '1.75rem',
                           fontWeight: 800,
-                          color: item.pct !== null ? '#072534' : '#475569',
+                          color: item.pct !== null ? item.statusColor : '#475569',
                           letterSpacing: '-0.035em',
                           lineHeight: 1,
                           fontVariantNumeric: 'tabular-nums',
                         }}
                       >
                         {item.pct !== null
-                          ? `${item.pct.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`
+                          ? `${item.pct.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`
                           : 'Belum diisi'}
                       </span>
                       <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 600, color: '#475569' }}>
@@ -813,7 +822,7 @@ export default function Dashboard() {
                         style={{
                           height: '100%',
                           width: `${barPct}%`,
-                          background: item.pct !== null && item.pct >= 100 ? '#0E7480' : '#094E68',
+                          background: item.pct !== null ? item.statusColor : '#094E68',
                         }}
                       />
                     </div>
@@ -866,6 +875,7 @@ export default function Dashboard() {
           <SPIAuditWorkspace
             period={effectiveYear}
             isPeriodOpen={isPeriodOpen}
+            onPeriodChange={setSelectedYear}
           />
         </div>
       ) : (

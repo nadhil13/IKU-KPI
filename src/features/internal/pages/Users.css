@@ -307,61 +307,51 @@
 
 .user-role {
   align-items: center;
-  background: #EDF3F6;
-  border: 1px solid #64748B;
-  border-radius: 4px;
-  color: #072534;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: #094E68;
   display: inline-flex;
   font-family: var(--ent-mono);
-  font-size: 0.63rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 800;
   gap: 0.38rem;
-  padding: 0.22rem 0.55rem;
+  padding: 0;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
 .user-role i {
-  background: #0E7480;
-  border-radius: 1px;
-  display: inline-block;
-  height: 5px;
-  width: 5px;
+  display: none;
 }
 
 .user-status {
   align-items: center;
-  border-radius: 5px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   display: inline-flex;
   font-family: var(--ent-mono);
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   font-weight: 800;
   gap: 0.35rem;
-  padding: 0.25rem 0.62rem;
+  padding: 0;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
 .user-status.is-active {
-  background: #15803D;
-  border: 1.5px solid #14532D;
-  color: #FFFFFF;
+  color: #166534;
 }
 
 .user-status.is-inactive {
-  background: #B91C1C;
-  border: 1.5px solid #7F1D1D;
-  color: #FFFFFF;
+  color: #B91C1C;
 }
 
 .user-status i {
-  background: currentColor;
-  border-radius: 1px;
-  display: inline-block;
-  height: 5px;
-  width: 5px;
+  display: none;
 }
 
 .user-scope {

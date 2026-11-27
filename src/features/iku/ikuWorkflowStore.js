@@ -8,7 +8,23 @@ const read = (key, fallback) => {
 const clone = (value) => JSON.parse(JSON.stringify(value));
 export const IKU_INDICATORS = Array.from({ length: 8 }, (_, i) => ({ id: `iku-${i + 1}`, label: `Indikator ${i + 1}` }));
 export const emptyIkuValues = () => IKU_INDICATORS.map(({ id }) => ({ id, actual: '', target: '', notes: '', evidence: '', verification: 'PENDING' }));
-export const ikuPercentage = (row) => row.actual !== '' && row.target !== '' && Number.isFinite(Number(row.actual)) && Number.isFinite(Number(row.target)) && Number(row.target) > 0 ? Number(row.actual) / Number(row.target) * 100 : null;
+export const ikuPercentage = (row) =>
+  row.actual !== ''
+  && row.target !== ''
+  && Number.isFinite(Number(row.actual))
+  && Number.isFinite(Number(row.target))
+  && Number(row.target) > 0
+    ? Math.round((Number(row.actual) / Number(row.target)) * 100 * 1e6) / 1e6
+    : null;
+export function ikuAchievementMeta(pct) {
+  if (pct === null || pct === undefined || !Number.isFinite(Number(pct))) {
+    return { tone: 'empty', tier: 'empty', color: '#475569', statusText: 'Belum Terisi', label: 'Belum Terisi' };
+  }
+  const val = Number(pct);
+  if (val >= 100) return { tone: 'green', tier: 'green', color: '#166534', statusText: 'Tercapai', label: 'Tercapai' };
+  if (val >= 90) return { tone: 'yellow', tier: 'yellow', color: '#92400E', statusText: 'Perhatian', label: 'Perhatian' };
+  return { tone: 'red', tier: 'red', color: '#B91C1C', statusText: 'Di Bawah Target', label: 'Di Bawah Target' };
+}
 export function getIkuPeriods() {
   const periods = read('prp_periods', []);
   return Array.isArray(periods) && periods.length ? periods : [{ id: String(new Date().getFullYear()), label: String(new Date().getFullYear()), status: 'Active', inputOpen: true }];
@@ -17,9 +33,9 @@ function authorize(actor, role) {
   if (!actor?.email || !actor?.role || actor.status === 'Nonaktif' || !role.includes(actor.role)) throw new Error('Akses IKU tidak diizinkan.');
 }
 export function listIkuSubmissions(actor) {
-  authorize(actor, ['iku_only', 'dual', 'superadmin_prp']);
+  authorize(actor, ['iku_only', 'dual', 'superadmin_prp', 'spi']);
   const records = read(KEY, []);
-  return records.filter((r) => actor.role === 'superadmin_prp' || r.owner === actor.email.toLowerCase());
+  return records.filter((r) => actor.role === 'superadmin_prp' || actor.role === 'spi' || r.owner === actor.email.toLowerCase());
 }
 function available() {
   if (readSystemConfig().maintenanceMode) throw new Error('Sistem dalam pemeliharaan; perubahan dinonaktifkan.');

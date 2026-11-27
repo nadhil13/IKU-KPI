@@ -35,6 +35,7 @@ let sseSource = null;
 let broadcastChannel = null;
 let pushDebounceTimer = null;
 const pendingStoreKeys = new Set();
+let lastRemoteMeta = {};
 let realtimeStatus = {
   connected: false,
   mode: 'local-bus',
@@ -191,6 +192,7 @@ export function notifyMatchingRemoteNotifications(incomingList = [], priorSerial
   for (const notif of incomingList) {
     if (!notif?.id || !notif?.title) continue;
     if (prevIds && prevIds.has(notif.id)) continue;
+    if (notif.actorEmail && String(notif.actorEmail).toLowerCase() === email) continue;
     const isAlreadyRead = Array.isArray(notif.readBy)
       && notif.readBy.some((r) => String(r || '').toLowerCase() === email);
     if (isAlreadyRead) continue;
@@ -287,11 +289,13 @@ function mergeRemoteStoreWithLocal(key, remoteVal) {
         }
       }
 
-      for (const [k, locEvList] of Object.entries(localVal.evidence || {})) {
-        if (!k.toLowerCase().endsWith(suffix) || !Array.isArray(locEvList) || locEvList.length === 0) continue;
-        const remEvList = nextEvidence[k];
-        if (!Array.isArray(remEvList) || remEvList.length < locEvList.length) {
-          nextEvidence[k] = locEvList;
+      if (pendingStoreKeys.has('prp_kpi_distribution_v1')) {
+        for (const [k, locEvList] of Object.entries(localVal.evidence || {})) {
+          if (!k.toLowerCase().endsWith(suffix) || !Array.isArray(locEvList) || locEvList.length === 0) continue;
+          const remEvList = nextEvidence[k];
+          if (!Array.isArray(remEvList) || remEvList.length < locEvList.length) {
+            nextEvidence[k] = locEvList;
+          }
         }
       }
 
@@ -479,10 +483,17 @@ export async function bootstrapFromBackend() {
     const res = await fetch('/api/v1/bootstrap', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
+    if (res.status === 401) {
+      setAccessToken('');
+      return false;
+    }
     const contentType = res.headers.get('content-type') || '';
     if (!res.ok || !contentType.includes('application/json')) return false;
     const data = await res.json();
     if (!data.ok) return false;
+    if (data.meta && typeof data.meta === 'object') {
+      lastRemoteMeta = { ...lastRemoteMeta, ...data.meta };
+    }
 
     // Jika server masih kosong (mis. cold-start serverless) tetapi browser sudah punya state lokal, dorong state awal ke server
     const serverHasForms = Boolean(data.stores?.prp_kpi_distribution_v1?.forms?.length);
@@ -570,35 +581,19 @@ async function flushPendingStorePush() {
   pendingStoreKeys.clear();
 
   const storesPayload = {};
+  const expectedVersions = {};
   for (const key of keysToPush) {
-    if (user.role === 'spi' && key !== 'prp_spi_audit_v1' && key !== 'prp_kpi_distribution_v1') continue;
-    if (key === 'prp_spi_audit_v1' && user.role !== 'spi') continue;
+    if (user.role === 'spi') continue;
+    if (key === 'prp_spi_audit_v1') continue;
     if (SUPERADMIN_ONLY_SET.has(key) && user.role !== 'superadmin_prp') continue;
     if (key === 'prp_iku_submissions_v1' && user.role === 'kpi_only') continue;
     if (key === 'prp_kpi_distribution_v1' && user.role === 'iku_only') continue;
     try {
       const raw = localStorage.getItem(key);
       if (raw !== null) {
-        const parsed = JSON.parse(raw);
-        if (user.role === 'spi' && key === 'prp_kpi_distribution_v1' && parsed && typeof parsed === 'object') {
-          const ownSuffix = `:${String(user.email || 'spi@itpln.ac.id').toLowerCase()}`;
-          const filterOwn = (mapObj) => Object.fromEntries(
-            Object.entries(mapObj || {}).filter(([k]) => k.toLowerCase().endsWith(ownSuffix)),
-          );
-          const ownDrafts = filterOwn(parsed.drafts);
-          const ownSubs = filterOwn(parsed.submissions);
-          const ownEv = filterOwn(parsed.evidence);
-          if (Object.keys(ownDrafts).length === 0 && Object.keys(ownSubs).length === 0 && Object.keys(ownEv).length === 0) {
-            continue;
-          }
-          storesPayload[key] = {
-            ...parsed,
-            drafts: ownDrafts,
-            submissions: ownSubs,
-            evidence: ownEv,
-          };
-        } else {
-          storesPayload[key] = parsed;
+        storesPayload[key] = JSON.parse(raw);
+        if (lastRemoteMeta[key]?.version) {
+          expectedVersions[key] = lastRemoteMeta[key].version;
         }
       }
     } catch {
@@ -616,11 +611,18 @@ async function flushPendingStorePush() {
         Authorization: `Bearer ${token}`,
         'X-Client-Id': clientId,
       },
-      body: JSON.stringify({ clientId, stores: storesPayload }),
+      body: JSON.stringify({ clientId, stores: storesPayload, expectedVersions }),
     });
+    if (res.status === 401) {
+      setAccessToken('');
+      return;
+    }
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
+      if (data.meta && typeof data.meta === 'object') {
+        lastRemoteMeta = { ...lastRemoteMeta, ...data.meta };
+      }
       if (data.ok && data.stores) {
         applyRemoteStoresToLocal(data.stores, null, data.audit);
       }
@@ -746,14 +748,6 @@ export async function sendRealtimeBroadcast(payload, senderUser) {
       if (data.ok && data.broadcast) {
         const existing = readLocalBroadcastsCache().filter((b) => b.id !== data.broadcast.id);
         saveLocalBroadcastsCache([data.broadcast, ...existing], true);
-        dispatchOsNotification({
-          id: data.broadcast.id,
-          title: `Siaran PRP: ${data.broadcast.title}`,
-          body: data.broadcast.message,
-          priority: data.broadcast.priority || 'IMPORTANT',
-          url: data.broadcast.actionUrl || '/internal',
-          actionLabel: data.broadcast.actionLabel || 'Buka Lembar Kerja',
-        });
         return data.broadcast;
       }
     }
@@ -773,14 +767,6 @@ export async function sendRealtimeBroadcast(payload, senderUser) {
   };
   const existing = readLocalBroadcastsCache();
   saveLocalBroadcastsCache([fallbackBroadcast, ...existing], true);
-  dispatchOsNotification({
-    id: fallbackBroadcast.id,
-    title: `Siaran PRP: ${fallbackBroadcast.title}`,
-    body: fallbackBroadcast.message,
-    priority: fallbackBroadcast.priority || 'IMPORTANT',
-    url: fallbackBroadcast.actionUrl || '/internal',
-    actionLabel: fallbackBroadcast.actionLabel || 'Buka Lembar Kerja',
-  });
   return fallbackBroadcast;
 }
 
@@ -872,21 +858,16 @@ export function connectRealtimeEngine() {
         if (!msg || msg.originClientId === clientId) return;
         if (msg.type === 'state:updated' && msg.stores) {
           applyRemoteStoresToLocal(msg.stores);
-          const user = getCurrentUserFromStorage();
-          if (user && (msg.stores.prp_kpi_config || msg.stores.prp_kpi_distribution_v1)) {
-            dispatchOsNotification({
-              id: `kpi-sync-${msg.at || Date.now()}`,
-              title: 'Pembaruan Tabel KPI Realtime',
-              body: 'Struktur baris atau status evaluasi KPI telah diperbarui secara realtime.',
-              priority: 'IMPORTANT',
-              url: '/internal',
-            });
-          }
         } else if (msg.type === 'broadcast:sync' && Array.isArray(msg.broadcasts)) {
           saveLocalBroadcastsCache(msg.broadcasts, false);
           const user = getCurrentUserFromStorage();
           const newest = msg.broadcasts[0];
-          if (user && newest && doesBroadcastTargetUserClient(newest, user)) {
+          if (
+            user
+            && newest
+            && String(newest.senderEmail || '').toLowerCase() !== String(user.email || '').toLowerCase()
+            && doesBroadcastTargetUserClient(newest, user)
+          ) {
             dispatchOsNotification({
               id: newest.id,
               title: `Siaran PRP: ${newest.title}`,
@@ -1008,17 +989,6 @@ export function connectRealtimeEngine() {
         const data = JSON.parse(event.data);
         if (data.originClientId === clientId) return;
         applyRemoteStoresToLocal(data.stores, data.users, data.audit);
-        const user = getCurrentUserFromStorage();
-        const keys = Array.isArray(data.updatedKeys) ? data.updatedKeys : Object.keys(data.stores || {});
-        if (user && (keys.includes('prp_kpi_config') || keys.includes('prp_kpi_distribution_v1'))) {
-          dispatchOsNotification({
-            id: `sse-kpi-${data.at || Date.now()}`,
-            title: 'Sinkronisasi KPI Realtime (PRP)',
-            body: `Perubahan baris atau evaluasi KPI oleh ${data.actor?.name || 'Admin PRP'} telah masuk ke lembar kerja Anda.`,
-            priority: 'IMPORTANT',
-            url: '/internal',
-          });
-        }
       } catch {
         // Abaikan paket tidak valid
       }
@@ -1034,15 +1004,17 @@ export function connectRealtimeEngine() {
         }
         const current = readLocalBroadcastsCache().filter((b) => b.id !== data.broadcast.id);
         saveLocalBroadcastsCache([data.broadcast, ...current], false);
-        window.dispatchEvent(new CustomEvent('prp-broadcast-incoming-toast', { detail: data.broadcast }));
-        dispatchOsNotification({
-          id: data.broadcast.id,
-          title: `Siaran PRP: ${data.broadcast.title}`,
-          body: data.broadcast.message,
-          priority: data.broadcast.priority || 'IMPORTANT',
-          url: data.broadcast.actionUrl || '/internal',
-          actionLabel: data.broadcast.actionLabel || 'Buka Lembar Kerja',
-        });
+        if (String(data.broadcast.senderEmail || '').toLowerCase() !== String(user.email || '').toLowerCase()) {
+          window.dispatchEvent(new CustomEvent('prp-broadcast-incoming-toast', { detail: data.broadcast }));
+          dispatchOsNotification({
+            id: data.broadcast.id,
+            title: `Siaran PRP: ${data.broadcast.title}`,
+            body: data.broadcast.message,
+            priority: data.broadcast.priority || 'IMPORTANT',
+            url: data.broadcast.actionUrl || '/internal',
+            actionLabel: data.broadcast.actionLabel || 'Buka Lembar Kerja',
+          });
+        }
       } catch {
         // Abaikan
       }
@@ -1102,8 +1074,9 @@ export function connectRealtimeEngine() {
 
   const digestTimer = setInterval(() => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (sseSource && sseSource.readyState === 1) return;
     syncFromDigest();
-  }, 4000);
+  }, 25000);
 
   bootstrapFromBackend().then((backendActive) => {
     if (disposed) return;
