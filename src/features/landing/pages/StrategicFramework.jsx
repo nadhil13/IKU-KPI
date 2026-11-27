@@ -183,10 +183,6 @@ export default function StrategicFramework() {
             border-color: #0E7480;
             transform: translateY(-4px);
           }
-          .sf-pdca-card:hover {
-            background: #ffffff;
-            border-color: #094E68;
-          }
         }
         @media (max-width: 1023px) {
           .sf-pillars {
@@ -435,20 +431,17 @@ export default function StrategicFramework() {
               {PDCA_STEPS.map((step, idx) => (
                 <article key={step.phase} className="sf-pdca-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.15rem' }}>
-                    <span
+                    <strong
                       style={{
                         fontFamily: 'var(--ent-mono)',
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
                         letterSpacing: '0.1em',
-                        padding: '0.22rem 0.55rem',
-                        borderRadius: '4px',
-                        background: '#094E68',
-                        color: '#ffffff',
+                        color: '#094E68',
                       }}
                     >
                       0{idx + 1} · {step.phase}
-                    </span>
+                    </strong>
                     <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 600, color: '#475569' }}>
                       {step.actor}
                     </span>

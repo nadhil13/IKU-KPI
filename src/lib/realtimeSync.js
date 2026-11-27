@@ -495,11 +495,17 @@ export async function bootstrapFromBackend() {
       lastRemoteMeta = { ...lastRemoteMeta, ...data.meta };
     }
 
-    // Jika server masih kosong (mis. cold-start serverless) tetapi browser sudah punya state lokal, dorong state awal ke server
-    const serverHasForms = Boolean(data.stores?.prp_kpi_distribution_v1?.forms?.length);
+    // Jika server benar-benar masih kosong pada cold-start, Superadmin dapat mendorong state awal;
+    // selain itu selalu hidrasi state otoritatif dari server agar tidak tertimpa cache lokal.
+    const serverHasAnyData = Boolean(
+      data.stores?.prp_kpi_distribution_v1?.forms?.length
+      || data.stores?.prp_periods?.length
+      || data.stores?.prp_iku_submissions_v1?.length
+      || (Array.isArray(data.users) && data.users.length > 0),
+    );
     const currentUser = getCurrentUserFromStorage();
     const hasLocalStores = SYNCED_STORE_KEYS.some((k) => Boolean(localStorage.getItem(k)));
-    if (!serverHasForms && hasLocalStores && token && currentUser?.role !== 'spi') {
+    if (!serverHasAnyData && hasLocalStores && token && currentUser?.role === 'superadmin_prp') {
       queueStorePush(SYNCED_STORE_KEYS);
     } else if (data.stores && Object.keys(data.stores).length > 0) {
       applyRemoteStoresToLocal(data.stores, data.users, data.audit);

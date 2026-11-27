@@ -196,20 +196,19 @@ export default function Guide() {
                 <div className="g-line" style={{ width: '100%', height: 1.5, background: '#094E68', marginBottom: '2rem' }} />
 
                 <div className="g-content" style={{ maxWidth: 820 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                    <span
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                    <strong
                       style={{
                         fontFamily: 'var(--ent-mono)',
                         fontSize: '0.72rem',
-                        fontWeight: 700,
-                        padding: '0.2rem 0.55rem',
-                        borderRadius: '4px',
-                        background: '#094E68',
-                        color: '#ffffff',
+                        fontWeight: 800,
+                        letterSpacing: '0.08em',
+                        color: '#094E68',
                       }}
                     >
                       TAHAP {item.idx}
-                    </span>
+                    </strong>
+                    <span aria-hidden="true" style={{ color: '#94A3B8', fontWeight: 700 }}>·</span>
                     <span
                       style={{
                         fontFamily: 'var(--ent-mono)',

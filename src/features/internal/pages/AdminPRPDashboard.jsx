@@ -20,6 +20,7 @@ import { useAuth } from '../../auth/hooks/useAuth';
 import HorizontalTableViewport from '../../../shared/components/HorizontalTableViewport';
 import { readAudit, readSystemConfig } from '../adminStore';
 import {
+  clampInstitutionTotalScore,
   computeKpiItem,
   formatIndonesianNumber,
   getKpiAchievementMeta,
@@ -232,7 +233,7 @@ export default function AdminPRPDashboard() {
       .filter((r) => !r.isPenaltySection)
       .reduce((acc, r) => acc + r.targetNum, 0);
 
-    const institutionScore = Math.max(-25, Number((positiveScore + penaltyScore).toFixed(2)));
+    const institutionScore = Number(clampInstitutionTotalScore(positiveScore + penaltyScore).toFixed(2));
     const avgRatioPercent = filledRows.length
       ? filledRows.reduce((acc, r) => acc + r.ratioPercent, 0) / filledRows.length
       : null;

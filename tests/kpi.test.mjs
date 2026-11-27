@@ -1002,4 +1002,77 @@ test('capaian >100% tidak dikunci, ambang warna Hijau/Kuning/Merah, sinkronisasi
   const snapEv = subWithHistory.history.at(-1)?.snapshot?.evidence?.[0];
   assert.equal(snapEv.dataUrl, undefined);
   assert.equal(snapEv.hasBinaryData, true);
+
+  // 6. Rumus murni koordinat Excel (A..K & 1..N): preset E3/E4*100, konversi otomatis, remap baris saat sisip, referensi J/K, dan distribusi ulang non-destruktif
+  const {
+    formatPresetExcelFormula,
+    toExcelFormulaExpr,
+    remapFormulasOnStructureChange,
+    buildKpiCellDirectory,
+  } = await import(schemaUrl);
+
+  const fullRowMap = computeKpiExcelRowMap(normalizedSections);
+  const a1aMeta = fullRowMap.itemRowInfo.get('A_1a');
+  const a1bMeta = fullRowMap.itemRowInfo.get('A_1b');
+  assert.equal(formatPresetExcelFormula('ratio_two', a1aMeta), 'E3/E4*100');
+  assert.equal(formatPresetExcelFormula('ratio_two', a1bMeta), 'E5/E6*100');
+  assert.equal(toExcelFormulaExpr('=I1/I2*100', a1bMeta), 'E5/E6*100');
+  assert.equal(toExcelFormulaExpr('=I1/T*100', { startRow: 25, subRows: [25] }), 'E25/G25*100');
+
+  // Remap otomatis saat baris disisipkan di atas (seperti Microsoft Excel: E5/E6 bergeser ke E6/E7)
+  const beforeInsert = [
+    {
+      code: 'A',
+      title: 'Bagian A',
+      totalWeight: 20,
+      items: [
+        { id: 'r1', no: '1', bobot: 10, targetNum: 100, calcType: 'single_target', subrows: [{ key: 'k1', label: 'Satu' }] },
+        { id: 'r2', no: '2', bobot: 10, targetNum: 100, calcType: 'custom', formulaExpr: 'E4/G4*100', subrows: [{ key: 'k2', label: 'Dua' }] },
+      ],
+    },
+  ];
+  const afterInsertRaw = [
+    {
+      ...beforeInsert[0],
+      items: [
+        {
+          ...beforeInsert[0].items[0],
+          subrows: [{ key: 'k1', label: 'Satu' }, { key: 'k1_extra', label: 'Tambahan' }],
+        },
+        beforeInsert[0].items[1],
+      ],
+    },
+  ];
+  const remapped = remapFormulasOnStructureChange(beforeInsert, afterInsertRaw);
+  assert.equal(remapped[0].items[1].formulaExpr, 'E5/G5*100');
+
+  // Referensi lintas bagian SUM(E3:E7) melewati baris header bagian & referensi J3/K3 valid
+  const multiSec = normalizeKpiSections([
+    {
+      code: 'A',
+      title: 'Sec A',
+      totalWeight: 10,
+      items: [
+        { id: 'm1', no: '1', bobot: 10, targetNum: 100, calcType: 'single_target', subrows: [{ key: 'mk1', label: 'A1' }] },
+      ],
+    },
+    {
+      code: 'B',
+      title: 'Sec B',
+      totalWeight: 10,
+      items: [
+        { id: 'm2', no: '1', bobot: 10, targetNum: 100, calcType: 'custom', formulaExpr: 'SUM(E3:E5) + J3*0 + K3*0', subrows: [{ key: 'mk2', label: 'B1' }] },
+      ],
+    },
+  ]);
+  const dirCheck = buildKpiCellDirectory(multiSec, { mk1: '40', mk2: '60' });
+  assert.equal(dirCheck.cells.J3, 40);
+  assert.equal(dirCheck.cells.K3, 4);
+  const crossComputed = computeKpiItem(multiSec[1].items[0], { mk1: '40', mk2: '60' }, false, multiSec);
+  assert.equal(crossComputed.ratioPercent, 100);
+
+  // Distribusi ulang pada periode yang sama memperbarui form tanpa menghapus submission unit WBS
+  const redistributed = store.distributeKpiForm(normalizedSections, { period: '2026', actor: adminPrp });
+  assert.equal(redistributed.id, form.id);
+  assert.equal(store.readUnitSubmission(form.id, wbsUser.email)?.totalScore, -1.25);
 });

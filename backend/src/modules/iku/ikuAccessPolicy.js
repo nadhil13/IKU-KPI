@@ -29,15 +29,15 @@ export function validateAndMergeIkuSubmissionsForUnit(existingList, incomingList
     }
 
     if (rec._deleted || rec.deleted) {
-      if (prev && ['APPROVED', 'LOCKED'].includes(prev.status)) {
+      if (prev && ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(prev.status)) {
         appendAuditLog('SECURITY_VIOLATION', `Percobaan hapus IKU terkunci (${rec.id}) oleh ${callerEmail}`, callerEmail, ip);
-        throw Object.assign(new Error('Submission IKU yang sudah disetujui/dikunci tidak dapat dihapus.'), { status: 403 });
+        throw Object.assign(new Error('Submission IKU yang sedang ditinjau/disetujui/dikunci tidak dapat dihapus.'), { status: 403 });
       }
       baseById.delete(rec.id);
       continue;
     }
 
-    if (prev && ['APPROVED', 'LOCKED'].includes(prev.status)) {
+    if (prev && ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(prev.status)) {
       const prevComparable = JSON.stringify({ ...prev, owner: callerEmail, ownerEmail: callerEmail });
       const recComparable = JSON.stringify({ ...rec, owner: callerEmail, ownerEmail: callerEmail });
       if (prevComparable !== recComparable) {

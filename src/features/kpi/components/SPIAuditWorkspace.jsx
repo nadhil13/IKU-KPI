@@ -734,16 +734,15 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
       {activeTab === 'kpi' ? (
         showFullSheet ? (
           <KPIDataEntrySheet
-            sections={sections}
-            initialValues={integratedBoard.values}
-            initialNotes={integratedBoard.notes}
-            evidenceByItem={integratedBoard.evidenceByItem}
-            evidenceList={allBoardEvidence}
+            sectionsOverride={sections}
+            valuesOverride={integratedBoard.values}
+            notesOverride={integratedBoard.notes}
+            evidenceOverride={allBoardEvidence}
+            contributorMapOverride={integratedBoard.contributorsByItem}
+            integratedBoardOverride={integratedBoard}
             period={localPeriod}
-            isPeriodOpen={false}
             readOnly
             persist={false}
-            allowedPicCodes={null}
           />
         ) : (
           <div style={{ border: '1px solid #CBD5E1', borderRadius: '8px', background: '#FFFFFF', overflow: 'hidden' }}>
@@ -925,7 +924,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                     <button
                                       type="button"
                                       className="ent-btn"
-                                      style={{ minHeight: '38px', padding: '0.3rem 0.6rem', fontSize: '0.7rem' }}
+                                      style={{ minHeight: '44px', padding: '0.35rem 0.65rem', fontSize: '0.7rem' }}
                                       onClick={() => setPreviewEvidence(ev)}
                                     >
                                       <Eye size={13} />
@@ -934,7 +933,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                     <button
                                       type="button"
                                       className="ent-btn"
-                                      style={{ minHeight: '38px', padding: '0.3rem 0.6rem', fontSize: '0.7rem' }}
+                                      style={{ minHeight: '44px', padding: '0.35rem 0.65rem', fontSize: '0.7rem' }}
                                       onClick={() => triggerEvidenceDownload(ev)}
                                     >
                                       {ev.kind === 'file' ? <Download size={13} /> : <ExternalLink size={13} />}
@@ -1054,7 +1053,7 @@ export default function SPIAuditWorkspace({ period = '2026', isPeriodOpen = true
                                       gap: '0.35rem',
                                       color: '#094E68',
                                       fontWeight: 700,
-                                      minHeight: '38px',
+                                      minHeight: '44px',
                                     }}
                                   >
                                     <ExternalLink size={13} />

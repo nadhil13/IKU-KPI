@@ -681,7 +681,11 @@ export function syncUsersListFromAdmin(usersArray, actorEmail = 'admin@itpln.ac.
         ? (u.mustChangePassword ? 1 : 0)
         : (existing ? Number(existing.must_change_password) || 0 : 0);
       const role = ['superadmin_prp', 'iku_only', 'kpi_only', 'dual', 'spi'].includes(u.role) ? u.role : 'kpi_only';
-      const portals = role === 'superadmin_prp' || role === 'dual' ? ['iku', 'kpi'] : role === 'iku_only' ? ['iku'] : ['kpi'];
+      const portals = role === 'superadmin_prp' || role === 'dual' || role === 'spi'
+        ? ['iku', 'kpi']
+        : role === 'iku_only'
+          ? ['iku']
+          : ['kpi'];
       const picCodes = Array.isArray(u.picCodes) ? u.picCodes : [];
       upsertStmt.run(
         email,
@@ -702,17 +706,6 @@ export function syncUsersListFromAdmin(usersArray, actorEmail = 'admin@itpln.ac.
         now,
       );
     });
-
-    if (incomingEmails.has(cleanActor)) {
-      const existingRows = db.prepare('SELECT email FROM users').all();
-      for (const row of existingRows) {
-        const dbEmail = String(row.email || '').toLowerCase();
-        if (dbEmail && dbEmail !== cleanActor && !incomingEmails.has(dbEmail)) {
-          deleteUserStmt.run(dbEmail);
-          deleteSessionStmt.run(dbEmail);
-        }
-      }
-    }
 
     db.exec('RELEASE SAVEPOINT sp_sync_users');
   } catch (err) {

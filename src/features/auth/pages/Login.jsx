@@ -623,31 +623,21 @@ export default function Login() {
               <circle cx="220" cy="5" r="4" fill="#1B9AAA" />
             </svg>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-              <div
-                style={{
-                  padding: '0.85rem 1rem',
-                  borderRadius: '8px',
-                  background: isIkuActive ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)',
-                  border: isIkuActive
-                    ? '1px solid rgba(197, 222, 232, 0.55)'
-                    : '1px solid rgba(197, 222, 232, 0.16)',
-                  opacity: isIkuActive ? 1 : 0.68,
-                }}
-              >
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(197, 222, 232, 0.25)' }}>
+              <div style={{ opacity: isIkuActive ? 1 : 0.68 }}>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    gap: '0.4rem',
                     marginBottom: '0.25rem',
                     color: '#C5DEE8',
                   }}
                 >
+                  {isIkuActive ? <Check size={14} /> : <Lock size={13} />}
                   <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                     Modul 8 IKU
                   </span>
-                  {isIkuActive ? <Check size={14} /> : <Lock size={13} />}
                 </div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 700, fontFamily: "'Outfit', sans-serif", color: '#ffffff' }}>
                   {activeAccount.role === 'spi'
@@ -658,30 +648,20 @@ export default function Login() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  padding: '0.85rem 1rem',
-                  borderRadius: '8px',
-                  background: isKpiActive ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)',
-                  border: isKpiActive
-                    ? '1px solid rgba(197, 222, 232, 0.55)'
-                    : '1px solid rgba(197, 222, 232, 0.16)',
-                  opacity: isKpiActive ? 1 : 0.68,
-                }}
-              >
+              <div style={{ borderLeft: '1px solid rgba(197, 222, 232, 0.28)', paddingLeft: '1rem', opacity: isKpiActive ? 1 : 0.68 }}>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    gap: '0.4rem',
                     marginBottom: '0.25rem',
                     color: '#C5DEE8',
                   }}
                 >
+                  {isKpiActive ? <Check size={14} /> : <Lock size={13} />}
                   <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                     Modul KPI Unit
                   </span>
-                  {isKpiActive ? <Check size={14} /> : <Lock size={13} />}
                 </div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 700, fontFamily: "'Outfit', sans-serif", color: '#ffffff' }}>
                   {isKpiActive

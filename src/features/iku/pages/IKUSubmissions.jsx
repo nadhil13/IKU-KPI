@@ -85,10 +85,20 @@ export default function IKUSubmissions() {
   }, [tick]);
   const [params, setParams] = useSearchParams();
 
+  const matchPeriodId = (rawParam) => {
+    if (!rawParam) return null;
+    const direct = periods.find((p) => p.id === rawParam);
+    if (direct) return direct.id;
+    const byYear = periods.find(
+      (p) => String(p.year || '') === String(rawParam) || String(p.id || '').includes(String(rawParam)),
+    );
+    return byYear ? byYear.id : null;
+  };
+
   const [period, setPeriod] = useState(() =>
-    periods.some((p) => p.id === params.get('period'))
-      ? params.get('period')
-      : periods.find((p) => p.status === 'Active')?.id || periods[0].id
+    matchPeriodId(params.get('period'))
+      || periods.find((p) => p.status === 'Active')?.id
+      || periods[0].id
   );
   const [selected, setSelected] = useState(() => params.get('id') || '');
   const [draftValues, setDraftValues] = useState(null);
@@ -99,20 +109,20 @@ export default function IKUSubmissions() {
 
   const paramPeriod = params.get('period');
   const paramId = params.get('id');
-  useEffect(() => {
-    if (paramPeriod && periods.some((p) => p.id === paramPeriod)) {
-      setPeriod((prev) => {
-        if (prev !== paramPeriod) setDraftValues(null);
-        return paramPeriod;
-      });
+  const urlSyncKey = `${paramPeriod || ''}|${paramId ?? ''}`;
+  const [prevUrlSyncKey, setPrevUrlSyncKey] = useState(urlSyncKey);
+  if (prevUrlSyncKey !== urlSyncKey) {
+    setPrevUrlSyncKey(urlSyncKey);
+    const matched = matchPeriodId(paramPeriod);
+    if (matched && matched !== period) {
+      setPeriod(matched);
+      setDraftValues(null);
     }
-    if (paramId !== null) {
-      setSelected((prev) => {
-        if (prev !== paramId) setDraftValues(null);
-        return paramId;
-      });
+    if (paramId !== null && paramId !== selected) {
+      setSelected(paramId);
+      setDraftValues(null);
     }
-  }, [paramPeriod, paramId, periods]);
+  }
 
   const records = listIkuSubmissions(currentUser).filter((r) => r.period === period);
   const record = admin ? records.find((r) => r.id === selected) : records[0];
@@ -129,12 +139,12 @@ export default function IKUSubmissions() {
 
   void tick;
 
-  const run = (operation, message, clearDraft = false) => {
+  const run = (operation, message, clearDraft = false, keepReason = false) => {
     try {
       operation();
       if (clearDraft) setDraftValues(null);
       setFeedback({ ok: true, text: message });
-      setReason('');
+      if (!keepReason) setReason('');
       setChecked(false);
       refresh((n) => n + 1);
     } catch (error) {
@@ -276,17 +286,17 @@ export default function IKUSubmissions() {
           line-height: 1.65;
         }
         .iku-mini-ledger {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(130px, 1fr));
-          gap: 1px;
-          background: #D8E4EA;
-          border: 1px solid #D8E4EA;
-          border-radius: 8px;
-          overflow: hidden;
+          display: flex;
+          align-items: center;
+          gap: 1.35rem;
         }
         .iku-mini-cell {
-          background: #F7FAFB;
-          padding: 0.75rem 1.05rem;
+          background: transparent;
+          padding: 0.15rem 0;
+        }
+        .iku-mini-cell + .iku-mini-cell {
+          border-left: 1px solid #D8E4EA;
+          padding-left: 1.35rem;
         }
         .iku-mini-cell span {
           display: block;
@@ -775,7 +785,9 @@ export default function IKUSubmissions() {
                         onClick={() =>
                           run(
                             () => verifyIkuEvidence(currentUser, record.id, row.id, st, reason),
-                            'Hasil verifikasi bukti berhasil disimpan.'
+                            'Hasil verifikasi bukti berhasil disimpan.',
+                            false,
+                            true
                           )
                         }
                       >

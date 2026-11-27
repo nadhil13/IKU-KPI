@@ -445,6 +445,7 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
     };
   }
   const callerEmail = String(callerUser.email || '').toLowerCase();
+  const callerPics = new Set(normalizePicList(callerUser.picCodes || []));
   const filterByOwnEmail = (mapObj) => {
     const out = {};
     for (const [entryKey, val] of Object.entries(mapObj || {})) {
@@ -455,8 +456,70 @@ export function filterKpiWorkflowForCaller(workflow, callerUser) {
     }
     return out;
   };
+
+  // Siapkan nilai lintas-baris (khusus evaluasi rumus koordinat Excel & kolaborasi Co-PIC Read-Only)
+  // tanpa mengekspos objek submission/draft penuh milik unit lain.
+  const sanitizedForms = (Array.isArray(workflow.forms) ? workflow.forms : []).map((form) => {
+    const sharedValues = {};
+    const coPicSubKeys = new Set();
+    const allCustomFormulaSubKeys = new Set();
+    const subKeyByCoord = new Map();
+    let rowCursor = 2;
+    (form.sections || []).forEach((sec) => {
+      rowCursor += 1;
+      (sec.items || []).forEach((item) => {
+        const primary = resolveRowPrimaryPic(item);
+        const allRowPics = normalizePicList(item?.coPics?.length ? [primary, ...item.coPics] : (item?.pics ?? item?.picDisplay ?? []));
+        const isCallerCoPic = allRowPics.some((p) => p !== primary && callerPics.has(p));
+        const subs = item.subrows || item.inputs || [];
+        subs.forEach((sub, idx) => {
+          const rNum = rowCursor + idx;
+          if (sub?.key) {
+            subKeyByCoord.set(`E${rNum}`, sub.key);
+            if (isCallerCoPic) coPicSubKeys.add(sub.key);
+          }
+        });
+        rowCursor += Math.max(1, subs.length);
+      });
+    });
+    (form.sections || []).forEach((sec) => {
+      (sec.items || []).forEach((item) => {
+        if (item.calcType === 'custom' && item.formulaExpr && canCallerEditKpiRow(item, callerUser)) {
+          const matches = String(item.formulaExpr).toUpperCase().match(/\bE\d+\b/g) || [];
+          matches.forEach((coord) => {
+            const k = subKeyByCoord.get(coord);
+            if (k) allCustomFormulaSubKeys.add(k);
+          });
+        }
+      });
+    });
+
+    const allowedSharedKeys = new Set([...coPicSubKeys, ...allCustomFormulaSubKeys]);
+    if (allowedSharedKeys.size > 0) {
+      for (const [entryKey, subRec] of Object.entries(workflow.submissions || {})) {
+        const { formId } = splitFormAndEmailKey(entryKey);
+        if (formId !== form.id || !subRec?.values) continue;
+        for (const [k, v] of Object.entries(subRec.values)) {
+          if (allowedSharedKeys.has(k) && String(v ?? '').trim() !== '') {
+            sharedValues[k] = v;
+          }
+        }
+      }
+      const adminOvr = workflow.adminOverrides?.[form.id];
+      if (adminOvr?.values) {
+        for (const [k, v] of Object.entries(adminOvr.values)) {
+          if (allowedSharedKeys.has(k) && String(v ?? '').trim() !== '') {
+            sharedValues[k] = v;
+          }
+        }
+      }
+    }
+    return Object.keys(sharedValues).length > 0 ? { ...form, sharedValues } : form;
+  });
+
   return {
     ...workflow,
+    forms: sanitizedForms,
     submissions: filterByOwnEmail(workflow.submissions),
     evidence: filterByOwnEmail(workflow.evidence),
     drafts: filterByOwnEmail(workflow.drafts),

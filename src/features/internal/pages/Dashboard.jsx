@@ -182,7 +182,12 @@ export default function Dashboard() {
     let periodRecords = [];
     if (currentUser && ['iku_only', 'dual', 'superadmin_prp'].includes(currentUser.role)) {
       try {
-        periodRecords = listIkuSubmissions(currentUser).filter((r) => r.period === effectiveYear);
+        periodRecords = listIkuSubmissions(currentUser).filter((r) => {
+          const rp = String(r.period || '');
+          return rp === effectiveYear
+            || (selectedPeriod?.id && rp === String(selectedPeriod.id))
+            || rp.includes(effectiveYear);
+        });
       } catch {
         periodRecords = [];
       }
@@ -237,7 +242,7 @@ export default function Dashboard() {
       withEvidenceCount,
       avgPct,
     };
-  }, [currentUser, effectiveYear, ikuTick]);
+  }, [currentUser, effectiveYear, selectedPeriod?.id, ikuTick]);
 
   useGSAP(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -844,7 +849,7 @@ export default function Dashboard() {
                       <Link
                         to={
                           ['iku_only', 'dual', 'superadmin_prp'].includes(currentUser?.role)
-                            ? `/internal/iku-submissions?period=${encodeURIComponent(effectiveYear)}`
+                            ? `/internal/iku-submissions?period=${encodeURIComponent(selectedPeriod?.id || effectiveYear)}`
                             : `/iku-list#iku-${item.id}`
                         }
                         style={{

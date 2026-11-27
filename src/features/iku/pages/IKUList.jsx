@@ -424,10 +424,8 @@ export default function IKUList() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
                 <div
                   style={{
-                    padding: '0.85rem 1rem',
-                    border: '1px solid #CBD5E1',
-                    background: '#F7FAFB',
-                    borderRadius: '6px',
+                    paddingTop: '0.75rem',
+                    borderTop: '1px solid #EDF3F6',
                   }}
                 >
                   <div
@@ -463,20 +461,17 @@ export default function IKUList() {
                   <span style={{ color: '#475569' }}>
                     PIC: <strong style={{ color: '#072534' }}>{item.pic}</strong>
                   </span>
-                  <span
+                  <strong
                     style={{
                       fontFamily: 'var(--ent-mono)',
-                      fontWeight: 700,
+                      fontWeight: 800,
                       color: '#094E68',
-                      background: '#EDF3F6',
-                      border: '1px solid #D8E4EA',
-                      padding: '3px 9px',
-                      borderRadius: '4px',
-                      fontSize: '0.68rem',
+                      fontSize: '0.74rem',
+                      letterSpacing: '0.04em',
                     }}
                   >
                     TARGET ≥ {item.target}
-                  </span>
+                  </strong>
                 </div>
               </div>
             </article>

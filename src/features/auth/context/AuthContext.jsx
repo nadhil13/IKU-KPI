@@ -9,7 +9,7 @@ import {
   changeOwnPasswordViaBackend,
 } from '../../../lib/realtimeSync';
 import { AuthContext } from '../authContext';
-import { MOCK_ACCOUNTS, getStoredUsers, portalsForRole, readMergedUsers } from '../authAccounts';
+import { MOCK_ACCOUNTS, portalsForRole, readMergedUsers } from '../authAccounts';
 
 function isSessionConsistent(account, sessionUser) {
   if (!account || account.status !== 'Aktif') return false;
@@ -274,10 +274,13 @@ export function AuthProvider({ children }) {
     );
     const account = readMergedUsers().find((user) => user.email === currentUser.email.toLowerCase()) || currentUser;
     const next = { ...account, ...safe };
-    localStorage.setItem(
-      'prp_users',
-      JSON.stringify([...getStoredUsers().filter((user) => user.email?.toLowerCase() !== next.email.toLowerCase()), next])
-    );
+    const mergedAll = readMergedUsers().map((user) => (
+      user.email?.toLowerCase() === next.email.toLowerCase() ? next : user
+    ));
+    if (!mergedAll.some((user) => user.email?.toLowerCase() === next.email.toLowerCase())) {
+      mergedAll.push(next);
+    }
+    localStorage.setItem('prp_users', JSON.stringify(mergedAll));
     setCurrentUser(currentUser.password && !next.password ? { ...next, password: currentUser.password } : next);
     updateOwnProfileViaBackend(safe);
     notifyAdminUpdated();
@@ -360,8 +363,13 @@ export function AuthProvider({ children }) {
     if (res.handled) {
       delete nextUser.password;
     }
-    const storedUsers = getStoredUsers().filter((u) => u.email?.toLowerCase() !== nextUser.email.toLowerCase());
-    localStorage.setItem('prp_users', JSON.stringify([...storedUsers, nextUser]));
+    const mergedUsers = readMergedUsers().map((u) => (
+      u.email?.toLowerCase() === nextUser.email.toLowerCase() ? nextUser : u
+    ));
+    if (!mergedUsers.some((u) => u.email?.toLowerCase() === nextUser.email.toLowerCase())) {
+      mergedUsers.push(nextUser);
+    }
+    localStorage.setItem('prp_users', JSON.stringify(mergedUsers));
     localStorage.setItem('performa_user', JSON.stringify(nextUser));
     setCurrentUser(nextUser);
     writeAudit('PASSWORD_DIUBAH', 'Kata sandi diubah melalui halaman profil', nextUser.email);
@@ -421,10 +429,13 @@ export function AuthProvider({ children }) {
       if (res?.handled) {
         delete next.password;
       }
-      localStorage.setItem(
-        'prp_users',
-        JSON.stringify([...getStoredUsers().filter((user) => user.email?.toLowerCase() !== next.email.toLowerCase()), next])
-      );
+      const mergedAfterChange = readMergedUsers().map((user) => (
+        user.email?.toLowerCase() === next.email.toLowerCase() ? next : user
+      ));
+      if (!mergedAfterChange.some((user) => user.email?.toLowerCase() === next.email.toLowerCase())) {
+        mergedAfterChange.push(next);
+      }
+      localStorage.setItem('prp_users', JSON.stringify(mergedAfterChange));
       setCurrentUser(next);
       changedPasswordActor.current = next.email;
       setCurrentPasswordInput('');
@@ -486,6 +497,7 @@ export function AuthProvider({ children }) {
                 className="ent-input"
                 type="password"
                 autoComplete="current-password"
+                required={!currentUser?.password}
                 placeholder="Masukkan kata sandi saat ini"
                 value={currentPasswordInput}
                 onChange={(e) => setCurrentPasswordInput(e.target.value)}

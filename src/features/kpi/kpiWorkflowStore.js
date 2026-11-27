@@ -1053,7 +1053,7 @@ export function syncPeriodMasterTable(sections, {
     message: note
       || `Admin PRP telah menyinkronkan struktur Master Tabel KPI untuk periode ${targetPeriod} (${openPeriod ? 'Status: AKTIF / Terbuka untuk Diisi' : 'Status: TERKUNCI / Arsip'}). Data historis periode sebelumnya tetap tersimpan utuh.`,
     targetType: 'ALL',
-    actionUrl: `/internal?period=${encodeURIComponent(targetYear)}`,
+    actionUrl: `/internal/kpi?period=${encodeURIComponent(targetYear)}`,
     actionLabel: `Buka Tabel Periode ${targetPeriod}`,
     meta: { formId: syncedForm.id, period: targetPeriod, openPeriod },
     actor,
@@ -1183,24 +1183,52 @@ export function distributeKpiForm(sections, { period = String(new Date().getFull
   const state = readKpiWorkflow();
   const units = getKpiUnits();
   if (!units.length) throw new Error('Belum ada akun unit KPI aktif.');
-  const form = {
-    id: createId('form'),
-    version: state.forms.length + 1,
-    period,
-    sections: normalized,
-    units,
-    sentAt: new Date().toISOString(),
-  };
-  write({ ...state, forms: [...state.forms, form] });
-  publishKpiSections(normalized, { actor: actor?.email || 'Superadmin PRP', snapshot: true, note: `Distribusi periode ${period} (${form.id})` });
+  const cleanPeriod = String(period || new Date().getFullYear()).trim();
+
+  let existingIdx = -1;
+  for (let i = state.forms.length - 1; i >= 0; i -= 1) {
+    if (String(state.forms[i]?.period || '').trim() === cleanPeriod) {
+      existingIdx = i;
+      break;
+    }
+  }
+
+  let form;
+  let nextForms;
+  if (existingIdx >= 0) {
+    const prevForm = state.forms[existingIdx];
+    form = {
+      ...prevForm,
+      version: (Number(prevForm.version) || state.forms.length) + 1,
+      period: cleanPeriod,
+      sections: normalized,
+      units,
+      structureRevision: (Number(prevForm.structureRevision) || 1) + 1,
+      sentAt: new Date().toISOString(),
+    };
+    nextForms = state.forms.map((f, idx) => (idx === existingIdx ? form : f));
+  } else {
+    form = {
+      id: createId('form'),
+      version: state.forms.length + 1,
+      period: cleanPeriod,
+      sections: normalized,
+      units,
+      sentAt: new Date().toISOString(),
+    };
+    nextForms = [...state.forms, form];
+  }
+
+  write({ ...state, forms: nextForms });
+  publishKpiSections(normalized, { actor: actor?.email || 'Superadmin PRP', snapshot: true, note: `Distribusi periode ${cleanPeriod} (${form.id})` });
   dispatchWorkflowNotification({
     kind: 'STRUCTURE_SYNC',
-    title: `Formulir Evaluasi KPI Periode ${period} Didistribusikan`,
-    message: `Admin PRP telah mendistribusikan struktur tabel KPI periode ${period} ke seluruh unit kerja PIC. Silakan buka lembar kerja untuk mengisi capaian unit Anda.`,
+    title: `Formulir Evaluasi KPI Periode ${cleanPeriod} Didistribusikan`,
+    message: `Admin PRP telah mendistribusikan struktur tabel KPI periode ${cleanPeriod} ke seluruh unit kerja PIC. Silakan buka lembar kerja untuk mengisi capaian unit Anda.`,
     targetType: 'ALL',
-    actionUrl: `/internal?period=${encodeURIComponent(period)}`,
+    actionUrl: `/internal/kpi?period=${encodeURIComponent(cleanPeriod)}`,
     actionLabel: 'Buka Lembar Kerja KPI',
-    meta: { formId: form.id, period },
+    meta: { formId: form.id, period: cleanPeriod },
     actor,
   });
   return form;
@@ -2113,7 +2141,7 @@ export function submitUnitKpi(formId, user, values, options = {}) {
   }
 
   const integrated = readIntegratedKpiBoard(formId, state);
-  const evalValues = { ...integrated.values, ...sanitizedValues };
+  const evalValues = { ...(form.sharedValues || {}), ...integrated.values, ...sanitizedValues };
 
   const sectionScores = form.sections.map((section) => {
     const sectionItems = (section.items || []).filter((item) => canUserEditKpiItem(item, user));
@@ -2258,13 +2286,24 @@ export function reviewUnitKpi(formId, email, status, note = '', actor) {
     }
   }
 
+  const reviewedAt = new Date().toISOString();
   const next = {
     ...record,
     status,
     revisionNote: note.trim(),
-    reviewedAt: new Date().toISOString(),
+    reviewedAt,
     history: history(record, status, note.trim(), actor, evidence),
   };
+  const nextDrafts = { ...(state.drafts || {}) };
+  if (['NEEDS_REVISION', 'REJECTED'].includes(status)) {
+    nextDrafts[key] = {
+      formId,
+      email: email.toLowerCase(),
+      values: { ...(record.values || {}) },
+      notes: { ...(record.notes || {}) },
+      updatedAt: reviewedAt,
+    };
+  }
   const nextForms = (state.forms || []).map((f) => {
     if (f.id !== formId) return f;
     if (['NEEDS_REVISION', 'REJECTED'].includes(status)) {
@@ -2275,7 +2314,7 @@ export function reviewUnitKpi(formId, email, status, note = '', actor) {
     }
     return f;
   });
-  write({ ...state, forms: nextForms, submissions: { ...state.submissions, [key]: next } });
+  write({ ...state, drafts: nextDrafts, forms: nextForms, submissions: { ...state.submissions, [key]: next } });
 
   if (email) {
     const isRev = ['NEEDS_REVISION', 'REJECTED'].includes(status);
@@ -2294,7 +2333,7 @@ export function reviewUnitKpi(formId, email, status, note = '', actor) {
         : `Pengajuan evaluasi KPI unit ${record.unit || email} telah diperbarui menjadi ${statusLabel}.${note.trim() ? ` Catatan: ${note.trim()}` : ''}`,
       targetType: 'USER',
       targetEmails: [email],
-      actionUrl: `/internal?period=${encodeURIComponent(form?.period || '2026')}`,
+      actionUrl: `/internal/kpi?period=${encodeURIComponent(form?.period || '2026')}`,
       actionLabel: isRev ? 'Buka & Perbaiki Isian KPI' : 'Lihat Hasil Evaluasi KPI',
       meta: { formId, status, note: note.trim() },
       actor,

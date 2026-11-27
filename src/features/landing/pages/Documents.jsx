@@ -226,9 +226,11 @@ export default function Documents({ embedded = false }) {
                     <p style={{ fontSize: '0.94rem', color: '#334155', lineHeight: 1.68, margin: '0 0 1rem', maxWidth: 760 }}>
                       {doc.desc}
                     </p>
-                    <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                       <span className="ent-badge ent-badge-info">{doc.type}</span>
+                      <span aria-hidden="true" style={{ color: '#94A3B8', fontWeight: 700 }}>·</span>
                       <span className="ent-badge">{doc.size}</span>
+                      <span aria-hidden="true" style={{ color: '#94A3B8', fontWeight: 700 }}>·</span>
                       <span style={{ fontFamily: 'var(--ent-mono)', fontSize: '0.68rem', fontWeight: 600, color: '#475569', letterSpacing: '0.04em' }}>
                         Edisi: {doc.date}
                       </span>

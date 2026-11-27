@@ -45,7 +45,7 @@ import {
   markAllNotificationsRead,
   subscribeNotifications,
 } from '../features/internal/notificationStore';
-import { getRealtimeStatus, subscribeRealtimeStatus, bootstrapFromBackend } from '../lib/realtimeSync';
+import { getRealtimeStatus, subscribeRealtimeStatus } from '../lib/realtimeSync';
 import {
   initPwaAndNotifications,
   getPwaAndNotificationState,
@@ -747,28 +747,6 @@ export default function InternalLayout() {
     return null;
   }
 
-  const handleRestrictedClick = (targetFeature) => {
-    if (isIkuOnly && targetFeature === 'kpi') {
-      setBlockedModalInfo({
-        code: 'OTORITAS KHUSUS IKU',
-        title: 'Akses Dibatasi: Otoritas Khusus IKU',
-        message:
-          'Akun Anda terdaftar dengan hak akses khusus 8 Indikator Kinerja Utama (Kemendikbudristek). Modul KPI internal unit dan fakultas tidak termasuk dalam cakupan peran sesi ini.',
-        allowedAction:
-          'Gunakan akun Superadmin PRP (admin@itpln.ac.id) pada halaman masuk untuk mengakses dan berpindah antara modul IKU serta KPI.',
-      });
-    } else if (isKpiOnly && targetFeature === 'iku') {
-      setBlockedModalInfo({
-        code: 'OTORITAS KHUSUS KPI',
-        title: 'Akses Dibatasi: Otoritas Khusus KPI',
-        message:
-          'Akun Anda terdaftar dengan hak akses operasional Key Performance Indicator (Unit & Fakultas). Modul 8 IKU Kementerian tidak termasuk dalam cakupan peran sesi ini.',
-        allowedAction:
-          'Gunakan akun Superadmin PRP (admin@itpln.ac.id) pada halaman masuk untuk mengakses dan berpindah antara modul IKU serta KPI.',
-      });
-    }
-  };
-
   const isMobile = windowWidth <= 1024;
 
   return (
@@ -1088,16 +1066,13 @@ export default function InternalLayout() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '0.5rem 0.7rem',
-                borderRadius: '6px',
-                background: '#ffffff',
-                border: '1px solid #D8E4EA',
+                padding: '0.2rem 0.1rem',
                 fontFamily: 'var(--ent-mono)',
                 fontSize: '0.65rem',
               }}
             >
-              <span style={{ color: '#334155', fontWeight: 600 }}>{currentUser.roleTitle}</span>
-              <span style={{ fontWeight: 700, color: '#094E68' }}>{isIkuOnly ? '[IKU]' : '[KPI]'}</span>
+              <span style={{ color: '#334155', fontWeight: 700 }}>{currentUser.roleTitle}</span>
+              <strong style={{ fontWeight: 800, color: '#094E68' }}>{isIkuOnly ? 'OTORITAS IKU' : 'OTORITAS KPI'}</strong>
             </div>
           )}
         </div>
@@ -1346,19 +1321,14 @@ export default function InternalLayout() {
                   <div style={{ marginTop: '1.15rem' }}>
                     <div className="corp-nav-section-label">
                       <span>ISOLASI PERAN</span>
-                      <span>[TERKUNCI]</span>
+                      <span>TERKUNCI</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRestrictedClick('kpi')}
-                      className="corp-nav-locked"
-                    >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <Building2 size={14} />
-                        <span>Lembar Kerja KPI</span>
+                    <div className="corp-nav-locked" aria-label="Lembar Kerja KPI terkunci untuk akun IKU">
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Lock size={13} />
+                        <span>Lembar Kerja KPI (Terkunci)</span>
                       </span>
-                      <Lock size={13} />
-                    </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1475,19 +1445,14 @@ export default function InternalLayout() {
                   <div style={{ marginTop: '1.15rem' }}>
                     <div className="corp-nav-section-label">
                       <span>ISOLASI PERAN</span>
-                      <span>[TERKUNCI]</span>
+                      <span>TERKUNCI</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRestrictedClick('iku')}
-                      className="corp-nav-locked"
-                    >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <Layers size={14} />
-                        <span>Capaian 8 IKU</span>
+                    <div className="corp-nav-locked" aria-label="Capaian 8 IKU terkunci untuk akun KPI">
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Lock size={13} />
+                        <span>Capaian 8 IKU (Terkunci)</span>
                       </span>
-                      <Lock size={13} />
-                    </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1629,21 +1594,21 @@ export default function InternalLayout() {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, overflow: 'hidden', flex: '1 1 0' }}>
               {windowWidth > 380 && (
-                <span
-                  style={{
-                    fontFamily: 'var(--ent-mono)',
-                    fontSize: '0.64rem',
-                    fontWeight: 700,
-                    padding: '3px 7px',
-                    borderRadius: '4px',
-                    background: '#094E68',
-                    color: '#ffffff',
-                    letterSpacing: '0.06em',
-                    flexShrink: 0,
-                  }}
-                >
-                  {breadcrumb.code}
-                </span>
+                <>
+                  <strong
+                    style={{
+                      fontFamily: 'var(--ent-mono)',
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      color: '#094E68',
+                      letterSpacing: '0.06em',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {breadcrumb.code}
+                  </strong>
+                  <span aria-hidden="true" style={{ color: '#94A3B8', fontWeight: 700, flexShrink: 0 }}>·</span>
+                </>
               )}
               {(windowWidth > 1240 || (!isMobile && !desktopSidebarOpen && windowWidth > 860)) && (
                 <>
@@ -1670,40 +1635,31 @@ export default function InternalLayout() {
           </div>
 
           {/* Right: Realtime Status + Broadcast Button + Activity Bell + User Session Identity */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: windowWidth <= 420 ? '0.32rem' : '0.5rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: windowWidth <= 420 ? '0.32rem' : '0.6rem', flexShrink: 0 }}>
             {windowWidth > 768 && (
-              <button
-                type="button"
-                onClick={() => {
-                  bootstrapFromBackend().catch(() => undefined);
-                }}
-                title={rtStatus.mode === 'server-sse' ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif). Klik untuk muat ulang data.' : 'Sinkronisasi lokal antar-tab aktif. Klik untuk mencoba koneksi ulang ke server.'}
+              <strong
+                title={
+                  rtStatus.mode === 'server-sse'
+                    ? 'Terhubung ke Server Realtime SQLite WAL (SSE Aktif).'
+                    : rtStatus.mode === 'server-digest'
+                      ? 'Sinkronisasi server aktif.'
+                      : 'Mode penyimpanan lokal browser.'
+                }
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  minHeight: '38px',
-                  padding: '0 0.65rem',
-                  borderRadius: '6px',
-                  background: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#ECFDF5' : '#EDF3F6',
-                  border: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '1px solid #86EFAC' : '1px solid #64748B',
-                  color: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#047857' : '#094E68',
                   fontFamily: 'var(--ent-mono)',
-                  fontSize: '0.64rem',
-                  fontWeight: 700,
+                  fontSize: '0.66rem',
+                  fontWeight: 800,
                   letterSpacing: '0.05em',
-                  cursor: 'pointer',
+                  color: rtStatus.mode === 'server-sse' || rtStatus.mode === 'server-digest' ? '#166534' : '#094E68',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                <RefreshCw size={13} aria-hidden="true" />
-                <span>
-                  {rtStatus.mode === 'server-sse'
-                    ? 'SSE AKTIF'
-                    : rtStatus.mode === 'server-digest'
-                      ? 'SYNC SERVER'
-                      : 'LOKAL · SINKRONKAN'}
-                </span>
-              </button>
+                {rtStatus.mode === 'server-sse'
+                  ? 'SSE Aktif'
+                  : rtStatus.mode === 'server-digest'
+                    ? 'Sync Server'
+                    : 'Mode Lokal'}
+              </strong>
             )}
 
             <button
@@ -1713,29 +1669,29 @@ export default function InternalLayout() {
                 setPwaNotice('');
                 setPwaModalOpen(true);
               }}
-              aria-label="Install Aplikasi HP dan Notifikasi Layar Kunci"
-              title="Install Aplikasi di Android/iPhone & Aktifkan Notifikasi Layar HP"
+              aria-label="Install Aplikasi HP dan Pengaturan Notifikasi"
+              title="Install Aplikasi di Android/iPhone & Pengaturan Notifikasi Layar HP"
               style={{
                 minHeight: isMobile ? '44px' : '38px',
+                minWidth: isMobile ? '44px' : 'auto',
                 padding: isMobile && windowWidth <= 600 ? '0 0.65rem' : '0 0.75rem',
                 borderRadius: '6px',
-                background: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#ECFDF5' : '#F7FAFB',
-                border: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '1px solid #86EFAC' : '1px solid #D8E4EA',
-                color: pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? '#047857' : '#072534',
+                background: '#FFFFFF',
+                border: '1px solid #64748B',
+                color: '#072534',
                 fontSize: '0.73rem',
                 fontWeight: 700,
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '0.38rem',
               }}
             >
               <Smartphone size={14} />
               {windowWidth > 900 && (
                 <span>
-                  {pwaState.standalone
-                    ? (pwaState.notificationPermission === 'granted' && pwaState.osNotifEnabled ? 'Notif HP Aktif' : 'Notif HP')
-                    : 'Install & Notif HP'}
+                  {pwaState.standalone ? 'Pengaturan Notif HP' : 'Install & Notif HP'}
                 </span>
               )}
             </button>
@@ -2535,12 +2491,12 @@ export default function InternalLayout() {
                 </button>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.6rem', fontSize: '0.72rem', color: '#334155', lineHeight: 1.5 }}>
-                <div style={{ padding: '0.65rem 0.75rem', borderRadius: '6px', background: '#FFFFFF', border: '1px solid #D8E4EA' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.85rem', paddingTop: '0.45rem', borderTop: '1px solid #D8E4EA', fontSize: '0.72rem', color: '#334155', lineHeight: 1.5 }}>
+                <div>
                   <strong style={{ color: '#072534', display: 'block', marginBottom: '0.2rem' }}>HP Android (Chrome / Edge):</strong>
                   Ketuk tombol <strong>Install Aplikasi</strong> di atas atau buka menu titik tiga browser lalu pilih <strong>Install aplikasi / Tambahkan ke Layar Utama</strong>.
                 </div>
-                <div style={{ padding: '0.65rem 0.75rem', borderRadius: '6px', background: '#FFFFFF', border: '1px solid #D8E4EA' }}>
+                <div>
                   <strong style={{ color: '#072534', display: 'block', marginBottom: '0.2rem' }}>iPhone / iPad (Safari iOS):</strong>
                   Ketuk ikon <strong>Bagikan (Share)</strong> di bilah bawah Safari, gulir ke bawah, lalu pilih <strong>Tambah ke Layar Utama (Add to Home Screen)</strong>.
                 </div>
@@ -2840,7 +2796,16 @@ export default function InternalLayout() {
         .arch-cmd-trigger:hover {
           border-color: #094E68;
         }
-        .arch-kbd {
+        kbd.arch-kbd {
+          font-family: var(--ent-mono);
+          font-size: 0.62rem;
+          font-weight: 700;
+          padding: 0;
+          border: none;
+          background: transparent;
+          color: #475569;
+        }
+        button.arch-kbd {
           font-family: var(--ent-mono);
           font-size: 0.6rem;
           font-weight: 600;
@@ -2961,36 +2926,24 @@ export default function InternalLayout() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-width: 20px;
-          height: 18px;
-          padding: 0 5px;
-          border-radius: 4px;
-          background: #094E68;
-          color: #ffffff;
+          padding: 0;
+          background: transparent;
+          color: #0E7480;
           font-family: var(--ent-mono);
-          font-size: 0.6rem;
-          font-weight: 700;
+          font-size: 0.68rem;
+          font-weight: 800;
         }
         .corp-nav-locked {
           width: 100%;
-          min-height: 40px;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0.48rem 0.68rem;
-          border-radius: 6px;
-          border: 1px dashed #64748B;
-          background: #ffffff;
-          color: #475569;
-          font-size: 0.77rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: border-color 0.18s ease, background-color 0.18s ease;
-        }
-        .corp-nav-locked:hover {
-          border-color: #094E68;
-          background: #EDF3F6;
-          color: #072534;
+          padding: 0.35rem 0.6rem;
+          border: none;
+          background: transparent;
+          color: #64748B;
+          font-size: 0.75rem;
+          font-weight: 600;
         }
         .corp-footer-link {
           min-height: 40px;

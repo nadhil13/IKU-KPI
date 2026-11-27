@@ -47,7 +47,7 @@ export function expandCellRangeTokens(startName, endName) {
     return out;
   }
 
-  throw new FormulaError(`Rentang "${a}:${b}" harus berada pada kolom Excel yang sama (mis. E3:E8 atau I1:I6)`);
+  throw new FormulaError(`Rentang "${a}:${b}" harus berada pada kolom Excel yang sama (mis. E3:E8)`);
 }
 
 function tokenize(source) {
@@ -338,12 +338,12 @@ export function validateKpiFormula(source, inputCount, allowedGlobalRefs = null)
     const match = /^I(\d+)$/.exec(name);
     if (!match) {
       if (allowedGlobalRefs) {
-        return `Referensi sel "${name}" tidak ditemukan di tabel.`;
+        return `Referensi sel "${name}" tidak ditemukan di tabel Excel (gunakan kolom E, F, G, J, atau K beserta nomor baris, mis. E3 atau G3).`;
       }
-      return `Variabel "${name}" tidak dikenal. Gunakan koordinat Excel (mis. E3, G3), I1..I${inputCount}, T, atau B.`;
+      return `Referensi sel "${name}" tidak dikenal. Gunakan koordinat kolom & baris Excel (mis. E3, F3, G3, atau SUM(E3:E8)).`;
     }
     const index = Number(match[1]);
-    if (index < 1 || index > inputCount) return `${name} tidak ada: baris ini hanya punya ${inputCount} isian.`;
+    if (index < 1 || index > inputCount) return `Sel isian ke-${index} tidak tersedia: indikator ini hanya memiliki ${inputCount} baris isian.`;
   }
   return null;
 }

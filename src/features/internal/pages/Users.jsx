@@ -282,6 +282,7 @@ export default function Users() {
       writeAudit('HAPUS_AKUN', `Akun ${target.email} dihapus`, currentUser?.email);
       setPageNotice({ type: 'ok', text: `Akun ${target.email} berhasil dihapus dari daftar akses.` });
     } else if (confirmAction.type === 'reset') {
+      localStorage.setItem('prp_users', JSON.stringify(readUsers()));
       const temporaryPassword = resetUserPassword(target, currentUser?.email);
       setUsers(readUsers());
       setResetResult({ email: target.email, temporaryPassword, copied: false });

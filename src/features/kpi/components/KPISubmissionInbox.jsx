@@ -29,6 +29,8 @@ import {
   getEditableItemsForUser,
   evaluateRenbangValidationStatus,
   setRenbangFinalValidation,
+  listKpiPeriodsWithStatus,
+  getFormForPeriod,
   MAX_EVIDENCE_FILE_BYTES,
   ALLOWED_EVIDENCE_MIME_TYPES,
 } from '../kpiWorkflowStore';
@@ -130,7 +132,17 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
     };
   }, []);
 
-  const latestForm = state.forms[state.forms.length - 1] || null;
+  const periodsWithStatus = useMemo(() => listKpiPeriodsWithStatus(state), [state]);
+  const [selectedPeriod, setSelectedPeriod] = useState(() => {
+    const pList = listKpiPeriodsWithStatus(state);
+    const active = pList.find((p) => p.inputOpen || p.status === 'Active');
+    return active?.year || active?.id || '2026';
+  });
+
+  const latestForm = useMemo(
+    () => getFormForPeriod(selectedPeriod, state, { fallbackToLatest: true }) || state.forms[state.forms.length - 1] || null,
+    [selectedPeriod, state],
+  );
   const integratedBoard = useMemo(
     () => (latestForm ? readIntegratedKpiBoard(latestForm.id, state, { confirmedOnly: false }) : null),
     [latestForm, state],
@@ -310,6 +322,27 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <select
+                aria-label="Filter periode evaluasi pada Pusat Review Unit"
+                value={selectedPeriod}
+                onChange={(e) => setSelectedPeriod(e.target.value)}
+                style={{
+                  minHeight: '44px',
+                  padding: '0.4rem 0.7rem',
+                  borderRadius: '6px',
+                  border: '1px solid #64748B',
+                  background: '#FFFFFF',
+                  color: '#072534',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                }}
+              >
+                {periodsWithStatus.map((p) => (
+                  <option key={p.id || p.year} value={p.year || p.id}>
+                    Periode {p.year || p.id} ({p.inputOpen ? 'Aktif' : 'Arsip/Terkunci'})
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className="ent-btn"
@@ -335,12 +368,13 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',
-              gap: '0.85rem',
+              gap: '1rem',
               padding: '1rem 1.3rem',
               background: '#FFFFFF',
+              borderTop: '1px solid #EDF3F6',
             }}
           >
-            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+            <div style={{ paddingLeft: '0.75rem', borderLeft: '2px solid #094E68' }}>
               <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 {resolvedBoardMode === 'confirmed' ? 'Skor Final Terkonfirmasi' : 'Skor Institusi (Progres Live)'}
               </div>
@@ -349,7 +383,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </div>
             </div>
 
-            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+            <div style={{ paddingLeft: '0.75rem', borderLeft: '2px solid #D8E4EA' }}>
               <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Cakupan Indikator ({resolvedBoardMode === 'confirmed' ? 'Final' : 'Live'})
               </div>
@@ -358,7 +392,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </div>
             </div>
 
-            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+            <div style={{ paddingLeft: '0.75rem', borderLeft: '2px solid #D8E4EA' }}>
               <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Status Pengajuan Unit PIC
               </div>
@@ -367,7 +401,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
               </div>
             </div>
 
-            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: '#F7FAFB', border: '1px solid #D8E4EA' }}>
+            <div style={{ paddingLeft: '0.75rem', borderLeft: '2px solid #D8E4EA' }}>
               <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Verifikasi Bukti Capaian
               </div>
@@ -1275,7 +1309,7 @@ export default function KPISubmissionInbox({ selected: controlledSelected, onSel
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '150px', overflowY: 'auto' }}>
                           {Object.entries(currentNotesPayload).map(([itemId, text]) => (
-                            <div key={itemId} style={{ fontSize: '0.72rem', padding: '0.45rem 0.6rem', borderRadius: '6px', background: '#F7FAFB', border: '1px solid #D8E4EA', color: '#334155', overflowWrap: 'anywhere' }}>
+                            <div key={itemId} style={{ fontSize: '0.72rem', padding: '0.38rem 0', borderBottom: '1px solid #EDF3F6', color: '#334155', overflowWrap: 'anywhere' }}>
                               <strong style={{ color: '#094E68' }}>{indicatorLabelById[itemId] || itemId}:</strong> {text}
                             </div>
                           ))}

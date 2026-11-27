@@ -245,6 +245,7 @@ export function isUserCoPicOnKpiItem(item, user) {
 
 export function parseIndonesianNumber(input) {
   if (input === null || input === undefined) return null;
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null;
   const raw = String(input).trim();
   if (!raw) return null;
 
@@ -267,6 +268,11 @@ export function parseIndonesianNumber(input) {
 
   const num = Number(s);
   return Number.isFinite(num) ? num : null;
+}
+
+export function clampInstitutionTotalScore(rawTotal) {
+  const n = Number(rawTotal) || 0;
+  return Math.min(100, Math.max(-25, n));
 }
 
 const MONTH_MAP = {
@@ -334,47 +340,47 @@ export function formatIndonesianNumber(num, maxDecimals = 2) {
 export const CALC_TYPES = {
   custom: {
     label: 'Rumus bebas (ala Excel)',
-    expression: 'Tulis sendiri, mis. I1/I2*100 atau SUM(I1;I2)/T*100',
+    expression: 'Tulis sesuai kolom & baris Excel, mis. =E3/E4*100, =E15/G15*100, atau =SUM(E18:E23)/E24*100',
     minInputs: 1,
   },
   single_target: {
-    label: 'Realisasi / Target',
-    expression: 'Capaian = Isian 1 / Target x 100%',
+    label: 'Realisasi / Target (E / G)',
+    expression: 'Capaian = Sel Isian (E) / Sel Target (G) x 100%',
     minInputs: 1,
     needsTarget: true,
   },
   ratio_two: {
-    label: 'Rasio dua isian',
-    expression: 'Capaian = Isian 1 / Isian 2 x 100%',
+    label: 'Rasio dua baris isian (E1 / E2)',
+    expression: 'Capaian = Sel Isian Atas (E) / Sel Isian Bawah (E) x 100%',
     minInputs: 2,
   },
   ratio_target_pct: {
     label: 'Rasio isian terhadap target %',
-    expression: 'Capaian = (Isian 1 / Isian 2 x 100%) / Target x 100%',
+    expression: 'Capaian = (Sel Isian Atas / Sel Isian Bawah x 100%) / Sel Target (G) x 100%',
     minInputs: 2,
     needsTarget: true,
   },
   ratio_inverse_target_pct: {
     label: 'Efisiensi rasio terhadap batas target % (makin rendah makin baik)',
-    expression: 'Capaian = 100% jika Rasio <= Target; atau (Target / Rasio) x 100%',
+    expression: 'Capaian = 100% jika Rasio <= Target (G); atau (Target / Rasio) x 100%',
     minInputs: 2,
     needsTarget: true,
   },
   sum_two_target: {
     label: 'Jumlah dua isian / Target',
-    expression: 'Capaian = (Isian 1 + Isian 2) / Target x 100%',
+    expression: 'Capaian = (Sel Isian Atas + Sel Isian Bawah) / Sel Target (G) x 100%',
     minInputs: 2,
     needsTarget: true,
   },
   tracer_study: {
     label: 'Tracer study (6 komponen + responden)',
-    expression: 'Capaian = (Total Isian 1-6 / Isian 7) / Target x 100%',
+    expression: 'Capaian = (SUM 6 Sel Isian / Sel Responden) / Sel Target (G) x 100%',
     minInputs: 7,
     needsTarget: true,
   },
   primary_with_meta: {
     label: 'Isian utama + keterangan',
-    expression: 'Capaian = Isian 1 / Target x 100% (Isian 2 sebagai catatan)',
+    expression: 'Capaian = Sel Isian Utama (E) / Sel Target (G) x 100%',
     minInputs: 2,
     needsTarget: true,
   },
@@ -396,13 +402,13 @@ export const CALC_TYPES = {
   },
   compliance_integration_pct: {
     label: 'Kepatuhan persentase (target 100%)',
-    expression: 'Penalti = (100% - Isian 1) x bobot',
+    expression: 'Penalti = (100% - Sel Isian E) x Bobot (F)',
     minInputs: 1,
     penalty: true,
   },
   compliance_audit_ratio: {
     label: 'Rasio temuan audit belum ditindaklanjuti',
-    expression: 'Penalti = (Isian 1 / Isian 2) x bobot',
+    expression: 'Penalti = (Sel Isian Atas / Sel Isian Bawah) x Bobot (F)',
     minInputs: 2,
     penalty: true,
   },
@@ -422,6 +428,128 @@ export const PRESET_FORMULA_EXPR = {
   compliance_integration_pct: 'I1',
   compliance_audit_ratio: '100-I1/I2*100',
 };
+
+/**
+ * Menghasilkan ekspresi rumus dalam koordinat kolom & baris Excel murni (E, F, G)
+ * sesuai posisi baris indikator pada tabel (mis. E3/E4*100 atau E25/G25*100).
+ */
+export function formatPresetExcelFormula(calcType, itemExcelMeta = null) {
+  const startRow = itemExcelMeta?.startRow || 3;
+  const subRows = itemExcelMeta?.subRows?.length ? itemExcelMeta.subRows : [startRow, startRow + 1];
+  const r = (idx) => subRows[idx] ?? (startRow + idx);
+  const g = `G${startRow}`;
+
+  switch (calcType) {
+    case 'single_target':
+    case 'primary_with_meta':
+      return `E${r(0)}/${g}*100`;
+    case 'ratio_two':
+      return `E${r(0)}/E${r(1)}*100`;
+    case 'ratio_target_pct':
+      return `(E${r(0)}/E${r(1)}*100)/${g}*100`;
+    case 'ratio_inverse_target_pct':
+      return `IF(E${r(0)}/E${r(1)}*100<=${g};100;${g}/(E${r(0)}/E${r(1)}*100)*100)`;
+    case 'sum_two_target':
+      return `(E${r(0)}+E${r(1)})/${g}*100`;
+    case 'tracer_study':
+      return `SUM(E${r(0)}:E${r(5)})/E${r(6)}*100/${g}*100`;
+    case 'compliance_integration_pct':
+      return `E${r(0)}`;
+    case 'compliance_audit_ratio':
+      return `100-E${r(0)}/E${r(1)}*100`;
+    default:
+      return '';
+  }
+}
+
+/**
+ * Menerjemahkan token lama (I1, I2, T, B, atau A1A_I1) menjadi koordinat sel Excel murni (E3, E4, G3, F3).
+ */
+export function toExcelFormulaExpr(expr, itemExcelMeta = null, legacyToExcelMap = null) {
+  const raw = String(expr ?? '').trim().replace(/^=\s*/, '');
+  if (!raw) return '';
+  const startRow = itemExcelMeta?.startRow || 3;
+  const subRows = itemExcelMeta?.subRows?.length ? itemExcelMeta.subRows : [startRow];
+
+  // Ekspansi rentang lokal lama seperti I1:I6 menjadi E18:E23
+  const rangeExpanded = raw.replace(/\bI(\d+)\s*:\s*I(\d+)\b/gi, (_, a, b) => {
+    const rA = subRows[Number(a) - 1] ?? (startRow + Number(a) - 1);
+    const rB = subRows[Number(b) - 1] ?? (startRow + Number(b) - 1);
+    return `E${rA}:E${rB}`;
+  });
+
+  return rangeExpanded.replace(/\b([A-Za-z][A-Za-z0-9_]*)\b/g, (token) => {
+    const upper = token.toUpperCase();
+    if (legacyToExcelMap && legacyToExcelMap.has(upper)) {
+      return legacyToExcelMap.get(upper);
+    }
+    const localMatch = /^I(\d+)$/.exec(upper);
+    if (localMatch) {
+      const idx = Number(localMatch[1]) - 1;
+      const targetRow = subRows[idx];
+      return targetRow ? `E${targetRow}` : token;
+    }
+    if (upper === 'T') return `G${startRow}`;
+    if (upper === 'B') return `F${startRow}`;
+    return token;
+  });
+}
+
+/**
+ * Menyesuaikan koordinat sel Excel (E, F, G, J, K) secara otomatis saat baris/sub-baris
+ * disisipkan, dihapus, atau dipindah di Desainer Tabel KPI, persis seperti Microsoft Excel.
+ */
+export function remapFormulasOnStructureChange(prevSections = [], nextSections = []) {
+  const prevNorm = normalizeKpiSections(prevSections);
+  const nextNorm = normalizeKpiSections(nextSections);
+  const prevMap = computeKpiExcelRowMap(prevNorm);
+  const nextMap = computeKpiExcelRowMap(nextNorm);
+
+  const coordTranslation = new Map();
+
+  // Peta perpindahan baris E berdasarkan subrow.key
+  prevMap.subrowRows.forEach((oldRow, subKey) => {
+    const newRow = nextMap.subrowRows.get(subKey);
+    if (newRow && newRow !== oldRow) {
+      coordTranslation.set(`E${oldRow}`, `E${newRow}`);
+    }
+  });
+
+  // Peta perpindahan baris F, G, J, K berdasarkan item.id
+  prevMap.itemRowInfo.forEach((oldInfo, itemId) => {
+    const newInfo = nextMap.itemRowInfo.get(itemId);
+    if (!newInfo) return;
+    if (newInfo.startRow !== oldInfo.startRow) {
+      ['F', 'G', 'J', 'K'].forEach((col) => {
+        coordTranslation.set(`${col}${oldInfo.startRow}`, `${col}${newInfo.startRow}`);
+      });
+    }
+    oldInfo.subRows.forEach((oldSubRow, idx) => {
+      const newSubRow = newInfo.subRows[idx] ?? newInfo.startRow;
+      if (newSubRow !== oldSubRow) {
+        ['F', 'G', 'J', 'K'].forEach((col) => {
+          if (!coordTranslation.has(`${col}${oldSubRow}`)) {
+            coordTranslation.set(`${col}${oldSubRow}`, `${col}${newSubRow}`);
+          }
+        });
+      }
+    });
+  });
+
+  if (coordTranslation.size === 0) return nextSections;
+
+  return nextSections.map((sec) => ({
+    ...sec,
+    items: (sec.items || []).map((item) => {
+      if (item.calcType !== 'custom' || !item.formulaExpr) return item;
+      const updatedExpr = String(item.formulaExpr).replace(/\b([EFGJK]\d+)\b/gi, (match) => {
+        const upper = match.toUpperCase();
+        return coordTranslation.get(upper) || match;
+      });
+      return updatedExpr === item.formulaExpr ? item : { ...item, formulaExpr: updatedExpr };
+    }),
+  }));
+}
 
 const toDeadline = (iso) => (iso ? new Date(`${iso}T23:59:59`) : null);
 
@@ -483,48 +611,71 @@ export function computeKpiExcelRowMap(sections = []) {
 
 /**
  * Membangun peta referensi sel ala Excel untuk seluruh tabel KPI:
- * - Koordinat Excel standar: E{row} (Isian), F{row} (Bobot), G{row} (Target)
+ * - Koordinat Excel standar: E{row} (Isian), F{row} (Bobot), G{row} (Target), J{row} (Capaian %), K{row} (Skor)
+ * - Baris header bagian terdaftar sebagai sel struktural kosong agar rentang lintas bagian SUM(E3:E25) tetap valid
  * - Referensi semantik lintas baris: A1A_I1, A1A_B, A1A_T (kompatibilitas penuh).
  */
-export function buildKpiCellDirectory(sections = [], values = {}) {
+export function buildKpiCellDirectory(sections = [], values = {}, { skipDerivedOutputs = false } = {}) {
   const cells = {};
   const labels = {};
   const allowedRefs = new Set();
   const excelCoordsByItem = new Map();
+  const legacyToExcel = new Map();
+  const itemEntries = [];
   let currentRow = 2;
 
   (sections || []).forEach((section, sIdx) => {
     const secCode = cleanRefCode(section.code || String.fromCharCode(65 + sIdx));
-    currentRow += 1; // Baris header bagian (Section A, B, C, D)
+    // Daftarkan baris header bagian sebagai sel kosong agar rentang SUM(E3:E25) melintasi bagian tanpa error
+    ['E', 'F', 'G', 'J', 'K'].forEach((col) => {
+      const secCell = `${col}${currentRow}`;
+      cells[secCell] = null;
+      allowedRefs.add(secCell);
+      labels[secCell] = `${secCell} (Header Bagian ${section.code || secCode})`;
+    });
+    currentRow += 1;
 
     (section.items || []).forEach((item, iIdx) => {
       const prefix = itemRefPrefix(secCode, item.no ?? (iIdx + 1));
       const targetVal = Number(item.targetNum) || 0;
       const bobotVal = Math.abs(Number(item.bobot) || 0);
-      const subs = item.subrows || item.inputs || [];
+      const rawSubs = item.subrows || item.inputs || [];
+      const subs = rawSubs.length > 0 ? rawSubs : [{ key: `${item.id || prefix}_1`, label: 'Isian 1' }];
       const itemStartRow = currentRow;
 
       const tRef = `${prefix}_T`;
       const bRef = `${prefix}_B`;
       const excelBRef = `F${itemStartRow}`;
       const excelTRef = `G${itemStartRow}`;
+      const excelJRef = `J${itemStartRow}`;
+      const excelKRef = `K${itemStartRow}`;
 
       cells[tRef] = targetVal;
       cells[bRef] = bobotVal;
       cells[excelTRef] = targetVal;
       cells[excelBRef] = bobotVal;
+      cells[excelJRef] = null;
+      cells[excelKRef] = null;
       allowedRefs.add(tRef);
       allowedRefs.add(bRef);
       allowedRefs.add(excelTRef);
       allowedRefs.add(excelBRef);
+      allowedRefs.add(excelJRef);
+      allowedRefs.add(excelKRef);
+      legacyToExcel.set(tRef, excelTRef);
+      legacyToExcel.set(bRef, excelBRef);
       labels[tRef] = `${section.code}.${item.no} Target`;
       labels[bRef] = `${section.code}.${item.no} Bobot`;
       labels[excelTRef] = `${excelTRef} (${section.code}.${item.no} Target)`;
       labels[excelBRef] = `${excelBRef} (${section.code}.${item.no} Bobot)`;
+      labels[excelJRef] = `${excelJRef} (${section.code}.${item.no} Capaian %)`;
+      labels[excelKRef] = `${excelKRef} (${section.code}.${item.no} Skor)`;
 
       const subExcelRefs = [];
+      const subRowNums = [];
       subs.forEach((sub, subIdx) => {
         const rowNum = itemStartRow + subIdx;
+        subRowNums.push(rowNum);
         const iRef = `${prefix}_I${subIdx + 1}`;
         const excelIRef = `E${rowNum}`;
         const parsed = parseIndonesianNumber(values?.[sub.key] ?? '');
@@ -533,38 +684,71 @@ export function buildKpiCellDirectory(sections = [], values = {}) {
         cells[excelIRef] = parsed;
         allowedRefs.add(iRef);
         allowedRefs.add(excelIRef);
+        legacyToExcel.set(iRef, excelIRef);
         labels[iRef] = `${section.code}.${item.no} ${sub.label || `Isian ${subIdx + 1}`}`;
         labels[excelIRef] = `${excelIRef} (${section.code}.${item.no} ${sub.label || `Isian ${subIdx + 1}`})`;
         subExcelRefs.push(excelIRef);
 
-        // Sel Bobot (F) dan Target (G) ter-merge sepanjang sub-baris indikator; izinkan referensi baris tergabung
+        // Sel Bobot (F), Target (G), Capaian (J), dan Skor (K) ter-merge sepanjang sub-baris indikator
         if (subIdx > 0) {
           const mergedF = `F${rowNum}`;
           const mergedG = `G${rowNum}`;
+          const mergedJ = `J${rowNum}`;
+          const mergedK = `K${rowNum}`;
           cells[mergedF] = bobotVal;
           cells[mergedG] = targetVal;
+          cells[mergedJ] = null;
+          cells[mergedK] = null;
           allowedRefs.add(mergedF);
           allowedRefs.add(mergedG);
+          allowedRefs.add(mergedJ);
+          allowedRefs.add(mergedK);
           labels[mergedF] = `${mergedF} (${section.code}.${item.no} Bobot)`;
           labels[mergedG] = `${mergedG} (${section.code}.${item.no} Target)`;
+          labels[mergedJ] = `${mergedJ} (${section.code}.${item.no} Capaian %)`;
+          labels[mergedK] = `${mergedK} (${section.code}.${item.no} Skor)`;
         }
       });
 
       if (item.id) {
         excelCoordsByItem.set(item.id, {
           startRow: itemStartRow,
-          endRow: itemStartRow + Math.max(1, subs.length) - 1,
+          endRow: itemStartRow + subs.length - 1,
+          subRows: subRowNums,
           bobotCell: excelBRef,
           targetCell: excelTRef,
+          capaianCell: excelJRef,
+          skorCell: excelKRef,
           inputCells: subExcelRefs,
         });
       }
 
-      currentRow += Math.max(1, subs.length);
+      itemEntries.push({
+        section,
+        item,
+        subRowNums,
+      });
+
+      currentRow += subs.length;
     });
   });
 
-  return { cells, labels, allowedRefs, excelCoordsByItem };
+  // Hitung nilai kolom J (Capaian %) dan K (Skor) untuk baris-baris non-rekursif agar referensi J3/K3 akurat
+  if (!skipDerivedOutputs) {
+    const presetFirst = [
+      ...itemEntries.filter((e) => e.item.calcType !== 'custom'),
+      ...itemEntries.filter((e) => e.item.calcType === 'custom'),
+    ];
+    presetFirst.forEach(({ section, item, subRowNums }) => {
+      const res = computeKpiItem(item, values, Boolean(section.isPenaltySection), null, cells);
+      subRowNums.forEach((rNum) => {
+        cells[`J${rNum}`] = res.ratioPercent;
+        cells[`K${rNum}`] = res.weightedScore;
+      });
+    });
+  }
+
+  return { cells, labels, allowedRefs, excelCoordsByItem, legacyToExcel };
 }
 
 /**
@@ -572,7 +756,7 @@ export function buildKpiCellDirectory(sections = [], values = {}) {
  * Persentase capaian riil (ratioPercent) tidak dikunci di 100% (dapat >100% sesuai realisasi lapangan),
  * sedangkan skor tertimbang (weightedScore) tetap proporsional dan terjaga terhadap bobot baris.
  */
-export function computeKpiItem(item, values, isPenaltySection, allSections = null) {
+export function computeKpiItem(item, values, isPenaltySection, allSections = null, prebuiltCells = null) {
   const bobot = Number(item.bobot) || 0;
   const targetNum = Number(item.targetNum) || 0;
 
@@ -594,7 +778,7 @@ export function computeKpiItem(item, values, isPenaltySection, allSections = nul
   switch (item.calcType) {
     case 'custom': {
       const effectiveSections = allSections || [{ code: 'A', items: [item] }];
-      const globalCells = buildKpiCellDirectory(effectiveSections, values).cells;
+      const globalCells = prebuiltCells || buildKpiCellDirectory(effectiveSections, values, { skipDerivedOutputs: !allSections }).cells;
       const result = evaluateKpiFormula(item.formulaExpr, {
         inputs: parsedSubs.map((sub) => sub.num),
         target: targetNum,
@@ -797,7 +981,7 @@ export function normalizeKpiSections(sections) {
         let span = 0;
         for (let j = index; j < items.length; j += 1) {
           if (j > index && !items[j].hideExcelNo) break;
-          span += items[j].subrows.length + (items[j].groupBannerTitle ? 1 : 0);
+          span += items[j].subrows.length;
         }
         item.excelNoRowSpan = span;
       } else {

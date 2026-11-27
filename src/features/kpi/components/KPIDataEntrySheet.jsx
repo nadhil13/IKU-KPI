@@ -42,9 +42,10 @@ import { describeKpiFormula } from '../formulaEngine';
 
 import {
   formatIndonesianNumber,
-  computeKpiItem, subscribeKpiConfig, readPublishedKpiConfig, normalizeKpiSections, buildKpiCellDirectory,
+  computeKpiItem, subscribeKpiConfig, readPublishedKpiConfig, normalizeKpiSections,
   canUserEditKpiItem, getUserPicCodes, formatPicDisplay, normalizePicCodes, readKpiValidationRules, createId,
-  getKpiAchievementMeta, resolveItemPicRoles, isUserCoPicOnKpiItem,
+  getKpiAchievementMeta, resolveItemPicRoles, isUserCoPicOnKpiItem, clampInstitutionTotalScore,
+  buildKpiCellDirectory,
 } from '../kpiSchema';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -748,9 +749,9 @@ function RowEvidenceAndNotesCell({
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <MessageSquareWarning size={12} /> CATATAN REVISI PRP
               {itemRevision.targetColumn && itemRevision.targetColumn !== 'Semua Kolom Baris' && (
-                <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: '#FEF3C7', border: '1px solid #F59E0B', color: '#78350F' }}>
-                  {itemRevision.targetColumn}
-                </span>
+                <strong style={{ fontSize: '0.64rem', color: '#92400E', fontWeight: 800 }}>
+                  · Kolom: {itemRevision.targetColumn}
+                </strong>
               )}
             </span>
             <span style={{ fontSize: '0.6rem', color: '#92400E', fontFamily: 'JetBrains Mono, monospace' }}>
@@ -1203,15 +1204,12 @@ function RowEvidenceAndNotesCell({
           ) : (
             <div
               style={{
-                marginTop: '0.22rem',
-                padding: '0.38rem 0.5rem',
-                borderRadius: '5px',
-                background: '#F7FAFB',
-                border: '1px solid #D8E4EA',
+                marginTop: '0.18rem',
+                padding: '0.15rem 0',
                 color: displayNote ? '#334155' : '#475569',
                 fontWeight: 500,
-                fontSize: '0.71rem',
-                lineHeight: 1.4,
+                fontSize: '0.72rem',
+                lineHeight: 1.45,
                 whiteSpace: 'pre-wrap',
               }}
             >
@@ -1535,14 +1533,25 @@ function KPIEntryContent({
 
   const [values, setValues] = useState(() => {
     if (valuesOverride) return { ...emptyDefaults, ...valuesOverride };
-    if (submission && submission.status !== WORKFLOW_STATUS.NEEDS_REVISION) return { ...emptyDefaults, ...submission.values };
+    if (submission && !['NEEDS_REVISION', 'REJECTED'].includes(submission.status)) return { ...emptyDefaults, ...submission.values };
     const draftTime = Date.parse(unitDraft?.updatedAt || '') || 0;
-    const subTime = Date.parse(submission?.updatedAt || '') || 0;
+    const subTime = Date.parse(submission?.reviewedAt || submission?.submittedAt || submission?.updatedAt || '') || 0;
     const draftIsNewer = !submission || draftTime >= subTime;
     if (draftIsNewer && unitDraft?.values && Object.keys(unitDraft.values).length > 0) {
       return { ...emptyDefaults, ...(submission?.values || {}), ...unitDraft.values };
     }
+    if (submission?.values && Object.keys(submission.values).length > 0) {
+      return { ...emptyDefaults, ...submission.values };
+    }
     if (!persist) return emptyDefaults;
+    if (isUnitMode && !unitDraft && !submission && activeForm?.resetAt) {
+      try {
+        localStorage.removeItem(valuesKey);
+      } catch {
+        // Abaikan
+      }
+      return emptyDefaults;
+    }
     try {
       const saved = localStorage.getItem(valuesKey);
       if (saved) return { ...emptyDefaults, ...JSON.parse(saved) };
@@ -1557,14 +1566,25 @@ function KPIEntryContent({
 
   const [notes, setNotes] = useState(() => {
     if (notesOverride) return { ...notesOverride };
-    if (submission && submission.status !== WORKFLOW_STATUS.NEEDS_REVISION) return { ...(submission.notes || {}) };
+    if (submission && !['NEEDS_REVISION', 'REJECTED'].includes(submission.status)) return { ...(submission.notes || {}) };
     const draftTime = Date.parse(unitDraft?.updatedAt || '') || 0;
-    const subTime = Date.parse(submission?.updatedAt || '') || 0;
+    const subTime = Date.parse(submission?.reviewedAt || submission?.submittedAt || submission?.updatedAt || '') || 0;
     const draftIsNewer = !submission || draftTime >= subTime;
     if (draftIsNewer && unitDraft?.notes && Object.keys(unitDraft.notes).length > 0) {
       return { ...(submission?.notes || {}), ...unitDraft.notes };
     }
+    if (submission?.notes && Object.keys(submission.notes).length > 0) {
+      return { ...submission.notes };
+    }
     if (!persist) return {};
+    if (isUnitMode && !unitDraft && !submission && activeForm?.resetAt) {
+      try {
+        localStorage.removeItem(notesKey);
+      } catch {
+        // Abaikan
+      }
+      return {};
+    }
     try {
       const saved = localStorage.getItem(notesKey);
       if (saved) return JSON.parse(saved) || {};
@@ -1610,7 +1630,7 @@ function KPIEntryContent({
     }
   }, [values, notes, localEvidenceList, persist, valuesKey, notesKey, localEvidenceKey, isUnitMode, evidenceOverride]);
 
-  const isLockedForDraft = readOnly || ['SUBMITTED', 'APPROVED', 'REJECTED', 'LOCKED'].includes(workflow.status);
+  const isLockedForDraft = readOnly || ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(workflow.status);
   useEffect(() => {
     if (!persist || !isUnitMode || isLockedForDraft) return undefined;
     const hasAnyInput = Object.entries(values).some(([k, v]) => editableSubKeys.has(k) && String(v ?? '').trim() !== '')
@@ -1841,6 +1861,13 @@ function KPIEntryContent({
     const valRules = readKpiValidationRules();
     const requireEvidence = valRules.requireEvidenceOnSubmit !== false;
 
+    const formulaContextValues = {
+      ...emptyDefaults,
+      ...(activeForm?.sharedValues || {}),
+      ...(integratedBoard?.values || {}),
+      ...effectiveValues,
+    };
+
     const sections = governedSections.map((sec) => {
       let secScore = 0;
       let secCompleted = 0;
@@ -1850,7 +1877,8 @@ function KPIEntryContent({
         const canEditRow = editableItemIds.has(item.id);
         const isCoPicRow = coPicItemIds.has(item.id);
         if (isCoPicRow) coPicTotalIndicators += 1;
-        const result = computeKpiItem(item, effectiveValues, sec.isPenaltySection, governedSections);
+        const rowValues = isUnitMode && !canEditRow && !isCoPicRow ? effectiveValues : formulaContextValues;
+        const result = computeKpiItem(item, rowValues, sec.isPenaltySection, governedSections);
         result.parsedSubs.forEach((sub) => {
           if (sub.isFilled) totalFilledInputs += 1;
           if (sub.isInvalid) totalInvalidInputs += 1;
@@ -1896,7 +1924,7 @@ function KPIEntryContent({
       };
     });
 
-    const netTotalScore = Math.min(100, Math.max(0, positiveScoreABC + penaltyScoreD));
+    const netTotalScore = clampInstitutionTotalScore(positiveScoreABC + penaltyScoreD);
     const activeTotalInputs = isUnitMode ? picTotalInputs : orderedKeys.length;
     const activeFilledInputs = isUnitMode ? picFilledInputs : totalFilledInputs;
     const completionRatio = activeTotalInputs > 0 ? activeFilledInputs / activeTotalInputs : 0;
@@ -1922,7 +1950,7 @@ function KPIEntryContent({
       missingEvidenceIndicators,
       incompleteFormulaIndicators,
     };
-  }, [effectiveValues, governedSections, orderedKeys, editableItemIds, coPicItemIds, ownEvidenceByItem, isUnitMode]);
+  }, [effectiveValues, emptyDefaults, activeForm?.sharedValues, integratedBoard?.values, governedSections, orderedKeys, editableItemIds, coPicItemIds, ownEvidenceByItem, isUnitMode]);
 
   const lastMetricsJsonRef = useRef('');
   useEffect(() => {
@@ -2286,8 +2314,8 @@ function KPIEntryContent({
     if (readOnly) return;
     if (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED) return;
     const presetSamples = {
-      'a_1a_num': '1.850',
-      'a_1a_den': '2.000',
+      'a_1a_num': '1850',
+      'a_1a_den': '2000',
       'a_1b_num': '94,5',
       'a_1b_den': '100',
       'a_2_num': '76,25',
@@ -2539,11 +2567,7 @@ function KPIEntryContent({
     });
   };
 
-  const handleRequestRevision = () => {
-    showToast('Hubungi Admin PRP untuk membuka kembali pengajuan melalui ruang tinjauan.');
-  };
-
-  readOnly = readOnly || (!isAdminUnitReview && ['REJECTED', 'LOCKED'].includes(workflow.status));
+  readOnly = readOnly || (!isAdminUnitReview && ['LOCKED'].includes(workflow.status));
   const isLocked = readOnly || (!isAdminUnitReview && (workflow.status === WORKFLOW_STATUS.SUBMITTED || workflow.status === WORKFLOW_STATUS.APPROVED));
   const isReadyToSubmit = isUnitMode
     ? (
@@ -2568,7 +2592,9 @@ function KPIEntryContent({
   const getItemNotesAndEvidenceForExport = (item, isExcel = false) => {
     const esc = (value) => {
       const raw = String(value ?? '');
-      const formulaSafe = isExcel && /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      const trimmed = raw.trimStart();
+      const isSignedNum = /^-?\d+([.,]\d+)?%?$/.test(trimmed);
+      const formulaSafe = isExcel && !isSignedNum && /^[=+\-@]/.test(trimmed) ? `'${raw}` : raw;
       return formulaSafe.replace(/[&<>'"]/g, (ch) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -2646,7 +2672,9 @@ function KPIEntryContent({
 
     const esc = (value) => {
       const raw = String(value ?? '');
-      const formulaSafe = isExcel && /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      const trimmed = raw.trimStart();
+      const isSignedNum = /^-?\d+([.,]\d+)?%?$/.test(trimmed);
+      const formulaSafe = isExcel && !isSignedNum && /^[=+\-@]/.test(trimmed) ? `'${raw}` : raw;
       return formulaSafe.replace(/[&<>'"]/g, (ch) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -2694,32 +2722,14 @@ function KPIEntryContent({
               : '-';
         const { picText, evAndNoteHtml } = getItemNotesAndEvidenceForExport(item, isExcel);
 
-        const hasGroupBanner = !isUnitMode && Boolean(item.groupBannerTitle);
         const hasSplitTargets = Array.isArray(item.subrowTargets);
         const effExcelNoRowSpan = isUnitMode ? subCount : (item.excelNoRowSpan || subCount);
         const effIndikatorRowSpan = isUnitMode ? subCount : (item.indikatorRowSpan || subCount);
         const effHideExcelNo = isUnitMode ? false : Boolean(item.hideExcelNo);
         const effHideIndikatorCell = isUnitMode ? false : Boolean(item.hideIndikatorCell);
-
-        if (hasGroupBanner) {
-          if (isExcel) {
-            html += `
-              <tr>
-                <td rowspan="${effExcelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(item.excelNo)}</td>
-                <td style="border:1px solid #CBD5E1; padding:7px; font-weight:bold; text-decoration:underline; color:#072534;">${esc(item.groupBannerTitle)}</td>
-                <td colspan="10" style="border:1px solid #CBD5E1;"></td>
-              </tr>
-            `;
-          } else {
-            html += `
-              <tr>
-                <td rowspan="${effExcelNoRowSpan}" class="center bold">${esc(item.excelNo)}</td>
-                <td class="bold" style="text-decoration: underline;">${esc(item.groupBannerTitle)}</td>
-                <td colspan="10"></td>
-              </tr>
-            `;
-          }
-        }
+        const indikatorExportText = !isUnitMode && item.groupBannerTitle
+          ? `[${item.groupBannerTitle}] ${item.indikator}`
+          : item.indikator;
 
         item.parsedSubs.forEach((sub, sIdx) => {
           if (sIdx === 0) {
@@ -2731,12 +2741,12 @@ function KPIEntryContent({
             if (isExcel) {
               html += `
                 <tr>
-                  ${!effHideExcelNo && !hasGroupBanner
+                  ${!effHideExcelNo
                   ? `<td rowspan="${effExcelNoRowSpan}" style="border:1px solid #CBD5E1; text-align:center; vertical-align:middle; font-weight:bold; color:#072534;">${esc(item.excelNo || item.no)}</td>`
                   : ''
                 }
                   ${!effHideIndikatorCell
-                  ? `<td rowspan="${effIndikatorRowSpan}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; font-weight:600; color:#072534;">${esc(item.indikator)}</td>`
+                  ? `<td rowspan="${effIndikatorRowSpan}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; font-weight:600; color:#072534;">${esc(indikatorExportText)}</td>`
                   : ''
                 }
                   <td rowspan="${subCount}" style="border:1px solid #CBD5E1; vertical-align:middle; padding:7px; color:#334155;">${esc(item.formula)}</td>
@@ -2754,12 +2764,12 @@ function KPIEntryContent({
             } else {
               html += `
                 <tr>
-                  ${!effHideExcelNo && !hasGroupBanner
+                  ${!effHideExcelNo
                   ? `<td rowspan="${effExcelNoRowSpan}" class="center bold">${esc(item.excelNo || item.no)}</td>`
                   : ''
                 }
                   ${!effHideIndikatorCell
-                  ? `<td rowspan="${effIndikatorRowSpan}" class="bold">${esc(item.indikator)}</td>`
+                  ? `<td rowspan="${effIndikatorRowSpan}" class="bold">${esc(indikatorExportText)}</td>`
                   : ''
                 }
                   <td rowspan="${subCount}">${esc(item.formula)}</td>
@@ -3429,22 +3439,16 @@ ${sectionSummaryHtml}
           borderRadius: '8px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', minWidth: 0, flex: '1 1 300px' }}>
-          <div
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.7rem', minWidth: 0, flex: '1 1 300px' }}>
+          <span
             style={{
-              width: '36px',
-              height: '36px',
-              display: 'grid',
-              placeItems: 'center',
-              borderRadius: '6px',
-              background: '#FFFFFF',
-              border: `1px solid ${isSpiMode ? '#94B8C7' : workflowStatusTone.border}`,
               color: isSpiMode ? '#094E68' : workflowStatusTone.color,
               flexShrink: 0,
+              marginTop: '2px',
             }}
           >
-            {isSpiMode ? <Eye size={17} /> : <WorkflowIcon size={17} />}
-          </div>
+            {isSpiMode ? <Eye size={18} /> : <WorkflowIcon size={18} />}
+          </span>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
               <strong style={{ color: isSpiMode ? '#072534' : workflowStatusTone.color, fontSize: '0.86rem' }}>
@@ -3564,18 +3568,17 @@ ${sectionSummaryHtml}
             </button>
           )}
           {isLocked && !readOnly && !unitForm && !isSpiMode && workflow.status !== WORKFLOW_STATUS.APPROVED && (
-            <button type="button" onClick={handleRequestRevision} className="clean-btn">
-              <RefreshCcw size={14} />
-              <span>Ajukan Pembukaan Revisi</span>
-            </button>
+            <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#475569' }}>
+              Pengajuan terkunci · Hubungi <strong style={{ color: '#094E68' }}>Admin PRP</strong> untuk pembukaan revisi.
+            </span>
           )}
         </div>
       </div>
 
-      {workflow.status === WORKFLOW_STATUS.NEEDS_REVISION && (
+      {['NEEDS_REVISION', 'REJECTED'].includes(workflow.status) && (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.8rem 1rem', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '8px', color: '#78350F', fontSize: '0.76rem' }}>
           <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
-          <div><strong>Perlu perbaikan:</strong> {workflow.revisionNote || 'Lembar kerja dibuka kembali oleh PRP untuk diperbaiki.'} Perbarui capaian atau bukti dukung Anda, lalu submit ulang ke sistem pusat.</div>
+          <div><strong>{workflow.status === 'REJECTED' ? 'Pengajuan ditolak untuk diperbaiki:' : 'Perlu perbaikan:'}</strong> {workflow.revisionNote || 'Lembar kerja dibuka kembali oleh PRP untuk diperbaiki.'} Perbarui capaian atau bukti dukung Anda, lalu submit ulang ke sistem pusat.</div>
         </div>
       )}
 
@@ -3698,19 +3701,19 @@ ${sectionSummaryHtml}
           </div>
 
           {!isUnitMode ? (
-            <div
-              role="group"
-              aria-label="Cakupan tampilan indikator seluruh unit"
-              style={{
-                display: 'inline-flex',
-                background: '#EDF3F6',
-                padding: '3px',
-                borderRadius: '8px',
-                border: '1px solid #D8E4EA',
-                gap: '2px',
-              }}
-            >
-              {isAdminUnitReview && (
+            isAdminUnitReview ? (
+              <div
+                role="group"
+                aria-label="Cakupan tampilan indikator seluruh unit"
+                style={{
+                  display: 'inline-flex',
+                  background: '#EDF3F6',
+                  padding: '3px',
+                  borderRadius: '8px',
+                  border: '1px solid #D8E4EA',
+                  gap: '2px',
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => setRowScopeFilter('MY_PIC')}
@@ -3732,29 +3735,43 @@ ${sectionSummaryHtml}
                   <ShieldCheck size={13} />
                   <span>Indikator PIC Utama ({calculated.picTotalIndicators})</span>
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setRowScopeFilter('ALL')}
+                <button
+                  type="button"
+                  onClick={() => setRowScopeFilter('ALL')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    minHeight: '44px',
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '6px',
+                    border: rowScopeFilter === 'ALL' ? '1px solid #B8CAD4' : '1px solid transparent',
+                    background: rowScopeFilter === 'ALL' ? '#FFFFFF' : 'transparent',
+                    color: rowScopeFilter === 'ALL' ? '#072534' : '#334155',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Layers size={13} />
+                  <span>Semua Indikator ({calculated.totalIndicatorsCount})</span>
+                </button>
+              </div>
+            ) : (
+              <strong
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  minHeight: '44px',
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: '6px',
-                  border: rowScopeFilter === 'ALL' ? '1px solid #B8CAD4' : '1px solid transparent',
-                  background: rowScopeFilter === 'ALL' ? '#FFFFFF' : 'transparent',
-                  color: rowScopeFilter === 'ALL' ? '#072534' : '#334155',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
+                  gap: '0.38rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  color: '#094E68',
                 }}
               >
-                <Layers size={13} />
+                <Layers size={14} />
                 <span>Semua Indikator ({calculated.totalIndicatorsCount})</span>
-              </button>
-            </div>
+              </strong>
+            )
           ) : calculated.coPicTotalIndicators > 0 ? (
             <div
               role="group"
@@ -3906,25 +3923,19 @@ ${sectionSummaryHtml}
         return (
         <div key={sec.code} data-kpi-section-code={sec.code} className="clean-ledger-card ledger-section-card">
           <div className="clean-section-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
-              <div
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
+              <strong
                 style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '6px',
-                  background: '#094E68',
-                  color: '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   fontFamily: 'Outfit, sans-serif',
                   fontWeight: 800,
-                  fontSize: '0.95rem',
+                  fontSize: '1.35rem',
+                  color: '#094E68',
+                  lineHeight: 1,
                   flexShrink: 0,
                 }}
               >
-                {sec.code}
-              </div>
+                {sec.code}.
+              </strong>
               <div>
                 <div
                   style={{
@@ -4135,35 +4146,6 @@ ${sectionSummaryHtml}
                     className={`kpi-indicator-tbody ${isUnitMode && !canEditRow ? 'is-readonly-pic' : ''}`}
                     style={isNewlySyncedRow ? { boxShadow: 'inset 4px 0 0 #0E7480', backgroundColor: '#F0FDF4' } : undefined}
                   >
-                    {item.groupBannerTitle && (
-                      <tr style={{ background: '#F7FAFB', borderBottom: '1px solid #D8E4EA' }}>
-                        <td
-                          style={{
-                            textAlign: 'center',
-                            fontWeight: 800,
-                            fontFamily: 'Outfit, sans-serif',
-                            color: '#072534',
-                          }}
-                        >
-                          {item.excelNo || item.no}
-                        </td>
-                        <td
-                          colSpan={10}
-                          style={{
-                            fontWeight: 800,
-                            fontFamily: 'Outfit, sans-serif',
-                            color: '#072534',
-                            fontSize: '0.84rem',
-                            letterSpacing: '-0.1px',
-                            textDecoration: 'underline',
-                            textUnderlineOffset: '3px',
-                          }}
-                        >
-                          {item.groupBannerTitle}
-                        </td>
-                      </tr>
-                    )}
-
                     {item.parsedSubs.map((sub, sIdx) => {
                       const coPicValue = isUnitMode && canEditRow && !isLocked && !sub.raw
                         ? (integratedBoard?.values?.[sub.key] || '')
@@ -4195,6 +4177,20 @@ ${sectionSummaryHtml}
                                   background: isHighlightedForReview ? '#F0FDF4' : '#FFFFFF',
                                 }}
                               >
+                                {item.groupBannerTitle && (
+                                  <div
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      color: '#094E68',
+                                      marginBottom: '0.28rem',
+                                      paddingBottom: '0.22rem',
+                                      borderBottom: '1px solid #D8E4EA',
+                                    }}
+                                  >
+                                    {item.groupBannerTitle}
+                                  </div>
+                                )}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                   <span>{item.indikator}</span>
                                   {isNewlySyncedRow && (

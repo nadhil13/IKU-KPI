@@ -169,14 +169,6 @@ export default function AboutIKU() {
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          transition: border-color 0.22s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        @media (hover: hover) {
-          .about-mission-card:hover,
-          .about-hukum-card:hover {
-            border-color: #094E68;
-            transform: translateY(-2px);
-          }
         }
         @media (max-width: 1024px) {
           .about-hero-grid,
@@ -294,20 +286,17 @@ export default function AboutIKU() {
                       8 IKU Kementerian · 4 Perspektif KPI Unit
                     </div>
                   </div>
-                  <span
+                  <strong
                     style={{
                       fontFamily: 'var(--ent-mono)',
-                      fontSize: '0.66rem',
-                      fontWeight: 700,
-                      padding: '0.28rem 0.65rem',
-                      borderRadius: '4px',
-                      background: '#094E68',
-                      border: '1px solid #1B9AAA',
-                      color: '#ffffff',
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      letterSpacing: '0.08em',
+                      color: '#B8D4E0',
                     }}
                   >
                     SPMI ITPLN
-                  </span>
+                  </strong>
                 </div>
               </div>
             </div>
@@ -422,19 +411,12 @@ export default function AboutIKU() {
 
               {MISSIONS.map((misi) => (
                 <article key={misi.code} className="clean-mission-card about-mission-card">
-                  <div style={{ display: 'flex', gap: '1.15rem', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'flex-start' }}>
                     <div
                       style={{
                         color: '#094E68',
-                        background: '#EDF5F7',
-                        border: '1px solid #B8D9E2',
-                        width: '44px',
-                        height: '44px',
-                        borderRadius: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
                         flexShrink: 0,
+                        marginTop: '2px',
                       }}
                     >
                       {misi.icon}

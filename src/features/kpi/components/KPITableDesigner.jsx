@@ -17,11 +17,12 @@ import HorizontalTableViewport from '../../../shared/components/HorizontalTableV
 import { KPI_SECTIONS_CONFIG } from '../kpiTemplateConfig';
 import KPIDataEntrySheet from './KPIDataEntrySheet';
 import {
-  CALC_TYPES, PRESET_FORMULA_EXPR, KPI_DRAFT_KEY, KPI_LIVE_SYNC_KEY, DEFAULT_KPI_VALIDATION_RULES,
+  CALC_TYPES, KPI_DRAFT_KEY, KPI_LIVE_SYNC_KEY, DEFAULT_KPI_VALIDATION_RULES,
   createId, normalizeKpiSections, publishKpiSections, readKpiHistory, readPublishedKpiConfig,
   validateKpiSections, computeKpiItem, formatIndonesianNumber, buildKpiCellDirectory, itemRefPrefix,
-  readMasterPicCatalog, normalizePicCode, normalizePicCodes, formatPicDisplay, readKpiValidationRules, saveKpiValidationRules,
+  readMasterPicCatalog, normalizePicCode, normalizePicCodes, readKpiValidationRules, saveKpiValidationRules,
   computeKpiExcelRowMap, resolveItemPicRoles, getKpiAchievementMeta,
+  formatPresetExcelFormula, toExcelFormulaExpr, remapFormulasOnStructureChange,
 } from '../kpiSchema';
 import { compileFormula, describeKpiFormula, validateKpiFormula } from '../formulaEngine';
 import {
@@ -44,7 +45,7 @@ const blankItem = (code, no) => ({
   pics: [],
   picDisplay: '',
   formula: 'Realisasi / Target x 100%',
-  formulaExpr: PRESET_FORMULA_EXPR.single_target,
+  formulaExpr: '',
   bobot: 0,
   targetNum: 100,
   targetDisplay: '100',
@@ -71,7 +72,11 @@ const move = (rows, index, direction) => {
 };
 const stripEq = (expr) => String(expr ?? '').trim().replace(/^=\s*/, '');
 const isDateType = (calcType) => Boolean(CALC_TYPES[calcType]?.needsDeadline);
-const visibleExpr = (item) => (item.calcType === 'custom' ? item.formulaExpr ?? '' : PRESET_FORMULA_EXPR[item.calcType] ?? '');
+const visibleExpr = (item, itemExcelMeta = null, legacyToExcelMap = null) => (
+  item.calcType === 'custom'
+    ? toExcelFormulaExpr(item.formulaExpr ?? '', itemExcelMeta, legacyToExcelMap)
+    : formatPresetExcelFormula(item.calcType, itemExcelMeta)
+);
 
 function hydrateDefaultPics(sections) {
   const defaultMap = new Map();
@@ -92,14 +97,27 @@ function hydrateDefaultPics(sections) {
         ...item,
         pics: fallback ? fallback.pics : (item.pics || []),
         picDisplay: fallback ? fallback.picDisplay : (item.picDisplay || ''),
-        formulaExpr: item.formulaExpr ?? PRESET_FORMULA_EXPR[item.calcType] ?? '',
+        formulaExpr: item.calcType === 'custom' ? (item.formulaExpr ?? '') : '',
       };
     }),
   }));
 }
 
 function migrate(sections) {
-  return normalizeKpiSections(hydrateDefaultPics(sections));
+  const norm = normalizeKpiSections(hydrateDefaultPics(sections));
+  const rowMap = computeKpiExcelRowMap(norm);
+  const { legacyToExcel } = buildKpiCellDirectory(norm, {}, { skipDerivedOutputs: true });
+  return norm.map((sec) => ({
+    ...sec,
+    items: sec.items.map((item) => {
+      if (item.calcType !== 'custom' || !item.formulaExpr) return item;
+      const meta = rowMap.itemRowInfo.get(item.id);
+      return {
+        ...item,
+        formulaExpr: toExcelFormulaExpr(item.formulaExpr, meta, legacyToExcel),
+      };
+    }),
+  }));
 }
 
 function initialSections() {
@@ -162,7 +180,9 @@ export default function KPITableDesigner() {
   // Default aktif (true) agar setiap penambahan/perubahan baris langsung tersinkron ke form seluruh unit
   const [liveSync, setLiveSync] = useState(() => localStorage.getItem(KPI_LIVE_SYNC_KEY) !== 'false');
   const [selectedId, setSelectedId] = useState(null);
+  const [activeCellCoord, setActiveCellCoord] = useState('');
   const [pickMode, setPickMode] = useState(false);
+  const hasUserEditedRef = useRef(false);
   const [menuFor, setMenuFor] = useState(null);
   const [picPickerFor, setPicPickerFor] = useState(null);
   const [picSearch, setPicSearch] = useState('');
@@ -213,7 +233,7 @@ export default function KPITableDesigner() {
   const selectedExcelMeta = selected ? excelRowMap.itemRowInfo.get(selected.id) : null;
   const selectedPicRoles = useMemo(() => (selected ? resolveItemPicRoles(selected) : { primaryPic: '', coPics: [], allPics: [] }), [selected]);
   const selectedPrefix = selected ? itemRefPrefix(selectedSection.code, selected.no) : '';
-  const selectedExpr = selected ? visibleExpr(selected) : '';
+  const selectedExpr = selected ? visibleExpr(selected, selectedExcelMeta, directory.legacyToExcel) : '';
   const formulaEditable = Boolean(selected) && !isDateType(selected.calcType);
   const formulaError = selected && formulaEditable
     ? validateKpiFormula(selectedExpr, selected.subrows.length, directory.allowedRefs)
@@ -289,20 +309,24 @@ export default function KPITableDesigner() {
     }
   }, [normalized, notify]);
 
-  // Sinkronisasi struktur & baris realtime ke form seluruh unit kerja (debounced agar bebas spam)
+  // Sinkronisasi struktur & baris realtime ke form seluruh unit kerja (debounced & khusus perubahan user)
   useEffect(() => {
-    if (!liveSync || hasBlockingError) return undefined;
+    if (!liveSync || hasBlockingError || !hasUserEditedRef.current) return undefined;
     const timer = window.setTimeout(() => {
       try {
         const actor = currentUser?.email || 'Superadmin PRP';
-        publishKpiSections(normalized, { actor, note: 'Live sync', snapshot: false });
-        syncActiveKpiFormSections(normalized, { actor });
+        const targetPeriod = String(periodString || '').trim();
+        const isCurrentActivePeriod = !selectedPeriodMeta || selectedPeriodMeta.isOpenForInput;
+        if (isCurrentActivePeriod) {
+          publishKpiSections(normalized, { actor, note: 'Live sync', snapshot: false });
+        }
+        syncActiveKpiFormSections(normalized, { actor, period: targetPeriod || undefined });
       } catch {
         notify('Live sync gagal menyimpan konfigurasi.');
       }
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [normalized, liveSync, hasBlockingError, notify, currentUser?.email]);
+  }, [normalized, liveSync, hasBlockingError, notify, currentUser?.email, periodString, selectedPeriodMeta]);
 
   useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
 
@@ -359,34 +383,53 @@ export default function KPITableDesigner() {
       return;
     }
     const actor = currentUser?.email || 'Superadmin PRP';
+    const targetPeriod = String(periodString || '').trim();
     try {
       publishKpiSections(clean, { actor, note: feedbackMessage || 'Sinkronisasi baris realtime', snapshot: false });
-      syncActiveKpiFormSections(clean, { actor });
+      syncActiveKpiFormSections(clean, { actor, period: targetPeriod || undefined });
       if (feedbackMessage) notify(feedbackMessage);
     } catch {
       notify('Gagal menyinkronkan struktur baris ke penyimpanan lokal.');
     }
-  }, [currentUser?.email, notify]);
+  }, [currentUser?.email, notify, periodString]);
 
-  const updateSection = (si, patch) => setSections((current) => current.map((section, index) => (
-    index === si ? { ...section, ...patch } : section
-  )));
-  const editItems = (si, transform, immediateSyncNote = '') => setSections((current) => {
-    const next = current.map((section, index) => (
+  const applySectionsMutation = (computeNext) => {
+    hasUserEditedRef.current = true;
+    setSections((current) => {
+      const rawNext = computeNext(current);
+      return remapFormulasOnStructureChange(current, rawNext);
+    });
+  };
+
+  const updateSection = (si, patch) => {
+    hasUserEditedRef.current = true;
+    setSections((current) => current.map((section, index) => (
+      index === si ? { ...section, ...patch } : section
+    )));
+  };
+  const editItems = (si, transform, immediateSyncNote = '') => {
+    applySectionsMutation((current) => current.map((section, index) => (
       index === si ? { ...section, items: transform(section.items, section) } : section
-    ));
+    )));
     if (immediateSyncNote) {
       window.queueMicrotask(() => notify(immediateSyncNote));
     }
-    return next;
-  });
-  const updateItem = (si, ii, patch) => editItems(si, (items) => items.map((item, index) => (
-    index === ii ? { ...item, ...patch } : item
-  )));
-  const patchItemById = (id, patch) => setSections((current) => current.map((section) => ({
-    ...section,
-    items: section.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-  })));
+  };
+  const updateItem = (si, ii, patch) => {
+    hasUserEditedRef.current = true;
+    setSections((current) => current.map((section, sIdx) => (
+      sIdx === si
+        ? { ...section, items: section.items.map((item, iIdx) => (iIdx === ii ? { ...item, ...patch } : item)) }
+        : section
+    )));
+  };
+  const patchItemById = (id, patch) => {
+    hasUserEditedRef.current = true;
+    setSections((current) => current.map((section) => ({
+      ...section,
+      items: section.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    })));
+  };
   const editSubs = (si, ii, transform) => editItems(si, (items) => items.map((item, index) => (
     index === ii ? { ...item, subrows: transform(item.subrows) } : item
   )));
@@ -545,6 +588,7 @@ export default function KPITableDesigner() {
   const handleLoadPeriodStructure = (targetPeriod) => {
     const clean = String(targetPeriod || periodString || '').trim();
     if (!clean) return;
+    hasUserEditedRef.current = false;
     setPeriodString(clean);
     const periodForm = getFormForPeriod(clean);
     if (periodForm?.sections?.length) {
@@ -604,12 +648,17 @@ export default function KPITableDesigner() {
     );
   };
 
-  const changeCalcType = (item, calcType) => patchItemById(item.id, {
-    calcType,
-    formulaExpr: calcType === 'custom' ? visibleExpr(item) : PRESET_FORMULA_EXPR[calcType] ?? '',
-  });
+  const changeCalcType = (item, calcType) => {
+    const meta = excelRowMap.itemRowInfo.get(item.id);
+    patchItemById(item.id, {
+      calcType,
+      formulaExpr: calcType === 'custom'
+        ? visibleExpr(item, meta, directory.legacyToExcel)
+        : formatPresetExcelFormula(calcType, meta),
+    });
+  };
 
-  const addSection = () => setSections((current) => {
+  const addSection = () => applySectionsMutation((current) => {
     let number = current.length;
     let code;
     do { code = letters(number++).toUpperCase(); } while (current.some((section) => section.code === code));
@@ -635,14 +684,14 @@ export default function KPITableDesigner() {
     });
   };
 
-  const pickHandlers = (ownerId, localRef, excelRef, legacyRef) => (pickMode && formulaEditable ? {
+  const pickHandlers = (excelRef) => (pickMode && formulaEditable ? {
     onMouseDown: (event) => {
       event.preventDefault();
     },
     onClick: () => {
-      insertToken(ownerId === selected?.id ? excelRef : excelRef || legacyRef);
+      insertToken(excelRef);
     },
-    title: `Klik untuk menyisipkan koordinat Excel ${excelRef} (alias ${ownerId === selected?.id ? localRef : legacyRef})`,
+    title: `Klik untuk menyisipkan sel Excel ${excelRef} ke dalam rumus`,
   } : {});
   const refClass = (excelRef, legacyRef) => [
     pickMode && formulaEditable ? 'pickable' : '',
@@ -650,21 +699,27 @@ export default function KPITableDesigner() {
   ].join(' ');
 
   const handleExportDesignerExcel = () => {
-    const esc = (val) => {
+    const escText = (val) => {
       const raw = String(val ?? '');
-      const safe = /^[=+\-@]/.test(raw.trimStart()) ? `'${raw}` : raw;
+      const trimmed = raw.trimStart();
+      const isSignedNum = /^-?\d+([.,]\d+)?%?$/.test(trimmed);
+      const safe = !isSignedNum && /^[=+\-@]/.test(trimmed) ? `'${raw}` : raw;
       return safe.replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
     };
+    const escPlain = (val) => String(val ?? '').replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
     let rowsHtml = '';
     normalized.forEach((sec) => {
       rowsHtml += `<tr style="background:#EDF3F6;font-weight:bold;color:#072534;">
-        <td style="border:1px solid #CBD5E1;text-align:center;padding:6px;">${esc(sec.code)}</td>
-        <td colspan="4" style="border:1px solid #CBD5E1;padding:6px;">${esc(sec.title)}</td>
-        <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(sec.totalWeight)}</td>
+        <td style="border:1px solid #CBD5E1;text-align:center;padding:6px;">${escPlain(sec.code)}</td>
+        <td colspan="4" style="border:1px solid #CBD5E1;padding:6px;">${escText(sec.title)}</td>
+        <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${escPlain(sec.totalWeight)}</td>
         <td colspan="5" style="border:1px solid #CBD5E1;padding:6px;">${sec.isPenaltySection ? 'Bagian Penalti' : ''}</td>
       </tr>`;
       sec.items.forEach((item) => {
         const span = item.subrows.length;
+        const noSpan = item.excelNoRowSpan || span;
+        const indSpan = item.indikatorRowSpan || span;
+        const itemMeta = excelRowMap.itemRowInfo.get(item.id);
         const picMeta = resolveItemPicRoles(item);
         const picText = picMeta.primaryPic
           ? (picMeta.coPics.length ? `Utama: ${picMeta.primaryPic} | Co-PIC: ${picMeta.coPics.join(', ')}` : picMeta.primaryPic)
@@ -672,27 +727,29 @@ export default function KPITableDesigner() {
         const res = results.get(item.id);
         const capStr = res?.ratioPercent == null ? '' : `${formatIndonesianNumber(res.ratioPercent, 2)}%`;
         const skorStr = res?.weightedScore == null ? '' : formatIndonesianNumber(res.weightedScore, 2);
-        const formulaStr = isDateType(item.calcType) ? CALC_TYPES[item.calcType].label : `=${stripEq(visibleExpr(item))}`;
+        const formulaStr = isDateType(item.calcType)
+          ? CALC_TYPES[item.calcType].label
+          : `=${stripEq(visibleExpr(item, itemMeta, directory.legacyToExcel))}`;
         item.subrows.forEach((sub, sIdx) => {
           const simVal = simValues[sub.key] ?? '';
           if (sIdx === 0) {
             rowsHtml += `<tr>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:center;">${esc(item.no)}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;">${esc(item.indikator)}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;">${esc(picText)}</td>
-              <td style="border:1px solid #CBD5E1;padding:6px;">${esc(sub.label)}</td>
-              <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(simVal)}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(Math.abs(Number(item.bobot) || 0))}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(item.targetNum)}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:center;padding:6px;">${esc(item.satuan)}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;font-family:Consolas,monospace;">${esc(formulaStr)}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;font-weight:bold;">${esc(capStr)}</td>
-              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;font-weight:bold;">${esc(skorStr)}</td>
+              ${!item.hideExcelNo ? `<td rowspan="${noSpan}" style="border:1px solid #CBD5E1;text-align:center;">${escText(item.no)}</td>` : ''}
+              ${!item.hideIndikatorCell ? `<td rowspan="${indSpan}" style="border:1px solid #CBD5E1;padding:6px;">${escText(item.indikator)}</td>` : ''}
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;">${escText(picText)}</td>
+              <td style="border:1px solid #CBD5E1;padding:6px;">${escText(sub.label)}</td>
+              <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${escText(simVal)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${escPlain(item.bobot)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${escPlain(item.targetNum)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:center;padding:6px;">${escText(item.satuan)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;padding:6px;font-family:Consolas,monospace;mso-number-format:'\\@';">${escPlain(formulaStr)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;font-weight:bold;">${escPlain(capStr)}</td>
+              <td rowspan="${span}" style="border:1px solid #CBD5E1;text-align:right;padding:6px;font-weight:bold;">${escPlain(skorStr)}</td>
             </tr>`;
           } else {
             rowsHtml += `<tr>
-              <td style="border:1px solid #CBD5E1;padding:6px;">${esc(sub.label)}</td>
-              <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${esc(simVal)}</td>
+              <td style="border:1px solid #CBD5E1;padding:6px;">${escText(sub.label)}</td>
+              <td style="border:1px solid #CBD5E1;text-align:right;padding:6px;">${escText(simVal)}</td>
             </tr>`;
           }
         });
@@ -704,7 +761,7 @@ export default function KPITableDesigner() {
         <table style="border-collapse:collapse;width:100%;">
           <thead>
             <tr style="background:#F8FAFC;font-weight:bold;text-align:center;">
-              ${COLUMNS.map((c) => `<th style="border:1px solid #CBD5E1;padding:8px;">${esc(c)}</th>`).join('')}
+              ${COLUMNS.map((c) => `<th style="border:1px solid #CBD5E1;padding:8px;">${escText(c)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
@@ -749,8 +806,9 @@ export default function KPITableDesigner() {
     }
     try {
       const actor = currentUser?.email || 'Superadmin PRP';
+      const targetPeriod = String(periodString || '').trim();
       const pub = publishKpiSections(normalized, { actor, snapshot: true, note: `Sinkronisasi struktur realtime (${totalRows} indikator)` });
-      const synced = syncActiveKpiFormSections(normalized, { actor });
+      const synced = syncActiveKpiFormSections(normalized, { actor, period: targetPeriod || undefined });
       setHistory(readKpiHistory());
       notify(
         `Struktur tabel KPI (${totalRows} baris indikator, v${pub.version}) berhasil disinkronkan secara realtime ke ${synced?.units?.length || activeUnitCount} akun unit kerja tanpa menghapus isian unit.`,
@@ -959,8 +1017,8 @@ export default function KPITableDesigner() {
           <div className="sheet-shell">
             <div className={`formula-bar ${pickMode && formulaEditable ? 'picking' : ''}`}>
               <div className="formula-row">
-                <span className="name-box" title="Koordinat baris terpilih (Kode KPI & Baris Excel)">
-                  {selected ? `${selectedSection.code}.${selected.no} · E${selectedExcelMeta?.startRow || '-'}` : '-'}
+                <span className="name-box" title="Alamat sel Excel aktif (Kolom A-K & Nomor Baris)">
+                  {activeCellCoord || (selected ? `I${selectedExcelMeta?.startRow || '-'}` : 'A1')}
                 </span>
                 <select
                   aria-label="Tipe perhitungan"
@@ -978,10 +1036,13 @@ export default function KPITableDesigner() {
                   aria-label="Rumus baris terpilih"
                   aria-invalid={Boolean(formulaError)}
                   disabled={!formulaEditable}
-                  placeholder={!selected ? 'Klik salah satu baris di tabel untuk mengedit rumus dan PIC' : isDateType(selected.calcType) ? 'Tipe tanggal memakai batas waktu, bukan rumus' : `=E${selectedExcelMeta?.startRow || 3}/G${selectedExcelMeta?.startRow || 3}*100 atau =I1/T*100`}
+                  placeholder={!selected ? 'Klik salah satu sel atau baris di tabel untuk mengedit rumus ala Excel' : isDateType(selected.calcType) ? 'Tipe tanggal memakai batas waktu, bukan rumus' : `=E${selectedExcelMeta?.startRow || 3}/${(selected?.subrows?.length || 1) >= 2 ? `E${(selectedExcelMeta?.startRow || 3) + 1}` : `G${selectedExcelMeta?.startRow || 3}`}*100`}
                   value={formulaEditable ? `=${stripEq(selectedExpr)}` : ''}
                   onChange={(event) => setFormula(stripEq(event.target.value))}
-                  onFocus={() => setPickMode(true)}
+                  onFocus={() => {
+                    if (selectedExcelMeta?.startRow) setActiveCellCoord(`I${selectedExcelMeta.startRow}`);
+                    setPickMode(true);
+                  }}
                   onBlur={() => setPickMode(false)}
                   spellCheck={false}
                 />
@@ -1024,7 +1085,7 @@ export default function KPITableDesigner() {
                       </button>
                     ))}
                   </div>
-                  <div className="op-group" role="group" aria-label="Koordinat Excel dan alias baris ini">
+                  <div className="op-group" role="group" aria-label="Sel Excel baris terpilih">
                     {selected.subrows.map((sub, index) => {
                       const excelCoord = `E${selectedExcelMeta?.subRows?.[index] || index + 3}`;
                       return (
@@ -1033,7 +1094,7 @@ export default function KPITableDesigner() {
                           type="button"
                           className="ref-chip"
                           disabled={!formulaEditable}
-                          title={`Sel Excel ${excelCoord} (${sub.label} · alias I${index + 1})`}
+                          title={`Sel Isian ${excelCoord}: ${sub.label}`}
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => insertToken(excelCoord)}
                         >
@@ -1047,54 +1108,24 @@ export default function KPITableDesigner() {
                           type="button"
                           className="ref-chip"
                           disabled={!formulaEditable}
-                          title={`Target Excel G${selectedExcelMeta.startRow} (alias T)`}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => insertToken(`G${selectedExcelMeta.startRow}`)}
-                        >
-                          G{selectedExcelMeta.startRow}
-                        </button>
-                        <button
-                          type="button"
-                          className="ref-chip"
-                          disabled={!formulaEditable}
-                          title={`Bobot Excel F${selectedExcelMeta.startRow} (alias B)`}
+                          title={`Sel Bobot F${selectedExcelMeta.startRow}`}
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => insertToken(`F${selectedExcelMeta.startRow}`)}
                         >
                           F{selectedExcelMeta.startRow}
                         </button>
+                        <button
+                          type="button"
+                          className="ref-chip"
+                          disabled={!formulaEditable}
+                          title={`Sel Target G${selectedExcelMeta.startRow}`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => insertToken(`G${selectedExcelMeta.startRow}`)}
+                        >
+                          G{selectedExcelMeta.startRow}
+                        </button>
                       </>
                     )}
-                    {selected.subrows.map((sub, index) => (
-                      <button
-                        key={`alias-${sub.key}`}
-                        type="button"
-                        disabled={!formulaEditable}
-                        title={`Alias lokal I${index + 1}: ${sub.label}`}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => insertToken(`I${index + 1}`)}
-                      >
-                        I{index + 1}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={!formulaEditable}
-                      title="Target baris ini (alias T)"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => insertToken('T')}
-                    >
-                      T
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!formulaEditable}
-                      title="Bobot baris ini (alias B)"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => insertToken('B')}
-                    >
-                      B
-                    </button>
                   </div>
                   {formulaEditable && (
                     <button
@@ -1123,13 +1154,13 @@ export default function KPITableDesigner() {
                         </strong>
                         {' · '}Skor <strong>{formatIndonesianNumber(results.get(selected.id)?.weightedScore)}</strong>
                       </span>
-                      {selected.calcType !== 'custom' && <span className="hint">Preset: mengetik di kolom fx otomatis mengubahnya menjadi rumus bebas (mendukung sel Excel E3, F3, G3, SUM(E3:E8)).</span>}
+                      {selected.calcType !== 'custom' && <span className="hint">Mengetik langsung di kolom fx akan memakai rumus kustom berbasis kolom A-K &amp; baris 1-N (mis. =E3/E4*100 atau =SUM(E3:E8)).</span>}
                     </>
                   ) : (
                     <span className="hint">{CALC_TYPES[selected.calcType]?.expression}</span>
                   )}
                   <span className="hint pick-hint">
-                    <MousePointerClick size={13} /> {pickMode && formulaEditable ? 'Mode pilih sel aktif: klik sel Isian (E), Bobot (F), atau Target (G) di baris mana pun.' : 'Klik kolom fx untuk mengaktifkan mode pilih sel Excel.'}
+                    <MousePointerClick size={13} /> {pickMode && formulaEditable ? 'Mode pilih sel aktif: klik sel di kolom E (Isian), F (Bobot), atau G (Target) pada baris mana pun.' : 'Klik kolom fx lalu klik sel di tabel seperti di Excel.'}
                   </span>
                 </div>
               )}
@@ -1311,7 +1342,7 @@ export default function KPITableDesigner() {
                 </colgroup>
                 <thead>
                   <tr className="letters">
-                    <th>Baris</th>
+                    <th className="corner-cell" aria-label="Baris" />
                     {COLUMNS.map((_, index) => <th key={index}>{String.fromCharCode(65 + index)}</th>)}
                     <th />
                   </tr>
@@ -1610,55 +1641,78 @@ export default function KPITableDesigner() {
                                   </div>
                                 </div>
                               </td>
-                              <td className={`ref-cell sim ${refClass(excelERef, iRef)}`} {...pickHandlers(item.id, `I${subi + 1}`, excelERef, iRef)}>
-                                <span className="ref-tag" title={`Sel Excel ${excelERef} · Alias ${iRef}`}>{excelERef} · I{subi + 1}</span>
+                              <td
+                                className={`ref-cell sim ${refClass(excelERef, iRef)}`}
+                                title={`Sel ${excelERef}`}
+                                {...pickHandlers(excelERef)}
+                              >
                                 <Cell
                                   aria-label={`Simulasi ${excelERef}`}
                                   className="right"
                                   value={simValues[sub.key]}
                                   placeholder={sub.placeholder || '0'}
+                                  onFocus={() => setActiveCellCoord(excelERef)}
                                   onChange={(value) => setSimValues((current) => ({ ...current, [sub.key]: value }))}
                                 />
                               </td>
                               {subi === 0 && (
                                 <>
-                                  <td rowSpan={span} className={`ref-cell ${refClass(excelFRef, `${prefix}_B`)}`} {...pickHandlers(item.id, 'B', excelFRef, `${prefix}_B`)}>
-                                    <span className="ref-tag" title={`Sel Excel ${excelFRef} · Alias ${prefix}_B`}>{excelFRef} · B</span>
+                                  <td
+                                    rowSpan={span}
+                                    className={`ref-cell ${refClass(excelFRef, `${prefix}_B`)}`}
+                                    title={`Sel ${excelFRef}`}
+                                    {...pickHandlers(excelFRef)}
+                                  >
                                     <Cell
                                       type="number"
                                       step="any"
                                       className="right"
-                                      aria-label={`Bobot ${section.code}.${item.no}`}
+                                      aria-label={`Bobot ${excelFRef}`}
                                       value={Math.abs(Number(item.bobot) || 0)}
+                                      onFocus={() => setActiveCellCoord(excelFRef)}
                                       onChange={(value) => updateItem(si, ii, { bobot: value })}
                                     />
                                   </td>
-                                  <td rowSpan={span} className={`ref-cell ${refClass(excelGRef, `${prefix}_T`)}`} {...pickHandlers(item.id, 'T', excelGRef, `${prefix}_T`)}>
-                                    <span className="ref-tag" title={`Sel Excel ${excelGRef} · Alias ${prefix}_T`}>{excelGRef} · T</span>
+                                  <td
+                                    rowSpan={span}
+                                    className={`ref-cell ${refClass(excelGRef, `${prefix}_T`)}`}
+                                    title={`Sel ${excelGRef}`}
+                                    {...pickHandlers(excelGRef)}
+                                  >
                                     <Cell
                                       type="number"
                                       step="any"
                                       className="right"
-                                      aria-label={`Target ${section.code}.${item.no}`}
+                                      aria-label={`Target ${excelGRef}`}
                                       value={item.targetNum}
+                                      onFocus={() => setActiveCellCoord(excelGRef)}
                                       onChange={(value) => updateItem(si, ii, { targetNum: value, targetDisplay: value === '' ? '' : formatIndonesianNumber(Number(value)) })}
                                     />
                                   </td>
                                   <td rowSpan={span}>
-                                    <Cell aria-label={`Satuan ${section.code}.${item.no}`} className="center" value={item.satuan} onChange={(value) => updateItem(si, ii, { satuan: value })} />
+                                    <Cell
+                                      aria-label={`Satuan ${section.code}.${item.no}`}
+                                      className="center"
+                                      value={item.satuan}
+                                      onFocus={() => setActiveCellCoord(`H${itemStartRow}`)}
+                                      onChange={(value) => updateItem(si, ii, { satuan: value })}
+                                    />
                                   </td>
-                                  <td rowSpan={span} className="formula-cell">
+                                  <td rowSpan={span} className="formula-cell" title={`Sel I${itemStartRow} · Klik untuk edit rumus di fx`}>
                                     <button
                                       type="button"
                                       className={`formula-preview ${hasError ? 'error' : ''}`}
-                                      title="Edit rumus di formula bar"
-                                      onClick={() => { setSelectedId(item.id); window.requestAnimationFrame(() => formulaRef.current?.focus()); }}
+                                      onClick={() => {
+                                        setSelectedId(item.id);
+                                        setActiveCellCoord(`I${itemStartRow}`);
+                                        window.requestAnimationFrame(() => formulaRef.current?.focus());
+                                      }}
                                     >
-                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                        <Sigma size={11} />
-                                        {isDateType(item.calcType) ? CALC_TYPES[item.calcType].label : `=${stripEq(visibleExpr(item)) || '...'}`}
+                                      <span>
+                                        {isDateType(item.calcType)
+                                          ? CALC_TYPES[item.calcType].label
+                                          : `=${stripEq(visibleExpr(item, itemExcelMeta, directory.legacyToExcel)) || '...'}`}
                                       </span>
-                                      {item.calcType !== 'custom' && <small>preset</small>}
                                     </button>
                                   </td>
                                   <td rowSpan={span} className="result" style={{ color: capMeta.color }}>
@@ -1770,7 +1824,7 @@ export default function KPITableDesigner() {
                       const summary = sectionIndex >= 0 ? validation.sectionSummaries[sectionIndex] : null;
                       return (
                         <li key={`${issue.level}-${index}-${issue.message}`} className={issue.level}>
-                          <span className="issue-tag">{issue.level === 'error' ? 'Error' : 'Peringatan'}</span>
+                          <span className="issue-tag">{issue.level === 'error' ? 'Error:' : 'Peringatan:'}</span>
                           {issue.itemId ? (
                             <button type="button" className="link" onClick={() => setSelectedId(issue.itemId)}><MousePointerClick size={12} /> {issue.message}</button>
                           ) : sectionIndex >= 0 ? (

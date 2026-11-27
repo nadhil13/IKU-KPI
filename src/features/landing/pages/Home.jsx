@@ -715,10 +715,8 @@ export default function Home() {
                 <div
                   key={row.code}
                   style={{
-                    padding: '0.85rem 1rem',
-                    borderRadius: '6px',
-                    background: '#093B52',
-                    border: '1px solid #1D5E78',
+                    padding: '0.75rem 0',
+                    borderBottom: '1px solid #1D5E78',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',

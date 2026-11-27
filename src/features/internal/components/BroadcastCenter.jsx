@@ -75,7 +75,7 @@ const QUICK_TEMPLATES = [
     title: 'Instruksi Pengisian & Submit Capaian KPI Periode Berjalan',
     message:
       'Dimohon kepada seluruh Penanggung Jawab (PIC) Unit untuk segera melengkapi angka realisasi, keterangan, serta bukti dukung pada baris indikator masing-masing dan menekan tombol Submit ke Sistem Pusat hari ini.',
-    actionUrl: '/internal',
+    actionUrl: '/internal/kpi',
     actionLabel: 'Buka Lembar Kerja KPI',
   },
   {
@@ -87,7 +87,7 @@ const QUICK_TEMPLATES = [
     title: 'Tindak Lanjut Revisi & Bukti Capaian Khusus Unit Anda',
     message:
       'Mohon segera memeriksa catatan revisi dari Admin PRP dan memperbarui angka capaian serta lampiran bukti pada baris indikator milik unit Anda.',
-    actionUrl: '/internal',
+    actionUrl: '/internal/kpi',
     actionLabel: 'Buka Indikator Unit Anda',
   },
   {
@@ -99,7 +99,7 @@ const QUICK_TEMPLATES = [
     title: 'Kelengkapan Bukti Capaian (Evidence) Wajib Per Baris Indikator',
     message:
       'Setiap baris indikator wajib dilampiri dokumen resmi (unggah PDF/gambar atau tautan penyimpanan berkas HTTPS) sebelum diverifikasi oleh Direktorat PRP.',
-    actionUrl: '/internal',
+    actionUrl: '/internal/kpi',
     actionLabel: 'Periksa Bukti Capaian',
   },
   {
@@ -262,22 +262,8 @@ export function ActiveBroadcastBanner({ onOpenManager }) {
               flexWrap: 'wrap',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem', flex: '1 1 320px', minWidth: 0 }}>
-              <div
-                style={{
-                  width: '34px',
-                  height: '34px',
-                  borderRadius: '6px',
-                  background: tone.badgeBg,
-                  color: tone.badgeText,
-                  display: 'grid',
-                  placeItems: 'center',
-                  flexShrink: 0,
-                  marginTop: '2px',
-                }}
-              >
-                <IconComp size={17} />
-              </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.7rem', flex: '1 1 320px', minWidth: 0 }}>
+              <IconComp size={18} color={tone.titleColor} style={{ flexShrink: 0, marginTop: '2px' }} />
 
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -564,20 +550,8 @@ export function BroadcastComposerModal({ open, onClose }) {
             gap: '0.75rem',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '8px',
-                background: '#094E68',
-                color: '#FFFFFF',
-                display: 'grid',
-                placeItems: 'center',
-              }}
-            >
-              <Radio size={18} />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <Radio size={18} color="#094E68" style={{ flexShrink: 0 }} />
             <div>
               <div
                 style={{

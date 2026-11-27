@@ -399,14 +399,12 @@
 }
 
 .tp-avatar {
-  display: grid;
-  place-items: center;
-  background: #EDF3F6;
-  border: 1px solid #64748B;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
   color: #094E68;
-  width: 34px;
-  height: 34px;
-  border-radius: 4px;
   flex-shrink: 0;
 }
 

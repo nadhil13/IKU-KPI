@@ -364,7 +364,7 @@ export default function AllSubmissionsTable({ onReviewKpi }) {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.73rem', color: '#334155', background: '#F7FAFB', padding: '0.55rem 0.7rem', borderRadius: '6px', border: '1px solid #E2EDF2' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.73rem', color: '#334155', paddingTop: '0.45rem', borderTop: '1px solid #EDF3F6' }}>
                 <div>
                   <span style={{ display: 'block', fontSize: '0.63rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700 }}>Kelengkapan</span>
                   <strong>{row.filled}</strong>
